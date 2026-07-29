@@ -193,7 +193,7 @@ def generate_full_txt_report(info):
     gp = info.get('PurchasedGamepasses', {})
     
     r = "╔══════════════════════════════════════════════════════════╗\n"
-    r += "║  🎮 MICE CHECKER REPORT                                  ║\n"
+    r += "║  🎮 KAI CHECKER REPORT                                   ║\n"
     r += "╠══════════════════════════════════════════════════════════╣\n"
     r += f"║  📋 {info['Username']}                                   ║\n"
     r += f"║  🟢 ✅ | 🆔 {info['UserID']}                            ║\n"
@@ -235,7 +235,7 @@ HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mice Checker</title>
+    <title>Kai Checker</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -258,6 +258,7 @@ HTML = """<!DOCTYPE html>
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
             position: relative;
+            z-index: 1;
         }
         
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -268,6 +269,8 @@ HTML = """<!DOCTYPE html>
             display: flex; justify-content: space-between; align-items: center;
             padding: 20px 0 16px; border-bottom: 1px solid #2a1a50;
             margin-bottom: 30px;
+            position: relative;
+            z-index: 2;
         }
         
         .logo {
@@ -279,6 +282,9 @@ HTML = """<!DOCTYPE html>
 
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
+            position: relative;
+            z-index: 50;
+            pointer-events: auto;
         }
         
         .tab {
@@ -287,6 +293,8 @@ HTML = """<!DOCTYPE html>
             cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
             user-select: none;
             pointer-events: auto;
+            position: relative;
+            z-index: 51;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
@@ -294,7 +302,7 @@ HTML = """<!DOCTYPE html>
             color: #c084fc; box-shadow: 0 0 20px rgba(168,85,247,0.2);
         }
 
-        .tab-content { display: none; }
+        .tab-content { display: none; position: relative; z-index: 5; }
         .tab-content.active { display: block; animation: fadeUp 0.3s ease; }
         @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
 
@@ -302,6 +310,8 @@ HTML = """<!DOCTYPE html>
             background: rgba(18, 10, 40, 0.9);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
             margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            position: relative;
+            z-index: 6;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -313,6 +323,8 @@ HTML = """<!DOCTYPE html>
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
             text-decoration: none;
             pointer-events: auto;
+            position: relative;
+            z-index: 20;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -331,6 +343,8 @@ HTML = """<!DOCTYPE html>
             gap: 4px;
             margin-bottom: 18px;
             pointer-events: auto;
+            position: relative;
+            z-index: 15;
         }
         .toggle-btn {
             flex: 1;
@@ -345,6 +359,8 @@ HTML = """<!DOCTYPE html>
             transition: all 0.25s ease;
             text-align: center;
             pointer-events: auto;
+            position: relative;
+            z-index: 16;
         }
         .toggle-btn.active {
             background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(217,70,239,0.3));
@@ -358,6 +374,8 @@ HTML = """<!DOCTYPE html>
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
             resize: vertical; transition: 0.2s;
             pointer-events: auto;
+            position: relative;
+            z-index: 10;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
@@ -366,12 +384,16 @@ HTML = """<!DOCTYPE html>
             min-height: 100px; display: flex; flex-direction: column; align-items: center;
             justify-content: center; cursor: pointer; border-style: dashed; gap: 6px; text-align: center; color: #ffffff;
             pointer-events: auto;
+            position: relative;
+            z-index: 10;
         }
 
         .result-box {
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
+            position: relative;
+            z-index: 10;
         }
 
         .progress-bar {
@@ -386,7 +408,7 @@ HTML = """<!DOCTYPE html>
 
 <div class="kai-wrapper">
     <div class="header">
-        <div class="logo">MICE CHECKER</div>
+        <div class="logo">KAI CHECKER</div>
         <div style="display: flex; align-items: center; gap: 15px;">
             <span id="sessionTimer" style="color: #00b894; font-family: 'Inter', monospace; font-weight: 600; font-size: 13px; background: rgba(0, 184, 148, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(0, 184, 148, 0.2);">⏱️ 00:00:00</span>
             <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
@@ -430,11 +452,22 @@ HTML = """<!DOCTYPE html>
     <div class="tab-content" id="tab-validator">
         <div class="card">
             <h2>✅ Валидатор (отсев мёртвых)</h2>
-            <div class="upload-area" onclick="document.getElementById('validatorFile').click()">
-                <p>📁 <strong>Загрузить .txt</strong></p>
+            <div style="display:flex; flex-wrap:wrap; gap:18px;">
+                <div style="flex:2;">
+                    <textarea id="validatorCookies" placeholder="Вставьте куки для валидации..." rows="6"></textarea>
+                </div>
+                <div style="flex:1;">
+                    <div class="upload-area" onclick="document.getElementById('validatorFile').click()">
+                        <p>📁 <strong>Загрузить .txt</strong></p>
+                        <p style="font-size:12px; color:#9880c0;">Файл с куками</p>
+                    </div>
+                    <input type="file" id="validatorFile" accept=".txt" style="display:none;">
+                </div>
             </div>
-            <input type="file" id="validatorFile" accept=".txt" style="display:none;">
-            <button class="btn btn-primary" onclick="runValidator()" style="margin-top:14px;">🧪 Запустить</button>
+            <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="runValidator()">🧪 Запустить валидацию</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('validatorCookies').value=''; document.getElementById('validatorResult').textContent='Здесь будет результат валидации...';">🧹 Очистить</button>
+            </div>
             <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
         </div>
     </div>
@@ -496,7 +529,7 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="footer">MICE CHECKER · PRO</div>
+    <div class="footer">KAI CHECKER · PRO</div>
 </div>
 
 <script>
@@ -549,6 +582,19 @@ HTML = """<!DOCTYPE html>
                 } catch (err) {
                     document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сети при загрузке';
                 }
+            }
+        });
+    }
+
+    const validatorFileInput = document.getElementById('validatorFile');
+    if (validatorFileInput) {
+        validatorFileInput.addEventListener('change', function(e) {
+            if (this.files && this.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    document.getElementById('validatorCookies').value = evt.target.result;
+                };
+                reader.readAsText(this.files[0]);
             }
         });
     }
@@ -646,6 +692,34 @@ HTML = """<!DOCTYPE html>
         } catch (e) {
             resBox.textContent = '❌ Ошибка: ' + e.message;
             progress.style.width = '0%';
+        }
+    }
+
+    async function runValidator() {
+        const resBox = document.getElementById('validatorResult');
+        const cookies = document.getElementById('validatorCookies').value.trim();
+        if (!cookies) {
+            resBox.textContent = '❌ Вставьте куки для валидации!';
+            return;
+        }
+        resBox.textContent = '⏳ Выполняется быстрая валидация...';
+        try {
+            const response = await fetch('/api/validator', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: cookies })
+            });
+            const data = await response.json();
+            if (data.success) {
+                let html = `✅ Проверено: ${data.total} | Живых (Valid): ${data.valid_count} | Мертвых (Dead): ${data.dead_count}\n\n`;
+                html += `🟢 ЖИВЫЕ КУКИ:\n` + (data.valid_list.length ? data.valid_list.join('\n') : 'Нет живых') + `\n\n`;
+                html += `❌ МЕРТВЫЕ КУКИ:\n` + (data.dead_list.length ? data.dead_list.join('\n') : 'Нет мертвых');
+                resBox.textContent = html;
+            } else {
+                resBox.textContent = '❌ ' + (data.message || 'Ошибка валидации');
+            }
+        } catch (e) {
+            resBox.textContent = '❌ Ошибка сети: ' + e.message;
         }
     }
 
@@ -792,6 +866,34 @@ def api_fullcheck():
         "valid_count": len(reports),
         "reports": reports,
         "download_url": f"/downloads/{archive_name}"
+    })
+
+@app.route("/api/validator", methods=["POST"])
+def api_validator():
+    data = request.json or {}
+    raw_cookies = data.get("cookies", "")
+    cookies = [line.strip() for line in raw_cookies.split('\n') if len(line) > 50]
+    
+    if not cookies:
+        return jsonify({"success": False, "message": "Не найдены куки для валидации"})
+    
+    valid_list = []
+    dead_list = []
+    
+    for c in cookies:
+        info = get_full_info(c)
+        if info['status'] == '✅':
+            valid_list.append(c)
+        else:
+            dead_list.append(c)
+            
+    return jsonify({
+        "success": True,
+        "total": len(cookies),
+        "valid_count": len(valid_list),
+        "dead_count": len(dead_list),
+        "valid_list": valid_list,
+        "dead_list": dead_list
     })
 
 @app.route("/api/fresher", methods=["POST"])
