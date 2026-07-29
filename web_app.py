@@ -583,7 +583,7 @@ HTML = """<!DOCTYPE html>
             <h2>🔍 Проверка куков</h2>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
                 <div style="flex:2;">
-                    <textarea id="manualCookies" placeholder="Вставь куки сюда (по одному или несколько) ..." rows="4" style="width:100%;"></textarea>
+                    <textarea id="manualCookies" placeholder="Вставь куки сюда (по одному или несколько) ..." rows="6" style="width:100%;"></textarea>
                     <div style="margin-top:8px;color:#4a3a6a;font-size:13px;">или загрузи .txt</div>
                 </div>
                 <div style="flex:1;">
