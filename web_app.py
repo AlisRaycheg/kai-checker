@@ -259,7 +259,7 @@ HTML = """<!DOCTYPE html>
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
             position: relative;
-            z-index: 5;
+            z-index: 10;
         }
         
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -270,6 +270,8 @@ HTML = """<!DOCTYPE html>
             display: flex; justify-content: space-between; align-items: center;
             padding: 20px 0 16px; border-bottom: 1px solid #2a1a50;
             margin-bottom: 30px;
+            position: relative;
+            z-index: 20;
         }
         
         .logo {
@@ -281,13 +283,16 @@ HTML = """<!DOCTYPE html>
 
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
+            position: relative;
+            z-index: 30;
         }
         
         .tab {
             padding: 10px 24px; background: rgba(26, 16, 64, 0.9);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
             cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
-            user-select: none; z-index: 10;
+            user-select: none; position: relative; z-index: 31;
+            pointer-events: auto !important;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
@@ -295,7 +300,7 @@ HTML = """<!DOCTYPE html>
             color: #c084fc; box-shadow: 0 0 20px rgba(168,85,247,0.2);
         }
 
-        .tab-content { display: none; }
+        .tab-content { display: none; position: relative; z-index: 15; }
         .tab-content.active { display: block; animation: fadeUp 0.3s ease; }
         @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
 
@@ -303,7 +308,7 @@ HTML = """<!DOCTYPE html>
             background: rgba(18, 10, 40, 0.9);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
             margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            position: relative; z-index: 6;
+            position: relative; z-index: 16;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -313,7 +318,8 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            text-decoration: none; position: relative; z-index: 10;
+            text-decoration: none; position: relative; z-index: 40;
+            pointer-events: auto !important;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -332,7 +338,7 @@ HTML = """<!DOCTYPE html>
             gap: 4px;
             margin-bottom: 18px;
             position: relative;
-            z-index: 8;
+            z-index: 35;
         }
         .toggle-btn {
             flex: 1;
@@ -346,6 +352,9 @@ HTML = """<!DOCTYPE html>
             cursor: pointer;
             transition: all 0.25s ease;
             text-align: center;
+            position: relative;
+            z-index: 36;
+            pointer-events: auto !important;
         }
         .toggle-btn.active {
             background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(217,70,239,0.3));
@@ -357,7 +366,8 @@ HTML = """<!DOCTYPE html>
         textarea, .upload-area, select {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s; position: relative; z-index: 8;
+            resize: vertical; transition: 0.2s; position: relative; z-index: 25;
+            pointer-events: auto !important;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
@@ -365,13 +375,15 @@ HTML = """<!DOCTYPE html>
         .upload-area {
             min-height: 100px; display: flex; flex-direction: column; align-items: center;
             justify-content: center; cursor: pointer; border-style: dashed; gap: 6px; text-align: center; color: #ffffff;
+            position: relative; z-index: 25;
+            pointer-events: auto !important;
         }
 
         .result-box {
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
-            position: relative; z-index: 8;
+            position: relative; z-index: 20;
         }
 
         .progress-bar {
