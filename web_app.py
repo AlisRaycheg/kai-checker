@@ -15,6 +15,7 @@ from curl_cffi.requests import AsyncSession
 # ===== НАСТРОЙКИ =====
 os.makedirs("downloads", exist_ok=True)
 os.makedirs("uploads", exist_ok=True)
+os.makedirs("temp", exist_ok=True)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -226,6 +227,78 @@ def generate_full_txt_report(info):
     return r
 
 # ============================================================
+# ИНСТРУМЕНТЫ СЛИЯНИЯ И РАЗДЕЛЕНИЯ
+# ============================================================
+
+def merge_cookie_files(file_contents_list):
+    """Объединяет несколько файлов с куки в один"""
+    all_cookies = set()
+    
+    for content in file_contents_list:
+        lines = content.split('\n')
+        for line in lines:
+            line = line.strip()
+            if len(line) > 20:  # Минимальная длина куки
+                all_cookies.add(line)
+    
+    return '\n'.join(sorted(all_cookies))
+
+def split_cookies_by_count(content, count_per_file):
+    """Разделяет куки на файлы по указанному количеству"""
+    cookies = [line.strip() for line in content.split('\n') if len(line) > 20]
+    
+    files = []
+    for i in range(0, len(cookies), count_per_file):
+        chunk = cookies[i:i + count_per_file]
+        files.append('\n'.join(chunk))
+    
+    return files
+
+def split_cookies_by_files(content, num_files):
+    """Разделяет куки на указанное количество файлов"""
+    cookies = [line.strip() for line in content.split('\n') if len(line) > 20]
+    
+    if num_files <= 0:
+        return []
+    
+    cookies_per_file = len(cookies) // num_files
+    remainder = len(cookies) % num_files
+    
+    files = []
+    start_idx = 0
+    
+    for i in range(num_files):
+        end_idx = start_idx + cookies_per_file + (1 if i < remainder else 0)
+        chunk = cookies[start_idx:end_idx]
+        files.append('\n'.join(chunk))
+        start_idx = end_idx
+    
+    return files
+
+def remove_duplicates(content):
+    """Удаляет дубликаты куки"""
+    cookies = [line.strip() for line in content.split('\n') if len(line) > 20]
+    unique_cookies = list(dict.fromkeys(cookies))  # Сохраняет порядок
+    return '\n'.join(unique_cookies)
+
+def clean_cookies(content):
+    """Очищает куки от мусора и форматирует"""
+    cookies = []
+    for line in content.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Извлекаем куки из различных форматов
+        if '.ROBLOSECURITY=' in line:
+            cookie_value = line.split('.ROBLOSECURITY=')[-1].split(';')[0].strip()
+            cookies.append(f'.ROBLOSECURITY={cookie_value}')
+        elif len(line) > 50 and not line.startswith('#'):
+            cookies.append(line)
+    
+    return '\n'.join(cookies)
+
+# ============================================================
 # ВЕБ-СЕРВЕР И ИНТЕРФЕЙС
 # ============================================================
 
@@ -355,12 +428,12 @@ HTML = """<!DOCTYPE html>
             box-shadow: 0 4px 15px rgba(168,85,247,0.2);
         }
 
-        textarea, .upload-area, select {
+        textarea, .upload-area, select, input[type="number"] {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
             resize: vertical; transition: 0.2s; position: relative; z-index: 8;
         }
-        textarea:focus, .upload-area:focus-within {
+        textarea:focus, .upload-area:focus-within, input[type="number"]:focus {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
         }
         .upload-area {
@@ -381,6 +454,69 @@ HTML = """<!DOCTYPE html>
         .progress-bar .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.3s ease; }
 
         .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
+        
+        .tool-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .tool-card {
+            background: rgba(18, 10, 40, 0.9);
+            border: 1px solid #2a1a50;
+            border-radius: 16px;
+            padding: 24px;
+            transition: all 0.3s ease;
+        }
+        
+        .tool-card:hover {
+            border-color: #6c5ce7;
+            box-shadow: 0 8px 32px rgba(108, 92, 231, 0.2);
+        }
+        
+        .tool-card h3 {
+            font-size: 16px;
+            color: #c084fc;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .input-group input {
+            flex: 1;
+        }
+        
+        .input-group span {
+            color: #9880c0;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        
+        .file-merge-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 12px 0;
+            padding: 8px;
+            background: #0d0722;
+            border-radius: 8px;
+        }
+        
+        .file-item {
+            background: rgba(26, 16, 64, 0.6);
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #9880c0;
+            border: 1px solid #2a1a50;
+        }
     </style>
 </head>
 <body>
@@ -446,7 +582,6 @@ HTML = """<!DOCTYPE html>
             <h2>🔄 Фрешер сессий</h2>
             <div style="margin-bottom: 8px;">
                 <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
-                <!-- Переключатель кликом вместо старого селекта -->
                 <div class="toggle-group">
                     <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать кук (оставить старый рабочий)</button>
                     <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Убить старый кук (выход со всех устройств / сброс)</button>
@@ -475,9 +610,63 @@ HTML = """<!DOCTYPE html>
 
     <!-- ===== ИНСТРУМЕНТЫ ===== -->
     <div class="tab-content" id="tab-tools">
-        <div class="card">
-            <h2>📦 Инструменты обработки</h2>
-            <p style="color: #9880c0; font-size: 14px;">Все операции доступны через автоматическую генерацию архивов.</p>
+        <div class="tool-grid">
+            <!-- Слияние файлов -->
+            <div class="tool-card">
+                <h3>🔗 Слияние куки-файлов</h3>
+                <p style="color: #9880c0; font-size: 13px; margin-bottom: 12px;">Объедините несколько файлов с куки в один</p>
+                <div class="upload-area" id="mergeArea" onclick="document.getElementById('mergeFiles').click()" style="min-height: 80px;">
+                    <p>📁 <strong>Выбрать файлы для слияния</strong></p>
+                </div>
+                <input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;">
+                <div class="file-merge-list" id="mergeFileList"></div>
+                <button class="btn btn-primary" onclick="mergeCookies()" style="margin-top: 12px; width: 100%;">🔄 Объединить файлы</button>
+                <div class="result-box" id="mergeResult" style="max-height: 200px; margin-top: 12px;">Результат слияния появится здесь...</div>
+            </div>
+
+            <!-- Разделение по количеству -->
+            <div class="tool-card">
+                <h3>✂️ Разделение по количеству</h3>
+                <p style="color: #9880c0; font-size: 13px; margin-bottom: 12px;">Разделите куки на файлы по N штук</p>
+                <div class="upload-area" onclick="document.getElementById('splitCountFile').click()" style="min-height: 80px;">
+                    <p>📁 <strong>Загрузить файл</strong></p>
+                </div>
+                <input type="file" id="splitCountFile" accept=".txt" style="display:none;">
+                <div class="input-group" style="margin-top: 12px;">
+                    <input type="number" id="splitCount" placeholder="Количество куки в файле" value="100" min="1">
+                    <span>шт.</span>
+                </div>
+                <button class="btn btn-primary" onclick="splitByCount()" style="width: 100%;">📦 Разделить</button>
+                <div class="result-box" id="splitCountResult" style="max-height: 200px; margin-top: 12px;">Результат разделения появится здесь...</div>
+            </div>
+
+            <!-- Разделение на N файлов -->
+            <div class="tool-card">
+                <h3>📊 Разделение на N файлов</h3>
+                <p style="color: #9880c0; font-size: 13px; margin-bottom: 12px;">Равномерно разделите на указанное количество файлов</p>
+                <div class="upload-area" onclick="document.getElementById('splitFilesFile').click()" style="min-height: 80px;">
+                    <p>📁 <strong>Загрузить файл</strong></p>
+                </div>
+                <input type="file" id="splitFilesFile" accept=".txt" style="display:none;">
+                <div class="input-group" style="margin-top: 12px;">
+                    <input type="number" id="splitFilesCount" placeholder="Количество файлов" value="5" min="1">
+                    <span>файлов</span>
+                </div>
+                <button class="btn btn-primary" onclick="splitByFiles()" style="width: 100%;">📂 Разделить на файлы</button>
+                <div class="result-box" id="splitFilesResult" style="max-height: 200px; margin-top: 12px;">Результат разделения появится здесь...</div>
+            </div>
+
+            <!-- Очистка и форматирование -->
+            <div class="tool-card">
+                <h3>🧹 Очистка куки</h3>
+                <p style="color: #9880c0; font-size: 13px; margin-bottom: 12px;">Удаление дубликатов и форматирование</p>
+                <textarea id="cleanCookiesInput" placeholder="Вставьте куки для очистки..." rows="4"></textarea>
+                <div style="display: flex; gap: 8px; margin-top: 12px;">
+                    <button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex: 1;">🔄 Удалить дубликаты</button>
+                    <button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex: 1;">📝 Форматировать</button>
+                </div>
+                <div class="result-box" id="cleanResult" style="max-height: 200px; margin-top: 12px;">Очищенные куки появятся здесь...</div>
+            </div>
         </div>
     </div>
 
@@ -546,6 +735,52 @@ HTML = """<!DOCTYPE html>
                 const reader = new FileReader();
                 reader.onload = function(evt) {
                     document.getElementById('fresherCookies').value = evt.target.result;
+                };
+                reader.readAsText(this.files[0]);
+            }
+        });
+    }
+
+    // Обработчик для выбора файлов слияния
+    const mergeFilesInput = document.getElementById('mergeFiles');
+    if (mergeFilesInput) {
+        mergeFilesInput.addEventListener('change', function(e) {
+            const fileList = document.getElementById('mergeFileList');
+            fileList.innerHTML = '';
+            if (this.files) {
+                Array.from(this.files).forEach((file, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'file-item';
+                    div.textContent = `${index + 1}. ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+                    fileList.appendChild(div);
+                });
+            }
+        });
+    }
+
+    // Обработчик для загрузки файла разделения по количеству
+    const splitCountFileInput = document.getElementById('splitCountFile');
+    if (splitCountFileInput) {
+        splitCountFileInput.addEventListener('change', function(e) {
+            if (this.files && this.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    // Сохраняем содержимое для использования
+                    window.splitCountContent = evt.target.result;
+                };
+                reader.readAsText(this.files[0]);
+            }
+        });
+    }
+
+    // Обработчик для загрузки файла разделения на N файлов
+    const splitFilesFileInput = document.getElementById('splitFilesFile');
+    if (splitFilesFileInput) {
+        splitFilesFileInput.addEventListener('change', function(e) {
+            if (this.files && this.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    window.splitFilesContent = evt.target.result;
                 };
                 reader.readAsText(this.files[0]);
             }
@@ -646,6 +881,166 @@ HTML = """<!DOCTYPE html>
             }
         } catch (e) {
             resBox.textContent = '❌ Ошибка сети: ' + e.message;
+        }
+    }
+
+    // Функции для инструментов
+    async function mergeCookies() {
+        const files = document.getElementById('mergeFiles').files;
+        if (!files || files.length < 2) {
+            document.getElementById('mergeResult').textContent = '❌ Выберите минимум 2 файла для слияния';
+            return;
+        }
+
+        const formData = new FormData();
+        Array.from(files).forEach(file => {
+            formData.append('files', file);
+        });
+
+        document.getElementById('mergeResult').textContent = '⏳ Объединение файлов...';
+        
+        try {
+            const response = await fetch('/api/merge-cookies', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                let result = `✅ Успешно объединено ${data.total_files} файлов\n`;
+                result += `📊 Всего уникальных куки: ${data.total_cookies}\n`;
+                result += `🗑️ Удалено дубликатов: ${data.duplicates_removed}\n\n`;
+                if (data.download_url) {
+                    result += `📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать объединенный файл</a>`;
+                }
+                document.getElementById('mergeResult').innerHTML = result;
+            } else {
+                document.getElementById('mergeResult').textContent = '❌ ' + (data.message || 'Ошибка при слиянии');
+            }
+        } catch (e) {
+            document.getElementById('mergeResult').textContent = '❌ Ошибка: ' + e.message;
+        }
+    }
+
+    async function splitByCount() {
+        const content = window.splitCountContent;
+        const count = parseInt(document.getElementById('splitCount').value);
+        
+        if (!content) {
+            document.getElementById('splitCountResult').textContent = '❌ Загрузите файл с куки';
+            return;
+        }
+        
+        if (!count || count < 1) {
+            document.getElementById('splitCountResult').textContent = '❌ Укажите корректное количество';
+            return;
+        }
+
+        document.getElementById('splitCountResult').textContent = '⏳ Разделение куки...';
+        
+        try {
+            const response = await fetch('/api/split-cookies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    content: content, 
+                    split_type: 'count', 
+                    count: count 
+                })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                let result = `✅ Успешно разделено на ${data.file_count} файлов\n`;
+                result += `📊 Всего куки: ${data.total_cookies}\n`;
+                result += `📦 По ${count} куки в файле\n\n`;
+                result += `📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать ZIP с разделенными файлами</a>`;
+                document.getElementById('splitCountResult').innerHTML = result;
+            } else {
+                document.getElementById('splitCountResult').textContent = '❌ ' + (data.message || 'Ошибка при разделении');
+            }
+        } catch (e) {
+            document.getElementById('splitCountResult').textContent = '❌ Ошибка: ' + e.message;
+        }
+    }
+
+    async function splitByFiles() {
+        const content = window.splitFilesContent;
+        const numFiles = parseInt(document.getElementById('splitFilesCount').value);
+        
+        if (!content) {
+            document.getElementById('splitFilesResult').textContent = '❌ Загрузите файл с куки';
+            return;
+        }
+        
+        if (!numFiles || numFiles < 1) {
+            document.getElementById('splitFilesResult').textContent = '❌ Укажите корректное количество файлов';
+            return;
+        }
+
+        document.getElementById('splitFilesResult').textContent = '⏳ Разделение куки...';
+        
+        try {
+            const response = await fetch('/api/split-cookies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    content: content, 
+                    split_type: 'files', 
+                    count: numFiles 
+                })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                let result = `✅ Успешно разделено на ${numFiles} файлов\n`;
+                result += `📊 Всего куки: ${data.total_cookies}\n`;
+                result += `📦 Примерно по ${Math.ceil(data.total_cookies / numFiles)} куки в файле\n\n`;
+                result += `📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать ZIP с разделенными файлами</a>`;
+                document.getElementById('splitFilesResult').innerHTML = result;
+            } else {
+                document.getElementById('splitFilesResult').textContent = '❌ ' + (data.message || 'Ошибка при разделении');
+            }
+        } catch (e) {
+            document.getElementById('splitFilesResult').textContent = '❌ Ошибка: ' + e.message;
+        }
+    }
+
+    async function cleanCookies(action) {
+        const content = document.getElementById('cleanCookiesInput').value.trim();
+        
+        if (!content) {
+            document.getElementById('cleanResult').textContent = '❌ Вставьте куки для очистки';
+            return;
+        }
+
+        document.getElementById('cleanResult').textContent = '⏳ Обработка куки...';
+        
+        try {
+            const response = await fetch('/api/clean-cookies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    content: content, 
+                    action: action 
+                })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                let result = `✅ Обработка завершена\n`;
+                result += `📊 Было куки: ${data.original_count}\n`;
+                result += `📊 Стало куки: ${data.processed_count}\n`;
+                if (data.duplicates_removed > 0) {
+                    result += `🗑️ Удалено дубликатов: ${data.duplicates_removed}\n`;
+                }
+                result += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать очищенный файл</a>`;
+                document.getElementById('cleanResult').innerHTML = result;
+            } else {
+                document.getElementById('cleanResult').textContent = '❌ ' + (data.message || 'Ошибка при очистке');
+            }
+        } catch (e) {
+            document.getElementById('cleanResult').textContent = '❌ Ошибка: ' + e.message;
         }
     }
 
@@ -759,6 +1154,129 @@ def api_fresher():
         "success": True,
         "refreshed_count": len(refreshed),
         "refreshed_list": refreshed
+    })
+
+# ============================================================
+# API ДЛЯ ИНСТРУМЕНТОВ
+# ============================================================
+
+@app.route("/api/merge-cookies", methods=["POST"])
+def api_merge_cookies():
+    if 'files' not in request.files:
+        return jsonify({"success": False, "message": "Файлы не найдены"})
+    
+    files = request.files.getlist('files')
+    if len(files) < 2:
+        return jsonify({"success": False, "message": "Минимум 2 файла для слияния"})
+    
+    file_contents = []
+    for file in files:
+        content = file.read().decode('utf-8', errors='ignore')
+        file_contents.append(content)
+    
+    merged_content = merge_cookie_files(file_contents)
+    
+    # Сохраняем результат
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"merged_cookies_{timestamp}.txt"
+    filepath = os.path.join("downloads", filename)
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(merged_content)
+    
+    # Подсчет статистики
+    all_cookies_lines = merged_content.split('\n')
+    total_original = sum(len(content.split('\n')) for content in file_contents)
+    duplicates_removed = total_original - len([line for line in all_cookies_lines if line])
+    
+    return jsonify({
+        "success": True,
+        "total_files": len(files),
+        "total_cookies": len([line for line in all_cookies_lines if line]),
+        "duplicates_removed": duplicates_removed,
+        "download_url": f"/downloads/{filename}"
+    })
+
+@app.route("/api/split-cookies", methods=["POST"])
+def api_split_cookies():
+    data = request.json or {}
+    content = data.get("content", "")
+    split_type = data.get("split_type", "count")
+    count = data.get("count", 100)
+    
+    if not content:
+        return jsonify({"success": False, "message": "Нет данных для разделения"})
+    
+    if split_type == "count":
+        split_files = split_cookies_by_count(content, count)
+    else:
+        split_files = split_cookies_by_files(content, count)
+    
+    if not split_files:
+        return jsonify({"success": False, "message": "Не удалось разделить куки"})
+    
+    # Создаем ZIP архив с разделенными файлами
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for i, file_content in enumerate(split_files, 1):
+            cookies_in_file = len([line for line in file_content.split('\n') if line])
+            filename = f"part_{i}_{cookies_in_file}cookies.txt"
+            zf.writestr(filename, file_content)
+    
+    zip_buffer.seek(0)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    archive_name = f"split_cookies_{timestamp}.zip"
+    filepath = os.path.join("downloads", archive_name)
+    
+    with open(filepath, 'wb') as f:
+        f.write(zip_buffer.getvalue())
+    
+    # Подсчет статистики
+    total_cookies = sum(len([line for line in file.split('\n') if line]) for file in split_files)
+    
+    return jsonify({
+        "success": True,
+        "file_count": len(split_files),
+        "total_cookies": total_cookies,
+        "download_url": f"/downloads/{archive_name}"
+    })
+
+@app.route("/api/clean-cookies", methods=["POST"])
+def api_clean_cookies():
+    data = request.json or {}
+    content = data.get("content", "")
+    action = data.get("action", "deduplicate")
+    
+    if not content:
+        return jsonify({"success": False, "message": "Нет данных для очистки"})
+    
+    original_lines = [line for line in content.split('\n') if line.strip()]
+    original_count = len(original_lines)
+    
+    if action == "deduplicate":
+        processed_content = remove_duplicates(content)
+    else:  # format
+        processed_content = clean_cookies(content)
+    
+    processed_lines = [line for line in processed_content.split('\n') if line.strip()]
+    processed_count = len(processed_lines)
+    duplicates_removed = original_count - processed_count
+    
+    # Сохраняем результат
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"cleaned_cookies_{timestamp}.txt"
+    filepath = os.path.join("downloads", filename)
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(processed_content)
+    
+    return jsonify({
+        "success": True,
+        "original_count": original_count,
+        "processed_count": processed_count,
+        "duplicates_removed": duplicates_removed,
+        "download_url": f"/downloads/{filename}"
     })
 
 @app.route("/downloads/<filename>")
