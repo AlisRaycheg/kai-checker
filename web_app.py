@@ -1,4 +1,12 @@
-import requests, json, time, logging, re, os, urllib3, html, sys, asyncio, zipfile
+import os
+import time
+import logging
+import re
+import urllib3
+import html
+import sys
+import asyncio
+import zipfile
 from datetime import datetime, timezone, timedelta
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
 from io import BytesIO
@@ -36,6 +44,7 @@ def get_full_info(cookie: str) -> dict:
         if ".ROBLOSECURITY=" in cleaned_cookie:
             cleaned_cookie = cleaned_cookie.split(".ROBLOSECURITY=")[1].split(";")[0]
 
+        import requests
         s = requests.Session()
         s.headers.update({
             'Cookie': f'.ROBLOSECURITY={cleaned_cookie}',
@@ -318,7 +327,7 @@ HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MICE CHECKER</title>
+    <title>KAI CHECKER</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -651,7 +660,7 @@ HTML = """<!DOCTYPE html>
 <div class="kai-wrapper">
 
     <div class="header">
-        <div class="logo">MICE <span>CHECKER</span></div>
+        <div class="logo">KAI <span>CHECKER</span></div>
         <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
     </div>
 
@@ -770,7 +779,7 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="footer">MICE CHECKER · PRO</div>
+    <div class="footer">KAI CHECKER · PRO</div>
 </div>
 
 <script>
@@ -1293,3 +1302,4 @@ def download_file(filename):
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
+```[cite: 3]
