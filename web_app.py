@@ -16,7 +16,6 @@ try:
 except ImportError:
     HAS_CFFI = False
 
-# Файл для хранения номера теста, чтобы он автоматически увеличивался при каждом обновлении кода
 TEST_COUNTER_FILE = "test_counter.json"
 
 def get_next_test_info():
@@ -34,7 +33,6 @@ def get_next_test_info():
     except:
         pass
     
-    # Время по МСК (UTC +3)
     msk_time = datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')
     return counter, msk_time
 
@@ -47,10 +45,14 @@ TEST_NUM, SERVER_START_TIME = get_next_test_info()
 def get_full_info(cookie: str) -> dict:
     info = {'status': '⚠️', 'Username': '?', 'Robux': 0, 'TotalRAP': 0}
     try:
+        cleaned_cookie = cookie.strip()
+        if ".ROBLOSECURITY=" in cleaned_cookie:
+            cleaned_cookie = cleaned_cookie.split(".ROBLOSECURITY=")[1].split(";")[0]
+
         s = requests.Session()
         s.headers.update({
-            'Cookie': f'.ROBLOSECURITY={cookie.strip()}',
-            'User-Agent': 'Mozilla/5.0',
+            'Cookie': f'.ROBLOSECURITY={cleaned_cookie}',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             'Accept': 'application/json'
         })
         r = s.get('https://users.roblox.com/v1/users/authenticated', timeout=15, verify=False)
@@ -86,8 +88,12 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
     if not HAS_CFFI:
         return False, None, "❌ Установите curl_cffi"
     
+    clean_old = old_cookie.strip()
+    if ".ROBLOSECURITY=" in clean_old:
+        clean_old = clean_old.split(".ROBLOSECURITY=")[1].split(";")[0]
+
     headers_base = {
-        "Cookie": f".ROBLOSECURITY={old_cookie.strip()}",
+        "Cookie": f".ROBLOSECURITY={clean_old}",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Origin": "https://www.roblox.com",
         "Referer": "https://www.roblox.com/"
@@ -131,7 +137,7 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
                     parts = set_cookie.split(".ROBLOSECURITY=")
                     if len(parts) > 1:
                         new_cookie = parts[1].split(";")[0]
-                        if new_cookie and new_cookie != old_cookie:
+                        if new_cookie and new_cookie != clean_old:
                             break
             except:
                 pass
@@ -548,27 +554,8 @@ HTML = """<!DOCTYPE html>
         .fresh-stats .invalid { color: #ff6b6b; }
         .fresh-stats .errors { color: #feca57; }
 
-        .fresh-history {
-            margin-top: 20px; border-top: 1px solid #1a1a2e; padding-top: 16px;
-        }
-        .fresh-history h3 {
-            font-family: 'Poppins', sans-serif;
-            font-weight: 700; font-style: italic; font-size: 16px; color: #a78bfa; margin-bottom: 12px;
-        }
-        .history-list {
-            max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
-        }
-        .history-item {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 8px 14px; background: #0a0a18; border-radius: 10px;
-            border-left: 3px solid #6c5ce7; font-size: 13px; color: #b0b0c8; flex-wrap: wrap; gap: 6px;
-        }
-        .history-item .time { color: #6a6a8a; font-size: 12px; }
-        .history-item .ok { color: #00b894; }
-        .history-item .fail { color: #ff6b6b; }
-
         .single-fresh-section {
-            margin-top: 24px;
+            margin-top: 20px;
             background: rgba(14, 10, 30, 0.6);
             border: 1px solid #2a1a50;
             border-radius: 16px;
@@ -742,14 +729,6 @@ HTML = """<!DOCTYPE html>
                 <div class="single-history-list" id="singleHistoryList">
                     <div style="color:#6a6a8a; font-size:13px; padding:4px;">Нет свежих одиночных обновлений</div>
                 </div>
-            </div>
-
-            <div class="fresh-history">
-                <h3>📜 Mass Refresher History</h3>
-                <div class="history-list" id="freshHistoryList">
-                    <div style="color:#4a3a6a; font-size:13px; padding:8px;">История пуста</div>
-                </div>
-                <button class="btn btn-secondary" onclick="clearFreshHistory()" style="margin-top:10px; padding:6px 16px; font-size:12px;">🗑️ Очистить</button>
             </div>
         </div>
     </div>
@@ -1030,7 +1009,6 @@ HTML = """<!DOCTYPE html>
                     setTimeout(() => { this.textContent = '📋 Копировать'; }, 2000);
                 });
             };
-            saveFreshHistory(newCookies.length, valid, invalid, errors);
         }
     }
 
@@ -1090,38 +1068,6 @@ HTML = """<!DOCTYPE html>
     function clearSingleHistory() {
         localStorage.removeItem('singleFreshHistory');
         renderSingleFreshHistory();
-    }
-
-    function saveFreshHistory(total, valid, invalid, errors) {
-        const history = JSON.parse(localStorage.getItem('freshHistory') || '[]');
-        history.unshift({ date: new Date().toLocaleString(), total, valid, invalid, errors, method: freshMethod });
-        if (history.length > 30) history.pop();
-        localStorage.setItem('freshHistory', JSON.stringify(history));
-        renderFreshHistory();
-    }
-
-    function renderFreshHistory() {
-        const list = document.getElementById('freshHistoryList');
-        const history = JSON.parse(localStorage.getItem('freshHistory') || '[]');
-        if (history.length === 0) {
-            list.innerHTML = '<div style="color:#4a3a6a; font-size:13px; padding:8px;">История пуста</div>';
-            return;
-        }
-        list.innerHTML = history.map(item => `
-            <div class="history-item">
-                <span>🔄 ${item.total} обновлено</span>
-                <span class="ok">✅ ${item.valid}</span>
-                <span class="fail">❌ ${item.invalid}</span>
-                <span style="color:#feca57;">⚠️ ${item.errors}</span>
-                <span style="font-size:11px; color:#4a3a6a;">${item.method === 'ticket' ? 'Ticket' : 'Logout'}</span>
-                <span class="time">${item.date}</span>
-            </div>
-        `).join('');
-    }
-
-    function clearFreshHistory() {
-        localStorage.removeItem('freshHistory');
-        renderFreshHistory();
     }
 
     async function runValidator() {
@@ -1237,7 +1183,6 @@ HTML = """<!DOCTYPE html>
     }
 
     renderCheckerHistory();
-    renderFreshHistory();
     renderSingleFreshHistory();
 </script>
 </body>
