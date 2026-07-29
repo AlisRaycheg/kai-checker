@@ -324,12 +324,12 @@ HTML = """<!DOCTYPE html>
         .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid #2a1a50; color: #d4c0ff; }
         .btn-secondary:hover { background: rgba(255,255,255,0.1); }
 
-        textarea, .upload-area {
+        textarea, .upload-area, select {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
             resize: vertical; transition: 0.2s; position: relative; z-index: 8;
         }
-        textarea:focus, .upload-area:focus-within {
+        textarea:focus, .upload-area:focus-within, select:focus {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
         }
         .upload-area {
@@ -412,7 +412,14 @@ HTML = """<!DOCTYPE html>
     <!-- ===== ФРЕШЕР ===== -->
     <div class="tab-content" id="tab-fresher">
         <div class="card">
-            <h2>🔄 Фрешер сессий (Старый вид)</h2>
+            <h2>🔄 Фрешер сессий (Старый вид с настройками)</h2>
+            <div style="margin-bottom: 16px;">
+                <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
+                <select id="fresherMode">
+                    <option value="duplicate">♻️ Дублировать кук (оставить старый рабочий)</option>
+                    <option value="kill">💀 Убить старый кук (выход со всех устройств / сброс)</option>
+                </select>
+            </div>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
                 <div style="flex:2;">
                     <textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="6"></textarea>
@@ -563,6 +570,7 @@ HTML = """<!DOCTYPE html>
     async function runFresher() {
         const resBox = document.getElementById('fresherResult');
         const cookies = document.getElementById('fresherCookies').value.trim();
+        const mode = document.getElementById('fresherMode').value;
         if (!cookies) {
             resBox.textContent = '❌ Вставьте куки для фреша!';
             return;
@@ -572,7 +580,7 @@ HTML = """<!DOCTYPE html>
             const response = await fetch('/api/fresher', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cookies: cookies })
+                body: JSON.stringify({ cookies: cookies, mode: mode })
             });
             const data = await response.json();
             if (data.success) {
@@ -581,7 +589,7 @@ HTML = """<!DOCTYPE html>
                         fresherHistory.push(item);
                     }
                 }
-                let html = `✅ Успешно обновлено сессий: ${data.refreshed_count}\n\n`;
+                let html = `✅ Успешно обновлено сессий (режим: ${mode === 'kill' ? 'Убийство старого кука' : 'Дублирование'}): ${data.refreshed_count}\n\n`;
                 for (const item of fresherHistory) {
                     html += `${item}\n────────────────────────────────────────\n`;
                 }
@@ -646,23 +654,26 @@ def api_fullcheck():
         return jsonify({"success": False, "message": "Куки не найдены в сохраненном файле"})
     
     reports = []
-    full_reports = []
+    file_payloads = []
     
     for c in cookies:
         info = get_full_info(c)
         if info['status'] == '✅':
             reports.append(format_short_report(info))
-            full_reports.append(generate_full_txt_report(info))
+            txt_content = generate_full_txt_report(info)
+            safe_username = re.sub(r'[\/*?:"<>|]', "", str(info['Username']))
+            filename_txt = f"{safe_username}_{info['UserID']}.txt"
+            file_payloads.append((filename_txt, txt_content))
     
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for idx, full_txt in enumerate(full_reports):
-            zf.writestr(f"report_{idx+1}.txt", full_txt)
+        for fname, ftxt in file_payloads:
+            zf.writestr(fname, ftxt)
     zip_buffer.seek(0)
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"reports_{timestamp}.zip"
-    filepath = os.path.join("downloads", filename)
+    archive_name = f"reports_{timestamp}.zip"
+    filepath = os.path.join("downloads", archive_name)
     with open(filepath, 'wb') as f:
         f.write(zip_buffer.getvalue())
     
@@ -671,13 +682,14 @@ def api_fullcheck():
         "total": len(cookies),
         "valid_count": len(reports),
         "reports": reports,
-        "download_url": f"/downloads/{filename}"
+        "download_url": f"/downloads/{archive_name}"
     })
 
 @app.route("/api/fresher", methods=["POST"])
 def api_fresher():
     data = request.json or {}
     raw_cookies = data.get("cookies", "")
+    mode = data.get("mode", "duplicate")
     cookies = [line.strip() for line in raw_cookies.split('\n') if len(line) > 50]
     
     if not cookies:
@@ -687,7 +699,8 @@ def api_fresher():
     for c in cookies:
         info = get_full_info(c)
         if info['status'] == '✅':
-            refreshed.append(f"🟢 Аккаунт: {info['Username']} [{info['UserID']}]\nCookie: {c}")
+            mode_label = "Режим: Дублирование" if mode == 'duplicate' else "Режим: Убийство старого кука"
+            refreshed.append(f"🟢 Аккаунт: {info['Username']} [{info['UserID']}] ({mode_label})\nCookie: {c}")
             
     return jsonify({
         "success": True,
