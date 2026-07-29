@@ -507,106 +507,66 @@ HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+    // ============================================================
+    // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
+    // ============================================================
     let checkerHistory = [];
     let fresherHistory = [];
+    let startTime = Date.now();
 
-    document.addEventListener('DOMContentLoaded', function() {
-        // Таймер сессии
-        let startTime = Date.now();
-        setInterval(() => {
-            let diff = Math.floor((Date.now() - startTime) / 1000);
-            let h = String(Math.floor(diff / 3600)).padStart(2, '0');
-            let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
-            let s = String(diff % 60).padStart(2, '0');
-            const timerEl = document.getElementById('sessionTimer');
-            if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
-        }, 1000);
+    // ============================================================
+    // ТАЙМЕР СЕССИИ
+    // ============================================================
+    setInterval(() => {
+        let diff = Math.floor((Date.now() - startTime) / 1000);
+        let h = String(Math.floor(diff / 3600)).padStart(2, '0');
+        let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+        let s = String(diff % 60).padStart(2, '0');
+        const timerEl = document.getElementById('sessionTimer');
+        if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
+    }, 1000);
 
-        // Переключение Вкладок
-        document.querySelectorAll('.tab').forEach(tab => {
-            tab.addEventListener('click', function(e) {
-                e.preventDefault();
-                const tabId = this.getAttribute('data-tab');
-                if (!tabId) return;
+    // ============================================================
+    // ВКЛАДКИ
+    // ============================================================
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+            const tabId = this.getAttribute('data-tab');
+            if (!tabId) return;
 
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
-                this.classList.add('active');
-                const target = document.getElementById('tab-' + tabId);
-                if (target) target.classList.add('active');
-            });
-        });
-
-        // Переключение режимов Фрешера
-        const modeDup = document.getElementById('modeDuplicate');
-        const modeKill = document.getElementById('modeKill');
-        const modeInput = document.getElementById('fresherMode');
-
-        if (modeDup && modeKill) {
-            modeDup.addEventListener('click', function() {
-                modeInput.value = 'duplicate';
-                modeDup.classList.add('active');
-                modeKill.classList.remove('active');
-            });
-            modeKill.addEventListener('click', function() {
-                modeInput.value = 'kill';
-                modeKill.classList.add('active');
-                modeDup.classList.remove('active');
-            });
-        }
-
-        // Загрузка файлов
-        bindFileInput('fullFile', 'manualCookies', true);
-        bindFileInput('validatorFile', 'validatorCookies', false);
-        bindFileInput('fresherFile', 'fresherCookies', false);
-
-        // Множественная загрузка в Инструментах
-        const toolsFileInput = document.getElementById('toolsFile');
-        if (toolsFileInput) {
-            toolsFileInput.addEventListener('change', function() {
-                if (this.files && this.files.length > 0) {
-                    let combinedText = "";
-                    let filesRead = 0;
-                    Array.from(this.files).forEach(file => {
-                        const reader = new FileReader();
-                        reader.onload = function(evt) {
-                            combinedText += evt.target.result + "\n";
-                            filesRead++;
-                            if (filesRead === toolsFileInput.files.length) {
-                                document.getElementById('toolsInput').value = combinedText;
-                            }
-                        };
-                        reader.readAsText(file);
-                    });
-                }
-            });
-        }
-
-        // Привязка действий к кнопкам
-        document.getElementById('btnRunChecker').addEventListener('click', runFullcheck);
-        document.getElementById('btnClearChecker').addEventListener('click', clearInputs);
-
-        document.getElementById('btnRunValidator').addEventListener('click', runValidator);
-        document.getElementById('btnClearValidator').addEventListener('click', function() {
-            document.getElementById('validatorCookies').value = '';
-            document.getElementById('validatorResult').textContent = 'Здесь будет результат валидации...';
-        });
-
-        document.getElementById('btnRunFresher').addEventListener('click', runFresher);
-        document.getElementById('btnClearFresher').addEventListener('click', function() {
-            document.getElementById('fresherCookies').value = '';
-            document.getElementById('fresherResult').textContent = 'Результаты фрешера появятся здесь...';
-            fresherHistory = [];
-        });
-
-        document.getElementById('btnRunTools').addEventListener('click', runToolsMerge);
-        document.getElementById('btnClearTools').addEventListener('click', function() {
-            document.getElementById('toolsInput').value = '';
-            document.getElementById('toolsResult').textContent = 'Результаты обработки появятся здесь...';
+            this.classList.add('active');
+            const target = document.getElementById('tab-' + tabId);
+            if (target) target.classList.add('active');
         });
     });
 
+    // ============================================================
+    // ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ФРЕШЕРА
+    // ============================================================
+    const modeDup = document.getElementById('modeDuplicate');
+    const modeKill = document.getElementById('modeKill');
+    const modeInput = document.getElementById('fresherMode');
+
+    if (modeDup && modeKill) {
+        modeDup.addEventListener('click', function() {
+            modeInput.value = 'duplicate';
+            modeDup.classList.add('active');
+            modeKill.classList.remove('active');
+        });
+        modeKill.addEventListener('click', function() {
+            modeInput.value = 'kill';
+            modeKill.classList.add('active');
+            modeDup.classList.remove('active');
+        });
+    }
+
+    // ============================================================
+    // ЗАГРУЗКА ФАЙЛОВ
+    // ============================================================
     function bindFileInput(inputId, textareaId, isServerUpload) {
         const fileInput = document.getElementById(inputId);
         if (!fileInput) return;
@@ -617,25 +577,60 @@ HTML = """<!DOCTYPE html>
                 if (isServerUpload) {
                     const formData = new FormData();
                     formData.append('file', file);
-                    document.getElementById('fileStatusInfo').textContent = '⏳ Загрузка на сервер...';
+                    const statusEl = document.getElementById('fileStatusInfo');
+                    if (statusEl) statusEl.textContent = '⏳ Загрузка на сервер...';
                     try {
                         const res = await fetch('/api/upload', { method: 'POST', body: formData });
                         const data = await res.json();
-                        if (data.success) {
-                            document.getElementById('fileStatusInfo').textContent = `✅ Файл "${data.filename}" загружен!`;
+                        if (data.success && statusEl) {
+                            statusEl.textContent = `✅ Файл "${data.filename}" загружен!`;
                         }
                     } catch (e) {
-                        document.getElementById('fileStatusInfo').textContent = '❌ Ошибка загрузки файла';
+                        if (statusEl) statusEl.textContent = '❌ Ошибка загрузки файла';
                     }
                 }
                 const reader = new FileReader();
                 reader.onload = function(evt) {
-                    document.getElementById(textareaId).value = evt.target.result;
+                    const textarea = document.getElementById(textareaId);
+                    if (textarea) textarea.value = evt.target.result;
                 };
                 reader.readAsText(file);
             }
         });
     }
+
+    bindFileInput('fullFile', 'manualCookies', true);
+    bindFileInput('validatorFile', 'validatorCookies', false);
+    bindFileInput('fresherFile', 'fresherCookies', false);
+
+    // Множественная загрузка в Инструментах
+    const toolsFileInput = document.getElementById('toolsFile');
+    if (toolsFileInput) {
+        toolsFileInput.addEventListener('change', function() {
+            if (this.files && this.files.length > 0) {
+                let combinedText = "";
+                let filesRead = 0;
+                Array.from(this.files).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        combinedText += evt.target.result + "\n";
+                        filesRead++;
+                        if (filesRead === toolsFileInput.files.length) {
+                            const toolsInput = document.getElementById('toolsInput');
+                            if (toolsInput) toolsInput.value = combinedText;
+                        }
+                    };
+                    reader.readAsText(file);
+                });
+            }
+        });
+    }
+
+    // ============================================================
+    // ===== ЧЕКЕР ================================================
+    // ============================================================
+    document.getElementById('btnRunChecker').addEventListener('click', runFullcheck);
+    document.getElementById('btnClearChecker').addEventListener('click', clearInputs);
 
     async function runFullcheck() {
         const resBox = document.getElementById('fullcheckResult');
@@ -684,6 +679,22 @@ HTML = """<!DOCTYPE html>
         }
     }
 
+    function clearInputs() {
+        document.getElementById('manualCookies').value = '';
+        document.getElementById('fileStatusInfo').textContent = '';
+        checkerHistory = [];
+        document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
+    }
+
+    // ============================================================
+    // ===== ВАЛИДАТОР ============================================
+    // ============================================================
+    document.getElementById('btnRunValidator').addEventListener('click', runValidator);
+    document.getElementById('btnClearValidator').addEventListener('click', function() {
+        document.getElementById('validatorCookies').value = '';
+        document.getElementById('validatorResult').textContent = 'Здесь будет результат валидации...';
+    });
+
     async function runValidator() {
         const resBox = document.getElementById('validatorResult');
         const cookies = document.getElementById('validatorCookies').value.trim();
@@ -711,6 +722,16 @@ HTML = """<!DOCTYPE html>
             resBox.textContent = '❌ Ошибка сети: ' + e.message;
         }
     }
+
+    // ============================================================
+    // ===== ФРЕШЕР ===============================================
+    // ============================================================
+    document.getElementById('btnRunFresher').addEventListener('click', runFresher);
+    document.getElementById('btnClearFresher').addEventListener('click', function() {
+        document.getElementById('fresherCookies').value = '';
+        document.getElementById('fresherResult').textContent = 'Результаты фрешера появятся здесь...';
+        fresherHistory = [];
+    });
 
     async function runFresher() {
         const resBox = document.getElementById('fresherResult');
@@ -747,6 +768,15 @@ HTML = """<!DOCTYPE html>
         }
     }
 
+    // ============================================================
+    // ===== ИНСТРУМЕНТЫ ==========================================
+    // ============================================================
+    document.getElementById('btnRunTools').addEventListener('click', runToolsMerge);
+    document.getElementById('btnClearTools').addEventListener('click', function() {
+        document.getElementById('toolsInput').value = '';
+        document.getElementById('toolsResult').textContent = 'Результаты обработки появятся здесь...';
+    });
+
     function runToolsMerge() {
         const input = document.getElementById('toolsInput').value;
         const resBox = document.getElementById('toolsResult');
@@ -772,13 +802,6 @@ HTML = """<!DOCTYPE html>
         }
 
         resBox.textContent = `✅ Успешно объединено!\n📦 Уникальных куков: ${uniqueLines.length}\n🗑️ Удалено дубликатов: ${skipped}\n\n` + uniqueLines.join('\n');
-    }
-
-    function clearInputs() {
-        document.getElementById('manualCookies').value = '';
-        document.getElementById('fileStatusInfo').textContent = '';
-        checkerHistory = [];
-        document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
     }
 </script>
 </body>
