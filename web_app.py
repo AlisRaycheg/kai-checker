@@ -347,6 +347,8 @@ HTML = """<!DOCTYPE html>
             border: 2px solid #6c5ce7;
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25), inset 0 0 60px rgba(108, 92, 231, 0.05);
+            position: relative;
+            z-index: 1;
         }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #1a1040; border-radius: 8px; }
@@ -374,6 +376,8 @@ HTML = """<!DOCTYPE html>
 
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
+            position: relative;
+            z-index: 5;
         }
         .tab {
             padding: 10px 24px;
@@ -386,6 +390,8 @@ HTML = """<!DOCTYPE html>
             font-weight: 600;
             transition: all 0.25s;
             user-select: none;
+            position: relative;
+            z-index: 6;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
@@ -395,7 +401,7 @@ HTML = """<!DOCTYPE html>
             box-shadow: 0 0 20px rgba(168,85,247,0.15);
         }
 
-        .tab-content { display: none; animation: fadeUp 0.3s ease; }
+        .tab-content { display: none; animation: fadeUp 0.3s ease; position: relative; z-index: 2; }
         .tab-content.active { display: block; }
         @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
 
@@ -407,6 +413,8 @@ HTML = """<!DOCTYPE html>
             padding: 28px 30px;
             margin-bottom: 24px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            position: relative;
+            z-index: 3;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif;
@@ -429,6 +437,8 @@ HTML = """<!DOCTYPE html>
             display: inline-flex;
             align-items: center;
             gap: 10px;
+            position: relative;
+            z-index: 10;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef);
@@ -454,6 +464,8 @@ HTML = """<!DOCTYPE html>
             font-size: 14px;
             resize: vertical;
             transition: 0.2s;
+            position: relative;
+            z-index: 4;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7;
@@ -471,7 +483,6 @@ HTML = """<!DOCTYPE html>
             gap: 6px;
             text-align: center;
         }
-        .upload-area * { pointer-events: none; }
 
         .result-box {
             background: #0d0722;
@@ -486,6 +497,8 @@ HTML = """<!DOCTYPE html>
             white-space: pre-wrap;
             word-break: break-word;
             transition: 0.2s;
+            position: relative;
+            z-index: 5;
         }
         .result-box.success { border-color: #4ade80; }
         .result-box.error { border-color: #f87171; }
@@ -512,6 +525,8 @@ HTML = """<!DOCTYPE html>
             padding: 24px;
             margin-bottom: 20px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            position: relative;
+            z-index: 3;
         }
         .fresh-header {
             display: flex;
@@ -536,6 +551,8 @@ HTML = """<!DOCTYPE html>
             padding: 4px;
             border-radius: 40px;
             border: 1px solid #1a1a2e;
+            position: relative;
+            z-index: 5;
         }
         .method-btn {
             padding: 8px 20px;
@@ -547,6 +564,8 @@ HTML = """<!DOCTYPE html>
             font-weight: 600;
             cursor: pointer;
             transition: 0.2s;
+            position: relative;
+            z-index: 6;
         }
         .method-btn.active {
             background: linear-gradient(135deg, #6c5ce7, #a855f7);
@@ -567,6 +586,8 @@ HTML = """<!DOCTYPE html>
             font-size: 14px;
             resize: vertical;
             transition: 0.2s;
+            position: relative;
+            z-index: 4;
         }
         .fresh-textarea:focus {
             border-color: #6c5ce7;
@@ -580,6 +601,8 @@ HTML = """<!DOCTYPE html>
             gap: 12px;
             align-items: center;
             margin-top: 16px;
+            position: relative;
+            z-index: 10;
         }
         .btn-start {
             background: linear-gradient(135deg, #00b894, #00a381);
@@ -591,6 +614,8 @@ HTML = """<!DOCTYPE html>
             font-size: 14px;
             cursor: pointer;
             transition: 0.2s;
+            position: relative;
+            z-index: 10;
         }
         .btn-start:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,184,148,0.3); }
         .btn-start:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -604,6 +629,8 @@ HTML = """<!DOCTYPE html>
             font-size: 14px;
             cursor: pointer;
             transition: 0.2s;
+            position: relative;
+            z-index: 10;
         }
         .btn-stop:hover:not(:disabled) { background: #2a2a4a; color: #fff; }
         .btn-stop:disabled { opacity: 0.3; cursor: not-allowed; }
@@ -618,6 +645,8 @@ HTML = """<!DOCTYPE html>
             cursor: pointer;
             transition: 0.2s;
             margin-left: auto;
+            position: relative;
+            z-index: 10;
         }
         .btn-download:hover { background: #1a1a3a; border-color: #6c5ce7; }
         .fresh-status { color: #6a6a8a; font-size: 14px; margin-left: 8px; }
@@ -643,6 +672,41 @@ HTML = """<!DOCTYPE html>
         .fresh-stats .valid { color: #00b894; }
         .fresh-stats .invalid { color: #ff6b6b; }
         .fresh-stats .errors { color: #feca57; }
+
+        .cookie-output {
+            background: #0a0a18;
+            border: 1px solid #1a1a2e;
+            border-radius: 12px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            position: relative;
+            z-index: 5;
+        }
+        .cookie-output code {
+            font-family: 'Inter', monospace;
+            font-size: 12px;
+            color: #d0d0e0;
+            max-height: 150px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .copy-btn {
+            align-self: flex-start;
+            background: #6c5ce7;
+            color: #fff;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            position: relative;
+            z-index: 10;
+        }
+        .copy-btn:hover { background: #5b4bc4; }
 
         .footer {
             text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px;
@@ -681,7 +745,7 @@ HTML = """<!DOCTYPE html>
                     <div style="margin-top:8px;color:#4a3a6a;font-size:13px;">или загрузи .txt файл</div>
                 </div>
                 <div style="flex:1;">
-                    <div class="upload-area" id="fullArea">
+                    <div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                         <p style="font-size:12px;">.ROBLOSECURITY</p>
                     </div>
@@ -739,7 +803,7 @@ HTML = """<!DOCTYPE html>
     <div class="tab-content" id="tab-validator">
         <div class="card">
             <h2>✅ Валидатор (отсев мёртвых)</h2>
-            <div class="upload-area" id="validatorArea">
+            <div class="upload-area" id="validatorArea" onclick="document.getElementById('validatorFile').click()">
                 <p>📁 <strong>Загрузить .txt</strong></p>
             </div>
             <input type="file" id="validatorFile" accept=".txt" style="display:none;">
@@ -752,29 +816,29 @@ HTML = """<!DOCTYPE html>
     <div class="tab-content" id="tab-tools">
         <div class="card">
             <h2>📂 Сортер (по одному)</h2>
-            <div class="upload-area" id="sorterArea">
+            <div class="upload-area" id="sorterArea" onclick="document.getElementById('sorterFile').click()">
                 <p>📁 <strong>Загрузить .txt</strong></p>
             </div>
             <input type="file" id="sorterFile" accept=".txt" style="display:none;">
-            <button class="btn btn-primary" onclick="runSorter()">📦 Сортировать</button>
+            <button class="btn btn-primary" onclick="runSorter()" style="margin-top:14px;">📦 Сортировать</button>
             <div class="result-box" id="sorterResult"></div>
         </div>
         <div class="card">
             <h2>✂️ Разделитель (на 5 частей)</h2>
-            <div class="upload-area" id="splitArea">
+            <div class="upload-area" id="splitArea" onclick="document.getElementById('splitFile').click()">
                 <p>📁 <strong>Загрузить .txt</strong></p>
             </div>
             <input type="file" id="splitFile" accept=".txt" style="display:none;">
-            <button class="btn btn-primary" onclick="runSplit()">✂️ Разделить</button>
+            <button class="btn btn-primary" onclick="runSplit()" style="margin-top:14px;">✂️ Разделить</button>
             <div class="result-box" id="splitResult"></div>
         </div>
         <div class="card">
             <h2>📦 Слияние (удаление дублей)</h2>
-            <div class="upload-area" id="mergeArea">
+            <div class="upload-area" id="mergeArea" onclick="document.getElementById('mergeFile').click()">
                 <p>📁 <strong>Загрузить несколько .txt</strong></p>
             </div>
             <input type="file" id="mergeFile" accept=".txt" multiple style="display:none;">
-            <button class="btn btn-primary" onclick="runMerge()">🔗 Слить</button>
+            <button class="btn btn-primary" onclick="runMerge()" style="margin-top:14px;">🔗 Слить</button>
             <div class="result-box" id="mergeResult"></div>
         </div>
     </div>
@@ -783,6 +847,19 @@ HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+    // ===== ГЛОБАЛЬНЫЙ ДЕЛЕГАТОР КЛИКОВ ДЛЯ НАДЕЖНОСТИ =====
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.id === 'freshCopyBtn') {
+            const code = document.getElementById('freshResultCode');
+            if (code && code.textContent) {
+                navigator.clipboard.writeText(code.textContent).then(() => {
+                    e.target.textContent = '✅ Скопировано!';
+                    setTimeout(() => { e.target.textContent = '📋 Копировать'; }, 2000);
+                });
+            }
+        }
+    });
+
     // ===== ВКЛАДКИ =====
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', function() {
@@ -801,39 +878,18 @@ HTML = """<!DOCTYPE html>
     });
 
     // ===== ЗАГРУЗКА ФАЙЛА В ТЕКСТОВОЕ ПОЛЕ =====
-    document.querySelectorAll('.upload-area').forEach(area => {
-        area.addEventListener('click', function(e) {
-            const input = this.parentElement.querySelector('input[type="file"]');
-            if (input) input.click();
-        });
-
-        area.addEventListener('dragover', e => {
-            e.preventDefault();
-            this.classList.add('drag-active');
-        });
-        area.addEventListener('dragleave', () => {
-            this.classList.remove('drag-active');
-        });
-        area.addEventListener('drop', e => {
-            e.preventDefault();
-            this.classList.remove('drag-active');
-            const input = this.parentElement.querySelector('input[type="file"]');
-            if (input) {
-                input.files = e.dataTransfer.files;
-                input.dispatchEvent(new Event('change'));
+    const fullFileInput = document.getElementById('fullFile');
+    if (fullFileInput) {
+        fullFileInput.addEventListener('change', function(e) {
+            if (this.files && this.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    document.getElementById('manualCookies').value = evt.target.result;
+                };
+                reader.readAsText(this.files[0]);
             }
         });
-    });
-
-    document.getElementById('fullFile').addEventListener('change', function(e) {
-        if (this.files && this.files[0]) {
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                document.getElementById('manualCookies').value = evt.target.result;
-            };
-            reader.readAsText(this.files[0]);
-        }
-    });
+    }
 
     // ============================================================
     // ===== ЧЕКЕР ================================================
@@ -866,15 +922,15 @@ HTML = """<!DOCTYPE html>
             
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Проверено: ${data.total || 0}\n📦 Геймпассов: ${data.total_gamepasses || 0}\n💎 RAP: ${data.total_rap || 0}\n\n`;
+                let html = `✅ Проверено: ${data.total || 0}\\n📦 Геймпассов: ${data.total_gamepasses || 0}\\n💎 RAP: ${data.total_rap || 0}\\n\\n`;
                 if (data.reports && data.reports.length) {
-                    html += `<b>📋 ОТЧЁТЫ:</b>\n`;
+                    html += `<b>📋 ОТЧЁТЫ:</b>\\n`;
                     for (const report of data.reports) {
-                        html += `\n${report}\n─────────────────\n`;
+                        html += `\\n${report}\\n─────────────────\\n`;
                     }
                 }
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
                 saveCheckerHistory(data.total || 0, data.total_gamepasses || 0, data.total_rap || 0);
@@ -948,7 +1004,7 @@ HTML = """<!DOCTYPE html>
         const resultWrapper = document.getElementById('freshResultWrapper');
         const resultCode = document.getElementById('freshResultCode');
         
-        const cookies = input.value.trim().split('\n').filter(c => c.trim().length > 50);
+        const cookies = input.value.trim().split('\\n').filter(c => c.trim().length > 50);
         if (!cookies.length) {
             status.textContent = '❌ Нет куков';
             return;
@@ -1010,14 +1066,8 @@ HTML = """<!DOCTYPE html>
         progressText.textContent = '100%';
         
         if (newCookies.length) {
-            resultCode.textContent = newCookies.join('\n');
-            resultWrapper.style.display = 'flex';
-            document.getElementById('freshCopyBtn').onclick = function() {
-                navigator.clipboard.writeText(newCookies.join('\n')).then(() => {
-                    this.textContent = '✅ Скопировано!';
-                    setTimeout(() => { this.textContent = '📋 Копировать'; }, 2000);
-                });
-            };
+            resultCode.textContent = newCookies.join('\\n');
+            resultWrapper.style.display = 'block';
         }
     }
 
@@ -1052,9 +1102,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Валидных: ${data.valid}\n❌ Невалидных: ${data.invalid}\n📊 Всего: ${data.total}`;
+                let html = `✅ Валидных: ${data.valid}\\n❌ Невалидных: ${data.invalid}\\n📊 Всего: ${data.total}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать валидные</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать валидные</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1083,9 +1133,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Сортировка завершена!\n📦 Куков: ${data.total}`;
+                let html = `✅ Сортировка завершена!\\n📦 Куков: ${data.total}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1114,9 +1164,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Разделение завершено!\n📦 Куков: ${data.total}`;
+                let html = `✅ Разделение завершено!\\n📦 Куков: ${data.total}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1145,9 +1195,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Слияние завершено!\n📦 Куков: ${data.total}\n🔄 Дублей удалено: ${data.duplicates}`;
+                let html = `✅ Слияние завершено!\\n📦 Куков: ${data.total}\\n🔄 Дублей удалено: ${data.duplicates}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1302,4 +1352,3 @@ def download_file(filename):
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
-```[cite: 3]
