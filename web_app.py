@@ -70,7 +70,7 @@ def add_to_fresher_history(entry):
     save_history(FRESHER_HISTORY_FILE, history)
 
 # ============================================================
-# РАБОТА С КУКИ И ROBLOX API
+# РАБОТА С КУКИ И ROBLOX API (ВАЛИДАТОР)
 # ============================================================
 
 def clean_single_cookie(cookie: str) -> str:
@@ -78,6 +78,23 @@ def clean_single_cookie(cookie: str) -> str:
     if ".ROBLOSECURITY=" in cleaned:
         cleaned = cleaned.split(".ROBLOSECURITY=")[1].split(";")[0].strip()
     return cleaned
+
+def validate_cookie(cookie: str) -> bool:
+    """Быстрый валидатор сессии"""
+    clean_cookie = clean_single_cookie(cookie)
+    if not clean_cookie:
+        return False
+    try:
+        r = requests.get(
+            'https://users.roblox.com/v1/users/authenticated',
+            cookies={'.ROBLOSECURITY': clean_cookie},
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+            timeout=10,
+            verify=False
+        )
+        return r.status_code == 200 and 'id' in r.json()
+    except:
+        return False
 
 def get_full_info(cookie: str) -> dict:
     cleaned_cookie = clean_single_cookie(cookie)
@@ -151,7 +168,6 @@ def get_full_info(cookie: str) -> dict:
         if country:
             info['Country'] = country.get('countryCode', '?')
 
-        # Gamepasses
         try:
             gp_url = f"https://economy.roblox.com/v2/users/{uid}/transactions?limit=100&transactionType=Purchase"
             cursor = ""
@@ -198,40 +214,49 @@ def get_full_info(cookie: str) -> dict:
 
 def refresh_roblox_cookie(raw_cookie: str, mode: str = "duplicate") -> str:
     """
-    Настоящее обновление сессии Roblox.
-    Возвращает только чистую строку куки (.ROBLOSECURITY=...) или None
+    Обновление сессии с проверкой валидности.
     """
     clean_cookie = clean_single_cookie(raw_cookie)
     if not clean_cookie:
         return None
 
+    # 1. Проверяемсходный кук перед обновлением
+    if not validate_cookie(clean_cookie):
+        logger.warning("Исходный кук невалиден")
+        return None
+
     s = requests.Session()
+    user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+    
     s.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://www.roblox.com/'
+        'User-Agent': user_agent,
+        'Referer': 'https://www.roblox.com/',
+        'Origin': 'https://www.roblox.com'
     })
     s.cookies.set(".ROBLOSECURITY", clean_cookie, domain=".roblox.com")
 
     try:
-        # 1. Получение CSRF токена
+        # 2. Получение CSRF токена
         res = s.post("https://auth.roblox.com/v2/login", verify=False, timeout=10)
         csrf_token = res.headers.get("x-csrf-token")
         if not csrf_token:
             return None
         s.headers["X-CSRF-TOKEN"] = csrf_token
 
-        # 2. Генерация Auth-ticket для перевыпуска
+        # 3. Генерация Auth-ticket
         ticket_res = s.post("https://auth.roblox.com/v1/authentication-ticket", verify=False, timeout=10)
         auth_ticket = ticket_res.headers.get("rbx-authentication-ticket")
         if not auth_ticket:
             return None
 
-        # 3. Обмен билета на новую сессию
+        # 4. Обмен тикета на новую сессию
         redeem_headers = {
             'RBX-For-Game-Auth': 'true',
+            'RBX-Authentication-Ticket': auth_ticket,
             'Content-Type': 'application/json',
             'X-CSRF-TOKEN': csrf_token
         }
+        
         redeem_res = s.post(
             "https://auth.roblox.com/v1/authentication-ticket/redeem",
             json={"authenticationTicket": auth_ticket},
@@ -246,7 +271,7 @@ def refresh_roblox_cookie(raw_cookie: str, mode: str = "duplicate") -> str:
                 new_cookie_val = cookie.value
                 break
 
-        if not new_cookie_val and ".ROBLOSECURITY=" in redeem_res.headers.get("Set-Cookie", ""):
+        if not new_cookie_val and "Set-Cookie" in redeem_res.headers:
             match = re.search(r'\.ROBLOSECURITY=(_\|WARNING:-DO-NOT-SHARE-THIS[^\s;]+)', redeem_res.headers["Set-Cookie"])
             if match:
                 new_cookie_val = match.group(1)
@@ -256,7 +281,12 @@ def refresh_roblox_cookie(raw_cookie: str, mode: str = "duplicate") -> str:
 
         formatted_new_cookie = f".ROBLOSECURITY={new_cookie_val}"
 
-        # 4. Если режим 'kill' — завершаем старую сессию
+        # 5. Проверяем работоспособность нового кука через Валидатор
+        if not validate_cookie(new_cookie_val):
+            logger.error("Сгенерированный кук не прошёл проверку валидатора!")
+            return None
+
+        # 6. Если сброс сессии (kill)
         if mode == "kill":
             try:
                 s.post("https://auth.roblox.com/v2/logout", verify=False, timeout=5)
@@ -984,7 +1014,7 @@ async function runFresher() {
     let cookies = document.getElementById('fresherCookies').value.trim();
     let mode = document.getElementById('fresherMode').value;
     if (!cookies) { resBox.textContent = '❌ Вставьте куки!'; return; }
-    resBox.textContent = '⏳ Обновление сессий...';
+    resBox.textContent = '⏳ Обновление сессий и валидация...';
     try {
         let r = await fetch('/api/fresher', {
             method: 'POST',
@@ -993,11 +1023,10 @@ async function runFresher() {
         });
         let d = await r.json();
         if (d.success && d.cookies_only && d.cookies_only.length > 0) {
-            // Оконный вывод: ТОЛЬКО чистый кук без любого мусора
             resBox.textContent = d.cookies_only.join('\n');
             loadFresherHistory();
         } else {
-            resBox.textContent = '❌ ' + (d.message || 'Не удалось обновить ни один кук');
+            resBox.textContent = '❌ ' + (d.message || 'Не удалось обновить куки (не прошли валидацию или невалидны)');
         }
     } catch(e) {
         resBox.textContent = '❌ Ошибка: ' + e.message;
@@ -1155,7 +1184,6 @@ async function cleanCookiesAction(action) {
     }
 }
 
-// Загрузка истории при старте
 loadCheckerHistory();
 </script>
 </body>
@@ -1259,7 +1287,7 @@ def api_fresher():
             cookies_only.append(refreshed_cookie)
     
     if not cookies_only:
-        return jsonify({"success": False, "message": "Не удалось обновить куки. Возможно, они невалидны."})
+        return jsonify({"success": False, "message": "Не удалось обновить куки. Они либо сброшены, либо блокируются системой Roblox."})
 
     add_to_fresher_history({
         'mode': mode,
