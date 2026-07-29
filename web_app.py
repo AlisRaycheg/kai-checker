@@ -19,12 +19,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-try:
-    from curl_cffi import requests as cffi_requests
-    HAS_CFFI = True
-except ImportError:
-    HAS_CFFI = False
-
 CURRENT_UPLOADED_FILE = None
 
 # ============================================================
@@ -168,21 +162,17 @@ def get_full_info(cookie: str) -> dict:
 
 def format_short_report(info):
     if info['status'] != '✅':
-        return f"❌ {info['Username']} — невалидный кук"
+        return f"❌ Невалидный кук\nCookie: {info['Cookie']}"
     
     gp = info.get('PurchasedGamepasses', {})
     total_gp_robux = sum(p['price'] for passes in gp.values() for p in passes)
     
-    r = f"📋 {info['Username']} [{info['UserID']}]\n"
-    r += f"🟢 VALID | 🆔 {info['UserID']}\n\n"
+    r = f"📋 Аккаунт: {info['Username']} [{info['UserID']}]\n"
+    r += f"🟢 VALID | 🆔 {info['UserID']}\n"
     r += f"📅 {info['Created']} | 🌍 {info['Country']} | {'✅ Premium' if info['IsPremium'] else '❌ Premium'}\n"
     r += f"💰 Robux: ⏣ {info['Robux']:,} | 💸 Донат: ⏣ {info['DonationTotal']:,}\n"
-    r += f"💎 RAP: {'❌ Нет' if info['TotalRAP'] == 0 else f'⏣ {info['TotalRAP']:,}'}\n\n"
-    r += f"🛡️ БЕЗОПАСНОСТЬ:\n"
-    r += f"   📧 Почта: {'✅' if info['EmailSet'] else '❌'}\n"
-    r += f"   🔐 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
-    r += f"   {info['SecurityStatus']}\n"
-    r += f"   💳 Карты: {info['CreditCardsCount']} | 📦 Предметы: {len(info.get('RareItems', []))}\n\n"
+    r += f"💎 RAP: {'❌ Нет' if info['TotalRAP'] == 0 else f'⏣ {info['TotalRAP']:,}'}\n"
+    r += f"🛡️ БЕЗОПАСНОСТЬ: Почта: {'✅' if info['EmailSet'] else '❌'} | 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'} | {info['SecurityStatus']}\n"
     
     if gp:
         r += f"📦 ГЕЙМПАССЫ ({total_gp_robux:,} R$):\n"
@@ -194,13 +184,12 @@ def format_short_report(info):
     else:
         r += "📦 ГЕЙМПАССЫ: ❌ Нет\n"
     
-    r += "\n💎 РЕДКИЕ ПРЕДМЕТЫ: ❌ Нет\n\n"
-    r += f"{info['Cookie']}"
+    r += f"\n🍪 COOKIE:\n{info['Cookie']}"
     return r
 
 def generate_full_txt_report(info):
     if info['status'] != '✅':
-        return f"❌ {info['Username']} — невалидный кук\nCookie: {info['Cookie']}"
+        return f"❌ Невалидный кук\nCookie: {info['Cookie']}"
     
     gp = info.get('PurchasedGamepasses', {})
     
@@ -230,7 +219,7 @@ def generate_full_txt_report(info):
         r += "║  🎮 ГЕЙМПАССЫ: ❌ Нет                                    ║\n"
         
     r += "╠══════════════════════════════════════════════════════════╣\n"
-    r += "║  🍪 COOKIE (скопируй ниже):                              ║\n"
+    r += "║  🍪 COOKIE:                                              ║\n"
     r += "╚══════════════════════════════════════════════════════════╝\n\n"
     r += f"{info['Cookie']}\n\n"
     r += f"Generated: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
@@ -537,7 +526,7 @@ HTML = """<!DOCTYPE html>
         const formData = new FormData();
         formData.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
 
-        resBox.textContent = '⏳ Проверка аккаунтов запущена (используется сохраненный/введенный файл)...';
+        resBox.textContent = '⏳ Проверка аккаунтов запущена...';
         progress.style.width = '40%';
         
         try {
