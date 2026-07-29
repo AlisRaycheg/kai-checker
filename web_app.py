@@ -240,16 +240,14 @@ HTML = """<!DOCTYPE html>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        
         body {
             font-family: 'Inter', sans-serif;
             min-height: 100vh;
             padding: 24px;
             background: #0b081a;
             background-image: radial-gradient(circle at 10% 20%, #1a1040 0%, #0b081a 80%);
-            position: relative;
+            color: #ffffff;
         }
-        
         .kai-wrapper {
             max-width: 1400px;
             margin: 0 auto;
@@ -258,10 +256,7 @@ HTML = """<!DOCTYPE html>
             border: 2px solid #6c5ce7;
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
-            position: relative;
-            z-index: 5;
         }
-        
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0d0722; border-radius: 8px; }
         ::-webkit-scrollbar-thumb { background: #a855f7; border-radius: 8px; }
@@ -271,7 +266,6 @@ HTML = """<!DOCTYPE html>
             padding: 20px 0 16px; border-bottom: 1px solid #2a1a50;
             margin-bottom: 30px;
         }
-        
         .logo {
             font-family: 'Poppins', sans-serif;
             font-size: 34px; font-weight: 900; font-style: italic;
@@ -282,12 +276,11 @@ HTML = """<!DOCTYPE html>
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
         }
-        
         .tab {
             padding: 10px 24px; background: rgba(26, 16, 64, 0.9);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
             cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
-            user-select: none; z-index: 10;
+            user-select: none;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
@@ -303,7 +296,6 @@ HTML = """<!DOCTYPE html>
             background: rgba(18, 10, 40, 0.9);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
             margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            position: relative; z-index: 6;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -313,7 +305,7 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            text-decoration: none; position: relative; z-index: 10;
+            text-decoration: none;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -331,8 +323,6 @@ HTML = """<!DOCTYPE html>
             padding: 4px;
             gap: 4px;
             margin-bottom: 18px;
-            position: relative;
-            z-index: 8;
         }
         .toggle-btn {
             flex: 1;
@@ -354,10 +344,10 @@ HTML = """<!DOCTYPE html>
             box-shadow: 0 4px 15px rgba(168,85,247,0.2);
         }
 
-        textarea, .upload-area, select {
+        textarea, .upload-area {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s; position: relative; z-index: 8;
+            resize: vertical; transition: 0.2s;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
@@ -371,7 +361,6 @@ HTML = """<!DOCTYPE html>
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
-            position: relative; z-index: 8;
         }
 
         .progress-bar {
@@ -380,6 +369,13 @@ HTML = """<!DOCTYPE html>
         .progress-bar .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.3s ease; }
 
         .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
+        .hidden-input { display: none !important; }
+        .tool-section {
+            margin-bottom: 20px; padding: 16px; background: rgba(13,7,34,0.5); border-radius: 14px; border: 1px solid #2a1a50;
+        }
+        .tool-section h3 {
+            color: #d4c0ff; font-size: 16px; margin-bottom: 12px;
+        }
     </style>
 </head>
 <body>
@@ -410,11 +406,11 @@ HTML = """<!DOCTYPE html>
                     <div id="fileStatusInfo" style="margin-top:8px;color:#00b894;font-size:13px;"></div>
                 </div>
                 <div style="flex:1;">
-                    <div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
+                    <div class="upload-area" onclick="document.getElementById('fullFile').click()">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                         <p style="font-size:12px; color:#9880c0;">Файл сохранится на сервере</p>
                     </div>
-                    <input type="file" id="fullFile" accept=".txt" style="display:none;">
+                    <input type="file" id="fullFile" accept=".txt" class="hidden-input">
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
@@ -430,10 +426,17 @@ HTML = """<!DOCTYPE html>
     <div class="tab-content" id="tab-validator">
         <div class="card">
             <h2>✅ Валидатор (отсев мёртвых)</h2>
-            <div class="upload-area" onclick="document.getElementById('validatorFile').click()">
-                <p>📁 <strong>Загрузить .txt</strong></p>
+            <div style="display:flex; flex-wrap:wrap; gap:18px;">
+                <div style="flex:2;">
+                    <textarea id="validatorCookies" placeholder="Вставьте куки для валидации..." rows="6"></textarea>
+                </div>
+                <div style="flex:1;">
+                    <div class="upload-area" onclick="document.getElementById('validatorFile').click()">
+                        <p>📁 <strong>Загрузить .txt</strong></p>
+                    </div>
+                    <input type="file" id="validatorFile" accept=".txt" class="hidden-input">
+                </div>
             </div>
-            <input type="file" id="validatorFile" accept=".txt" style="display:none;">
             <button class="btn btn-primary" onclick="runValidator()" style="margin-top:14px;">🧪 Запустить</button>
             <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
         </div>
@@ -446,8 +449,8 @@ HTML = """<!DOCTYPE html>
             <div style="margin-bottom: 8px;">
                 <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
                 <div class="toggle-group">
-                    <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать кук (оставить старый рабочий)</button>
-                    <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Убить старый кук (выход со всех устройств / сброс)</button>
+                    <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать кук</button>
+                    <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Убить старый кук</button>
                 </div>
                 <input type="hidden" id="fresherMode" value="duplicate">
             </div>
@@ -458,9 +461,8 @@ HTML = """<!DOCTYPE html>
                 <div style="flex:1;">
                     <div class="upload-area" onclick="document.getElementById('fresherFile').click()">
                         <p>📁 <strong>Загрузить .txt</strong></p>
-                        <p style="font-size:12px; color:#9880c0;">Файл с куками</p>
                     </div>
-                    <input type="file" id="fresherFile" accept=".txt" style="display:none;">
+                    <input type="file" id="fresherFile" accept=".txt" class="hidden-input">
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
@@ -478,8 +480,8 @@ HTML = """<!DOCTYPE html>
             <p style="color: #9880c0; font-size: 14px; margin-bottom: 16px;">Сортировка, разделение и слияние файлов с куками.</p>
             
             <!-- Сортер -->
-            <div style="margin-bottom:20px; padding:16px; background:rgba(13,7,34,0.5); border-radius:14px; border:1px solid #2a1a50;">
-                <h3 style="color:#d4c0ff; font-size:16px; margin-bottom:12px;">📂 Сортер (по одному в файл)</h3>
+            <div class="tool-section">
+                <h3>📂 Сортер (по одному в файл)</h3>
                 <div style="display:flex; flex-wrap:wrap; gap:18px;">
                     <div style="flex:2;">
                         <textarea id="sorterInput" placeholder="Вставьте куки для сортировки..." rows="4"></textarea>
@@ -488,7 +490,7 @@ HTML = """<!DOCTYPE html>
                         <div class="upload-area" onclick="document.getElementById('sorterFile').click()">
                             <p>📁 <strong>Загрузить .txt</strong></p>
                         </div>
-                        <input type="file" id="sorterFile" accept=".txt" style="display:none;">
+                        <input type="file" id="sorterFile" accept=".txt" class="hidden-input">
                     </div>
                 </div>
                 <button class="btn btn-primary" onclick="runSorter()" style="margin-top:12px;">📦 Сортировать</button>
@@ -496,8 +498,8 @@ HTML = """<!DOCTYPE html>
             </div>
             
             <!-- Разделитель -->
-            <div style="margin-bottom:20px; padding:16px; background:rgba(13,7,34,0.5); border-radius:14px; border:1px solid #2a1a50;">
-                <h3 style="color:#d4c0ff; font-size:16px; margin-bottom:12px;">✂️ Разделитель (на 5 частей)</h3>
+            <div class="tool-section">
+                <h3>✂️ Разделитель (на 5 частей)</h3>
                 <div style="display:flex; flex-wrap:wrap; gap:18px;">
                     <div style="flex:2;">
                         <textarea id="splitInput" placeholder="Вставьте куки для разделения..." rows="4"></textarea>
@@ -506,7 +508,7 @@ HTML = """<!DOCTYPE html>
                         <div class="upload-area" onclick="document.getElementById('splitFile').click()">
                             <p>📁 <strong>Загрузить .txt</strong></p>
                         </div>
-                        <input type="file" id="splitFile" accept=".txt" style="display:none;">
+                        <input type="file" id="splitFile" accept=".txt" class="hidden-input">
                     </div>
                 </div>
                 <button class="btn btn-primary" onclick="runSplit()" style="margin-top:12px;">✂️ Разделить</button>
@@ -514,8 +516,8 @@ HTML = """<!DOCTYPE html>
             </div>
             
             <!-- Слияние -->
-            <div style="padding:16px; background:rgba(13,7,34,0.5); border-radius:14px; border:1px solid #2a1a50;">
-                <h3 style="color:#d4c0ff; font-size:16px; margin-bottom:12px;">🔗 Слияние (удаление дублей)</h3>
+            <div class="tool-section">
+                <h3>🔗 Слияние (удаление дублей)</h3>
                 <div style="display:flex; flex-wrap:wrap; gap:18px;">
                     <div style="flex:2;">
                         <textarea id="mergeInput" placeholder="Вставьте куки для слияния..." rows="4"></textarea>
@@ -524,7 +526,7 @@ HTML = """<!DOCTYPE html>
                         <div class="upload-area" onclick="document.getElementById('mergeFile').click()">
                             <p>📁 <strong>Загрузить несколько .txt</strong></p>
                         </div>
-                        <input type="file" id="mergeFile" accept=".txt" multiple style="display:none;">
+                        <input type="file" id="mergeFile" accept=".txt" multiple class="hidden-input">
                     </div>
                 </div>
                 <button class="btn btn-primary" onclick="runMerge()" style="margin-top:12px;">🔗 Слить</button>
@@ -545,7 +547,7 @@ HTML = """<!DOCTYPE html>
         let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
         let s = String(diff % 60).padStart(2, '0');
         const timerEl = document.getElementById('sessionTimer');
-        if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
+        if (timerEl) timerEl.textContent = '⏱️ ' + h + ':' + m + ':' + s;
     }, 1000);
 
     // ===== ВКЛАДКИ =====
@@ -576,41 +578,26 @@ HTML = """<!DOCTYPE html>
     }
 
     // ===== ЗАГРУЗКА ФАЙЛОВ =====
-    function setupFileInput(inputId, textareaId, isServerUpload) {
+    function setupFileInput(inputId, textareaId) {
         const input = document.getElementById(inputId);
         if (!input) return;
         input.addEventListener('change', function() {
             if (this.files && this.files[0]) {
-                const file = this.files[0];
-                if (isServerUpload) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    const statusEl = document.getElementById('fileStatusInfo');
-                    if (statusEl) statusEl.textContent = '⏳ Загрузка на сервер...';
-                    fetch('/api/upload', { method: 'POST', body: formData })
-                        .then(res => res.json())
-                        .then(data => {
-                            if (data.success && statusEl) {
-                                statusEl.textContent = '✅ Файл "' + data.filename + '" загружен!';
-                            }
-                        })
-                        .catch(() => { if (statusEl) statusEl.textContent = '❌ Ошибка загрузки'; });
-                }
                 const reader = new FileReader();
                 reader.onload = function(evt) {
                     const textarea = document.getElementById(textareaId);
                     if (textarea) textarea.value = evt.target.result;
                 };
-                reader.readAsText(file);
+                reader.readAsText(this.files[0]);
             }
         });
     }
 
-    setupFileInput('fullFile', 'manualCookies', true);
-    setupFileInput('validatorFile', 'validatorCookies', false);
-    setupFileInput('fresherFile', 'fresherCookies', false);
-    setupFileInput('sorterFile', 'sorterInput', false);
-    setupFileInput('splitFile', 'splitInput', false);
+    setupFileInput('fullFile', 'manualCookies');
+    setupFileInput('validatorFile', 'validatorCookies');
+    setupFileInput('fresherFile', 'fresherCookies');
+    setupFileInput('sorterFile', 'sorterInput');
+    setupFileInput('splitFile', 'splitInput');
     
     // Множественная загрузка для слияния
     const mergeFileInput = document.getElementById('mergeFile');
@@ -668,12 +655,12 @@ HTML = """<!DOCTYPE html>
                     }
                 }
                 
-                let html = `✅ Проверено аккаунтов: ${data.total} | Успешно валидных: ${data.valid_count}\n\n`;
+                let html = '✅ Проверено аккаунтов: ' + data.total + ' | Успешно валидных: ' + data.valid_count + '\n\n';
                 for (const report of checkerHistory) {
-                    html += `${report}\n────────────────────────────────────────\n`;
+                    html += report + '\n────────────────────────────────────────\n';
                 }
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Скачать ZIP со всеми отчетами (.txt)</a>`;
+                    html += '\n📥 <a href="' + data.download_url + '" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Скачать ZIP со всеми отчетами (.txt)</a>';
                 }
                 resBox.innerHTML = html;
                 resBox.scrollTop = resBox.scrollHeight;
@@ -712,9 +699,9 @@ HTML = """<!DOCTYPE html>
             });
             const data = await response.json();
             if (data.success) {
-                let html = `✅ Проверено: ${data.total} | Живых (Valid): ${data.valid_count} | Мертвых (Dead): ${data.dead_count}\n\n`;
-                html += `🟢 ЖИВЫЕ КУКИ:\n` + (data.valid_list.length ? data.valid_list.join('\n') : 'Нет живых') + `\n\n`;
-                html += `❌ МЕРТВЫЕ КУКИ:\n` + (data.dead_list.length ? data.dead_list.join('\n') : 'Нет мертвых');
+                let html = '✅ Проверено: ' + data.total + ' | Живых (Valid): ' + data.valid_count + ' | Мертвых (Dead): ' + data.dead_count + '\n\n';
+                html += '🟢 ЖИВЫЕ КУКИ:\n' + (data.valid_list.length ? data.valid_list.join('\n') : 'Нет живых') + '\n\n';
+                html += '❌ МЕРТВЫЕ КУКИ:\n' + (data.dead_list.length ? data.dead_list.join('\n') : 'Нет мертвых');
                 resBox.textContent = html;
             } else {
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка валидации');
@@ -751,9 +738,9 @@ HTML = """<!DOCTYPE html>
                         fresherHistory.push(item);
                     }
                 }
-                let html = `✅ Успешно обновлено сессий (режим: ${mode === 'kill' ? 'Убийство старого кука' : 'Дублирование'}): ${data.refreshed_count}\n\n`;
+                let html = '✅ Успешно обновлено сессий (режим: ' + (mode === 'kill' ? 'Убийство старого кука' : 'Дублирование') + '): ' + data.refreshed_count + '\n\n';
                 for (const item of fresherHistory) {
-                    html += `${item}\n────────────────────────────────────────\n`;
+                    html += item + '\n────────────────────────────────────────\n';
                 }
                 resBox.textContent = html;
             } else {
@@ -791,9 +778,9 @@ HTML = """<!DOCTYPE html>
             });
             const data = await response.json();
             if (data.success) {
-                let html = `✅ Сортировка завершена!\n📦 Куков: ${data.total}\n`;
+                let html = '✅ Сортировка завершена!\n📦 Куков: ' + data.total + '\n';
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += '\n📥 <a href="' + data.download_url + '" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>';
                 }
                 resBox.innerHTML = html;
             } else {
@@ -821,9 +808,9 @@ HTML = """<!DOCTYPE html>
             });
             const data = await response.json();
             if (data.success) {
-                let html = `✅ Разделение завершено!\n📦 Куков: ${data.total}\n`;
+                let html = '✅ Разделение завершено!\n📦 Куков: ' + data.total + '\n';
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += '\n📥 <a href="' + data.download_url + '" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>';
                 }
                 resBox.innerHTML = html;
             } else {
@@ -851,9 +838,9 @@ HTML = """<!DOCTYPE html>
             });
             const data = await response.json();
             if (data.success) {
-                let html = `✅ Слияние завершено!\n📦 Уникальных куков: ${data.total}\n🗑️ Дублей удалено: ${data.duplicates}\n`;
+                let html = '✅ Слияние завершено!\n📦 Уникальных куков: ' + data.total + '\n🗑️ Дублей удалено: ' + data.duplicates + '\n';
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
+                    html += '\n📥 <a href="' + data.download_url + '" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>';
                 }
                 resBox.innerHTML = html;
             } else {
