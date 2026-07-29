@@ -255,8 +255,6 @@ HTML = """<!DOCTYPE html>
             border: 2px solid #6c5ce7;
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
-            position: relative;
-            z-index: 1;
         }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0d0722; border-radius: 8px; }
@@ -276,13 +274,12 @@ HTML = """<!DOCTYPE html>
 
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
-            position: relative; z-index: 5;
         }
         .tab {
             padding: 10px 24px; background: rgba(26, 16, 64, 0.9);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
             cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s ease;
-            user-select: none; pointer-events: auto; position: relative; z-index: 5;
+            user-select: none;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
@@ -297,7 +294,6 @@ HTML = """<!DOCTYPE html>
             background: rgba(18, 10, 40, 0.9);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
             margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            position: relative; z-index: 2;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -307,7 +303,7 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            text-decoration: none; user-select: none; pointer-events: auto; position: relative; z-index: 5;
+            text-decoration: none; user-select: none;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -325,8 +321,6 @@ HTML = """<!DOCTYPE html>
             padding: 4px;
             gap: 4px;
             margin-bottom: 18px;
-            position: relative;
-            z-index: 3;
         }
         .toggle-btn {
             flex: 1;
@@ -340,9 +334,6 @@ HTML = """<!DOCTYPE html>
             cursor: pointer;
             transition: all 0.25s ease;
             text-align: center;
-            pointer-events: auto;
-            position: relative;
-            z-index: 5;
         }
         .toggle-btn.active {
             background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(217,70,239,0.3));
@@ -354,24 +345,24 @@ HTML = """<!DOCTYPE html>
         textarea {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s; position: relative; z-index: 3; pointer-events: auto;
+            resize: vertical; transition: 0.2s;
         }
         textarea:focus {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
         }
         .upload-area {
-            width: 100%; min-height: 130px; display: flex; flex-direction: column;
+            width: 100%; height: 100%; min-height: 120px; display: flex; flex-direction: column;
             align-items: center; justify-content: center; cursor: pointer; border: 1px dashed #2a1a50;
             border-radius: 14px; background: #0d0722; gap: 6px; text-align: center; color: #ffffff;
-            user-select: none; pointer-events: auto; position: relative; z-index: 5;
+            user-select: none;
         }
+        .upload-area * { pointer-events: none; } /* Важно: пробрасывает клик на label */
         .upload-area:hover { border-color: #a855f7; background: rgba(168,85,247,0.05); }
 
         .result-box {
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
-            position: relative; z-index: 2;
         }
 
         .progress-bar {
@@ -380,7 +371,20 @@ HTML = """<!DOCTYPE html>
         .progress-bar .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.3s ease; }
 
         .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
-        .hidden-input { display: none !important; }
+        
+        /* Гарантия кликабельности инпутов без display:none */
+        .hidden-input {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important;
+            white-space: nowrap !important;
+            border: 0 !important;
+            opacity: 0 !important;
+        }
     </style>
 </head>
 <body>
@@ -406,11 +410,11 @@ HTML = """<!DOCTYPE html>
         <div class="card">
             <h2>🔍 Проверка куков (Массовая)</h2>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
-                <div style="flex:2; min-width: 280px;">
+                <div style="flex:2;">
                     <textarea id="manualCookies" placeholder="Вставь куки сюда (каждый с новой строки) или загрузите txt файл справа..." rows="6"></textarea>
                     <div id="fileStatusInfo" style="margin-top:8px;color:#00b894;font-size:13px;"></div>
                 </div>
-                <div style="flex:1; min-width: 220px;">
+                <div style="flex:1;">
                     <label class="upload-area" for="fullFile">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                         <p style="font-size:12px; color:#9880c0;">Файл сохранится на сервере</p>
@@ -419,8 +423,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" id="btnRunFullcheck" class="btn btn-primary">🚀 Запустить проверку</button>
-                <button type="button" id="btnClearInputs" class="btn btn-secondary">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
+                <button type="button" class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
             <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
@@ -432,10 +436,10 @@ HTML = """<!DOCTYPE html>
         <div class="card">
             <h2>✅ Валидатор (отсев мёртвых)</h2>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
-                <div style="flex:2; min-width: 280px;">
+                <div style="flex:2;">
                     <textarea id="validatorCookies" placeholder="Вставьте куки для валидации..." rows="6"></textarea>
                 </div>
-                <div style="flex:1; min-width: 220px;">
+                <div style="flex:1;">
                     <label class="upload-area" for="validatorFile">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                         <p style="font-size:12px; color:#9880c0;">Файл с куками</p>
@@ -444,8 +448,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" id="btnRunValidator" class="btn btn-primary">🧪 Запустить валидацию</button>
-                <button type="button" id="btnClearValidator" class="btn btn-secondary">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runValidator()">🧪 Запустить валидацию</button>
+                <button type="button" class="btn btn-secondary" onclick="clearValidator()">🧹 Очистить</button>
             </div>
             <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
         </div>
@@ -458,16 +462,16 @@ HTML = """<!DOCTYPE html>
             <div style="margin-bottom: 8px;">
                 <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
                 <div class="toggle-group">
-                    <button type="button" class="toggle-btn active" id="modeDuplicate">♻️ Duplicate cookie (keep old working)</button>
-                    <button type="button" class="toggle-btn" id="modeKill">💀 Kill old cookie (logout all devices / reset)</button>
+                    <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Duplicate cookie (keep old working)</button>
+                    <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Kill old cookie (logout all devices / reset)</button>
                 </div>
                 <input type="hidden" id="fresherMode" value="duplicate">
             </div>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
-                <div style="flex:2; min-width: 280px;">
+                <div style="flex:2;">
                     <textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="6"></textarea>
                 </div>
-                <div style="flex:1; min-width: 220px;">
+                <div style="flex:1;">
                     <label class="upload-area" for="fresherFile">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                         <p style="font-size:12px; color:#9880c0;">Файл с куками</p>
@@ -476,8 +480,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" id="btnRunFresher" class="btn btn-primary">⚡ Обновить сессии</button>
-                <button type="button" id="btnClearFresher" class="btn btn-secondary">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
+                <button type="button" class="btn btn-secondary" onclick="clearFresher()">🧹 Очистить</button>
             </div>
             <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
         </div>
@@ -489,10 +493,10 @@ HTML = """<!DOCTYPE html>
             <h2>📦 Инструменты слияния и обработки</h2>
             <p style="color: #9880c0; font-size: 14px; margin-bottom: 16px;">Объединение нескольких текстовых файлов с куками, удаление дубликатов и сортировка по заданным критериям.</p>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
-                <div style="flex:2; min-width: 280px;">
+                <div style="flex:2;">
                     <textarea id="toolsInput" placeholder="Вставьте куки для слияния или обработки..." rows="6"></textarea>
                 </div>
-                <div style="flex:1; min-width: 220px;">
+                <div style="flex:1;">
                     <label class="upload-area" for="toolsFile">
                         <p>📁 <strong>Загрузить файлы</strong></p>
                         <p style="font-size:12px; color:#9880c0;">TXT файлы</p>
@@ -501,8 +505,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" id="btnRunTools" class="btn btn-primary">🔗 Объединить и удалить дубликаты</button>
-                <button type="button" id="btnClearTools" class="btn btn-secondary">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runToolsMerge()">🔗 Объединить и удалить дубликаты</button>
+                <button type="button" class="btn btn-secondary" onclick="clearTools()">🧹 Очистить</button>
             </div>
             <div class="result-box" id="toolsResult">Результаты обработки появятся здесь...</div>
         </div>
@@ -512,295 +516,298 @@ HTML = """<!DOCTYPE html>
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        let checkerHistory = [];
-        let fresherHistory = [];
-        let startTime = Date.now();
+    let checkerHistory = [];
+    let fresherHistory = [];
+    let startTime = Date.now();
 
-        // Таймер сессии
-        setInterval(function() {
-            let diff = Math.floor((Date.now() - startTime) / 1000);
-            let h = String(Math.floor(diff / 3600)).padStart(2, '0');
-            let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
-            let s = String(diff % 60).padStart(2, '0');
-            var timerEl = document.getElementById('sessionTimer');
-            if (timerEl) timerEl.textContent = '⏱️ ' + h + ':' + m + ':' + s;
-        }, 1000);
+    function escapeHtml(text) {
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
 
-        // Переключение вкладок
-        document.querySelectorAll('.tab').forEach(function(tab) {
-            tab.addEventListener('click', function(e) {
-                e.preventDefault();
-                var tabId = this.getAttribute('data-tab');
-                if (!tabId) return;
+    // ТАЙМЕР СЕССИИ
+    setInterval(function() {
+        let diff = Math.floor((Date.now() - startTime) / 1000);
+        let h = String(Math.floor(diff / 3600)).padStart(2, '0');
+        let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+        let s = String(diff % 60).padStart(2, '0');
+        var timerEl = document.getElementById('sessionTimer');
+        if (timerEl) timerEl.textContent = '⏱️ ' + h + ':' + m + ':' + s;
+    }, 1000);
 
-                document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-                document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+    // ВКЛАДКИ
+    document.querySelectorAll('.tab').forEach(function(tab) {
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+            var tabId = this.getAttribute('data-tab');
+            if (!tabId) return;
 
-                this.classList.add('active');
-                var target = document.getElementById('tab-' + tabId);
-                if (target) target.classList.add('active');
-            });
+            document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+            document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+
+            this.classList.add('active');
+            var target = document.getElementById('tab-' + tabId);
+            if (target) target.classList.add('active');
         });
+    });
 
-        // Загрузка файлов
-        function bindFileInput(inputId, textareaId, isServerUpload) {
-            var fileInput = document.getElementById(inputId);
-            if (!fileInput) return;
+    // ЗАГРУЗКА ФАЙЛОВ
+    function bindFileInput(inputId, textareaId, isServerUpload) {
+        var fileInput = document.getElementById(inputId);
+        if (!fileInput) return;
 
-            fileInput.addEventListener('change', function() {
-                if (this.files && this.files[0]) {
-                    var file = this.files[0];
-                    if (isServerUpload) {
-                        var formData = new FormData();
-                        formData.append('file', file);
-                        var statusEl = document.getElementById('fileStatusInfo');
-                        if (statusEl) statusEl.textContent = '⏳ Загрузка на сервер...';
-                        fetch('/api/upload', { method: 'POST', body: formData })
-                            .then(function(res) { return res.json(); })
-                            .then(function(data) {
-                                if (data.success && statusEl) {
-                                    statusEl.textContent = '✅ Файл "' + data.filename + '" загружен!';
-                                }
-                            })
-                            .catch(function() {
-                                if (statusEl) statusEl.textContent = '❌ Ошибка загрузки файла';
-                            });
-                    }
+        fileInput.addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                var file = this.files[0];
+                if (isServerUpload) {
+                    var formData = new FormData();
+                    formData.append('file', file);
+                    var statusEl = document.getElementById('fileStatusInfo');
+                    if (statusEl) statusEl.textContent = '⏳ Загрузка на сервер...';
+                    fetch('/api/upload', { method: 'POST', body: formData })
+                        .then(function(res) { return res.json(); })
+                        .then(function(data) {
+                            if (data.success && statusEl) {
+                                statusEl.textContent = '✅ Файл "' + data.filename + '" загружен!';
+                            }
+                        })
+                        .catch(function() {
+                            if (statusEl) statusEl.textContent = '❌ Ошибка загрузки файла';
+                        });
+                }
+                var reader = new FileReader();
+                reader.onload = function(evt) {
+                    var textarea = document.getElementById(textareaId);
+                    if (textarea) textarea.value = evt.target.result;
+                };
+                reader.readAsText(file);
+            }
+        });
+    }
+
+    bindFileInput('fullFile', 'manualCookies', true);
+    bindFileInput('validatorFile', 'validatorCookies', false);
+    bindFileInput('fresherFile', 'fresherCookies', false);
+
+    var toolsFileInput = document.getElementById('toolsFile');
+    if (toolsFileInput) {
+        toolsFileInput.addEventListener('change', function() {
+            if (this.files && this.files.length > 0) {
+                var combinedText = "";
+                var filesRead = 0;
+                Array.from(this.files).forEach(function(file) {
                     var reader = new FileReader();
                     reader.onload = function(evt) {
-                        var textarea = document.getElementById(textareaId);
-                        if (textarea) textarea.value = evt.target.result;
+                        combinedText += evt.target.result + "\n";
+                        filesRead++;
+                        if (filesRead === toolsFileInput.files.length) {
+                            var toolsInput = document.getElementById('toolsInput');
+                            if (toolsInput) toolsInput.value = combinedText;
+                        }
                     };
                     reader.readAsText(file);
-                }
-            });
-        }
-
-        bindFileInput('fullFile', 'manualCookies', true);
-        bindFileInput('validatorFile', 'validatorCookies', false);
-        bindFileInput('fresherFile', 'fresherCookies', false);
-
-        // Множественная загрузка в инструментах
-        var toolsFileInput = document.getElementById('toolsFile');
-        if (toolsFileInput) {
-            toolsFileInput.addEventListener('change', function() {
-                if (this.files && this.files.length > 0) {
-                    var combinedText = "";
-                    var filesRead = 0;
-                    Array.from(this.files).forEach(function(file) {
-                        var reader = new FileReader();
-                        reader.onload = function(evt) {
-                            combinedText += evt.target.result + "\n";
-                            filesRead++;
-                            if (filesRead === toolsFileInput.files.length) {
-                                var toolsInput = document.getElementById('toolsInput');
-                                if (toolsInput) toolsInput.value = combinedText;
-                            }
-                        };
-                        reader.readAsText(file);
-                    });
-                }
-            });
-        }
-
-        // Режимы фрешера
-        function setFresherMode(mode) {
-            document.getElementById('fresherMode').value = mode;
-            var dupBtn = document.getElementById('modeDuplicate');
-            var killBtn = document.getElementById('modeKill');
-            if (mode === 'duplicate') {
-                dupBtn.classList.add('active');
-                killBtn.classList.remove('active');
-            } else {
-                killBtn.classList.add('active');
-                dupBtn.classList.remove('active');
-            }
-        }
-
-        document.getElementById('modeDuplicate').addEventListener('click', function() { setFresherMode('duplicate'); });
-        document.getElementById('modeKill').addEventListener('click', function() { setFresherMode('kill'); });
-
-        // ===== ЧЕКЕР =====
-        function runFullcheck() {
-            var resBox = document.getElementById('fullcheckResult');
-            var manual = document.getElementById('manualCookies').value.trim();
-            var progress = document.getElementById('checkerProgress');
-            
-            if (!manual) {
-                resBox.textContent = '❌ Вставь куки или загрузи .txt!';
-                return;
-            }
-
-            var formData = new FormData();
-            formData.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
-
-            resBox.textContent = '⏳ Проверка аккаунтов запущена...';
-            progress.style.width = '40%';
-            
-            fetch('/api/fullcheck', { method: 'POST', body: formData })
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
-                    progress.style.width = '100%';
-                    setTimeout(function() { progress.style.width = '0%'; }, 1000);
-                    
-                    if (data.success) {
-                        if (data.reports && data.reports.length) {
-                            for (var i = 0; i < data.reports.length; i++) {
-                                checkerHistory.push(data.reports[i]);
-                            }
-                        }
-                        
-                        var html = '✅ Проверено аккаунтов: ' + data.total + ' | Успешно валидных: ' + data.valid_count + '\\n\\n';
-                        for (var j = 0; j < checkerHistory.length; j++) {
-                            html += checkerHistory[j] + '\\n────────────────────────────────────────\\n';
-                        }
-                        if (data.download_url) {
-                            html += '\\n📥 <a href="' + data.download_url + '" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Скачать ZIP со всеми отчетами (.txt)</a>';
-                        }
-                        resBox.innerHTML = html;
-                        resBox.scrollTop = resBox.scrollHeight;
-                    } else {
-                        resBox.textContent = '❌ ' + (data.message || 'Ошибка');
-                    }
-                })
-                .catch(function(e) {
-                    resBox.textContent = '❌ Ошибка: ' + e.message;
-                    progress.style.width = '0%';
                 });
-        }
-
-        function clearInputs() {
-            document.getElementById('manualCookies').value = '';
-            var statusInfo = document.getElementById('fileStatusInfo');
-            if (statusInfo) statusInfo.textContent = '';
-            checkerHistory = [];
-            document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
-        }
-
-        document.getElementById('btnRunFullcheck').addEventListener('click', runFullcheck);
-        document.getElementById('btnClearInputs').addEventListener('click', clearInputs);
-
-        // ===== ВАЛИДАТОР =====
-        function runValidator() {
-            var resBox = document.getElementById('validatorResult');
-            var cookies = document.getElementById('validatorCookies').value.trim();
-            if (!cookies) {
-                resBox.textContent = '❌ Вставьте куки для валидации!';
-                return;
             }
-            resBox.textContent = '⏳ Выполняется быстрая валидация...';
-            fetch('/api/validator', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cookies: cookies })
-            })
+        });
+    }
+
+    // РЕЖИМЫ ФРЕШЕРА
+    function setFresherMode(mode) {
+        document.getElementById('fresherMode').value = mode;
+        var dupBtn = document.getElementById('modeDuplicate');
+        var killBtn = document.getElementById('modeKill');
+        if (mode === 'duplicate') {
+            dupBtn.classList.add('active');
+            killBtn.classList.remove('active');
+        } else {
+            killBtn.classList.add('active');
+            dupBtn.classList.remove('active');
+        }
+    }
+
+    // ЧЕКЕР
+    function runFullcheck() {
+        var resBox = document.getElementById('fullcheckResult');
+        var manual = document.getElementById('manualCookies').value.trim();
+        var progress = document.getElementById('checkerProgress');
+        
+        if (!manual) {
+            resBox.textContent = '❌ Вставь куки или загрузи .txt!';
+            return;
+        }
+
+        var formData = new FormData();
+        formData.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
+
+        resBox.textContent = '⏳ Проверка аккаунтов запущена...';
+        progress.style.width = '40%';
+        
+        fetch('/api/fullcheck', { method: 'POST', body: formData })
             .then(function(response) { return response.json(); })
             .then(function(data) {
+                progress.style.width = '100%';
+                setTimeout(function() { progress.style.width = '0%'; }, 1000);
+                
                 if (data.success) {
-                    var html = '✅ Проверено: ' + data.total + ' | Живых (Valid): ' + data.valid_count + ' | Мертвых (Dead): ' + data.dead_count + '\\n\\n';
-                    html += '🟢 ЖИВЫЕ КУКИ:\\n' + (data.valid_list.length ? data.valid_list.join('\\n') : 'Нет живых') + '\\n\\n';
-                    html += '❌ МЕРТВЫЕ КУКИ:\\n' + (data.dead_list.length ? data.dead_list.join('\\n') : 'Нет мертвых');
-                    resBox.textContent = html;
-                } else {
-                    resBox.textContent = '❌ ' + (data.message || 'Ошибка валидации');
-                }
-            })
-            .catch(function(e) {
-                resBox.textContent = '❌ Ошибка сети: ' + e.message;
-            });
-        }
-
-        function clearValidator() {
-            document.getElementById('validatorCookies').value = '';
-            document.getElementById('validatorResult').textContent = 'Здесь будет результат валидации...';
-        }
-
-        document.getElementById('btnRunValidator').addEventListener('click', runValidator);
-        document.getElementById('btnClearValidator').addEventListener('click', clearValidator);
-
-        // ===== ФРЕШЕР =====
-        function runFresher() {
-            var resBox = document.getElementById('fresherResult');
-            var cookies = document.getElementById('fresherCookies').value.trim();
-            var mode = document.getElementById('fresherMode').value;
-            if (!cookies) {
-                resBox.textContent = '❌ Вставьте куки для фреша!';
-                return;
-            }
-            resBox.textContent = '⏳ Выполняется обновление сессий...';
-            fetch('/api/fresher', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cookies: cookies, mode: mode })
-            })
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    if (data.refreshed_list && data.refreshed_list.length) {
-                        for (var i = 0; i < data.refreshed_list.length; i++) {
-                            fresherHistory.push(data.refreshed_list[i]);
+                    if (data.reports && data.reports.length) {
+                        for (var i = 0; i < data.reports.length; i++) {
+                            checkerHistory.push(data.reports[i]);
                         }
                     }
-                    var html = '✅ Успешно обновлено сессий (режим: ' + (mode === 'kill' ? 'Kill old cookie' : 'Duplicate cookie') + '): ' + data.refreshed_count + '\\n\\n';
-                    for (var j = 0; j < fresherHistory.length; j++) {
-                        html += fresherHistory[j] + '\\n────────────────────────────────────────\\n';
+                    
+                    var outputHtml = '✅ Проверено аккаунтов: ' + data.total + ' | Успешно валидных: ' + data.valid_count + '\n\n';
+                    for (var j = 0; j < checkerHistory.length; j++) {
+                        outputHtml += escapeHtml(checkerHistory[j]) + '\n────────────────────────────────────────\n';
                     }
-                    resBox.textContent = html;
+                    
+                    resBox.innerHTML = outputHtml;
+
+                    if (data.download_url) {
+                        var downloadLink = document.createElement('a');
+                        downloadLink.href = data.download_url;
+                        downloadLink.className = 'btn btn-primary';
+                        downloadLink.target = '_blank';
+                        downloadLink.style.marginTop = '10px';
+                        downloadLink.style.display = 'inline-block';
+                        downloadLink.textContent = '📥 Скачать ZIP со всеми отчетами (.txt)';
+                        resBox.appendChild(downloadLink);
+                    }
+                    
+                    resBox.scrollTop = resBox.scrollHeight;
                 } else {
-                    resBox.textContent = '❌ ' + (data.message || 'Ошибка фрешера');
+                    resBox.textContent = '❌ ' + (data.message || 'Ошибка');
                 }
             })
             .catch(function(e) {
-                resBox.textContent = '❌ Ошибка сети: ' + e.message;
+                resBox.textContent = '❌ Ошибка: ' + e.message;
+                progress.style.width = '0%';
             });
+    }
+
+    function clearInputs() {
+        document.getElementById('manualCookies').value = '';
+        document.getElementById('fileStatusInfo').textContent = '';
+        checkerHistory = [];
+        document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
+        
+        // Сброс загруженного файла на сервере при очистке
+        fetch('/api/clear_upload', { method: 'POST' });
+    }
+
+    // ВАЛИДАТОР
+    function runValidator() {
+        var resBox = document.getElementById('validatorResult');
+        var cookies = document.getElementById('validatorCookies').value.trim();
+        if (!cookies) {
+            resBox.textContent = '❌ Вставьте куки для валидации!';
+            return;
         }
-
-        function clearFresher() {
-            document.getElementById('fresherCookies').value = '';
-            document.getElementById('fresherResult').textContent = 'Результаты фрешера появятся здесь...';
-            fresherHistory = [];
-        }
-
-        document.getElementById('btnRunFresher').addEventListener('click', runFresher);
-        document.getElementById('btnClearFresher').addEventListener('click', clearFresher);
-
-        // ===== ИНСТРУМЕНТЫ =====
-        function runToolsMerge() {
-            var input = document.getElementById('toolsInput').value;
-            var resBox = document.getElementById('toolsResult');
-            if (!input.trim()) {
-                resBox.textContent = '❌ Нет данных для слияния!';
-                return;
+        resBox.textContent = '⏳ Выполняется быстрая валидация...';
+        fetch('/api/validator', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cookies: cookies })
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (data.success) {
+                var html = '✅ Проверено: ' + data.total + ' | Живых (Valid): ' + data.valid_count + ' | Мертвых (Dead): ' + data.dead_count + '\n\n';
+                html += '🟢 ЖИВЫЕ КУКИ:\n' + (data.valid_list.length ? data.valid_list.join('\n') : 'Нет живых') + '\n\n';
+                html += '❌ МЕРТВЫЕ КУКИ:\n' + (data.dead_list.length ? data.dead_list.join('\n') : 'Нет мертвых');
+                resBox.textContent = html;
+            } else {
+                resBox.textContent = '❌ ' + (data.message || 'Ошибка валидации');
             }
-            var lines = input.split('\\n');
-            var uniqueLines = [];
-            var seen = new Set();
-            var skipped = 0;
+        })
+        .catch(function(e) {
+            resBox.textContent = '❌ Ошибка сети: ' + e.message;
+        });
+    }
 
-            for (var i = 0; i < lines.length; i++) {
-                var trimmed = lines[i].trim();
-                if (trimmed.length > 20) {
-                    if (!seen.has(trimmed)) {
-                        seen.add(trimmed);
-                        uniqueLines.push(trimmed);
-                    } else {
-                        skipped++;
+    function clearValidator() {
+        document.getElementById('validatorCookies').value = '';
+        document.getElementById('validatorResult').textContent = 'Здесь будет результат валидации...';
+    }
+
+    // ФРЕШЕР
+    function runFresher() {
+        var resBox = document.getElementById('fresherResult');
+        var cookies = document.getElementById('fresherCookies').value.trim();
+        var mode = document.getElementById('fresherMode').value;
+        if (!cookies) {
+            resBox.textContent = '❌ Вставьте куки для фреша!';
+            return;
+        }
+        resBox.textContent = '⏳ Выполняется обновление сессий...';
+        fetch('/api/fresher', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cookies: cookies, mode: mode })
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (data.success) {
+                if (data.refreshed_list && data.refreshed_list.length) {
+                    for (var i = 0; i < data.refreshed_list.length; i++) {
+                        fresherHistory.push(data.refreshed_list[i]);
                     }
                 }
+                var html = '✅ Успешно обновлено сессий (режим: ' + (mode === 'kill' ? 'Kill old cookie' : 'Duplicate cookie') + '): ' + data.refreshed_count + '\n\n';
+                for (var j = 0; j < fresherHistory.length; j++) {
+                    html += fresherHistory[j] + '\n────────────────────────────────────────\n';
+                }
+                resBox.textContent = html;
+            } else {
+                resBox.textContent = '❌ ' + (data.message || 'Ошибка фрешера');
             }
+        })
+        .catch(function(e) {
+            resBox.textContent = '❌ Ошибка сети: ' + e.message;
+        });
+    }
 
-            resBox.textContent = '✅ Успешно объединено!\\n📦 Уникальных куков: ' + uniqueLines.length + '\\n🗑️ Удалено дубликатов: ' + skipped + '\\n\\n' + uniqueLines.join('\\n');
+    function clearFresher() {
+        document.getElementById('fresherCookies').value = '';
+        document.getElementById('fresherResult').textContent = 'Результаты фрешера появятся здесь...';
+        fresherHistory = [];
+    }
+
+    // ИНСТРУМЕНТЫ
+    function runToolsMerge() {
+        var input = document.getElementById('toolsInput').value;
+        var resBox = document.getElementById('toolsResult');
+        if (!input.trim()) {
+            resBox.textContent = '❌ Нет данных для слияния!';
+            return;
+        }
+        var lines = input.split('\n');
+        var uniqueLines = [];
+        var seen = new Set();
+        var skipped = 0;
+
+        for (var i = 0; i < lines.length; i++) {
+            var trimmed = lines[i].trim();
+            if (trimmed.length > 20) {
+                if (!seen.has(trimmed)) {
+                    seen.add(trimmed);
+                    uniqueLines.push(trimmed);
+                } else {
+                    skipped++;
+                }
+            }
         }
 
-        function clearTools() {
-            document.getElementById('toolsInput').value = '';
-            document.getElementById('toolsResult').textContent = 'Результаты обработки появятся здесь...';
-        }
+        resBox.textContent = '✅ Успешно объединено!\n📦 Уникальных куков: ' + uniqueLines.length + '\n🗑️ Удалено дубликатов: ' + skipped + '\n\n' + uniqueLines.join('\n');
+    }
 
-        document.getElementById('btnRunTools').addEventListener('click', runToolsMerge);
-        document.getElementById('btnClearTools').addEventListener('click', clearTools);
-    });
+    function clearTools() {
+        document.getElementById('toolsInput').value = '';
+        document.getElementById('toolsResult').textContent = 'Результаты обработки появятся здесь...';
+    }
 </script>
 </body>
 </html>"""
@@ -830,21 +837,28 @@ def api_upload():
     
     return jsonify({"success": True, "filename": file.filename})
 
+@app.route("/api/clear_upload", methods=["POST"])
+def api_clear_upload():
+    global CURRENT_UPLOADED_FILE
+    CURRENT_UPLOADED_FILE = None
+    return jsonify({"success": True})
+
 @app.route("/api/fullcheck", methods=["POST"])
 def api_fullcheck():
     global CURRENT_UPLOADED_FILE
     
     content = ""
-    if CURRENT_UPLOADED_FILE and os.path.exists(CURRENT_UPLOADED_FILE):
+    # Приоритет отдан отправленному полю/файлу из формы
+    if 'file' in request.files and request.files['file'].filename != '':
+        content = request.files['file'].read().decode('utf-8', errors='ignore')
+    elif CURRENT_UPLOADED_FILE and os.path.exists(CURRENT_UPLOADED_FILE):
         with open(CURRENT_UPLOADED_FILE, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
-    elif 'file' in request.files:
-        content = request.files['file'].read().decode('utf-8', errors='ignore')
     
     cookies = [line.strip() for line in content.split('\n') if len(line) > 50]
     
     if not cookies:
-        return jsonify({"success": False, "message": "Куки не найдены в сохраненном файле"})
+        return jsonify({"success": False, "message": "Куки не найдены"})
     
     reports = []
     file_payloads = []
@@ -939,4 +953,5 @@ def api_fresher():
 def download_file(filename):
     return send_from_directory("downloads", filename, as_attachment=True)
 
-if __name__ == "__main__":    app.run(debug=True, port=5000)
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
