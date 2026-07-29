@@ -392,13 +392,13 @@ HTML = """<!DOCTYPE html>
 
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
-            position: relative; z-index: 5;
+            position: relative; z-index: 50;
         }
         .tab {
             padding: 10px 24px; background: rgba(26, 16, 64, 0.6);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
             cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
-            user-select: none; position: relative; z-index: 6;
+            user-select: none; position: relative; z-index: 51; pointer-events: auto;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
@@ -406,15 +406,15 @@ HTML = """<!DOCTYPE html>
             color: #c084fc; box-shadow: 0 0 20px rgba(168,85,247,0.15);
         }
 
-        .tab-content { display: none; animation: fadeUp 0.3s ease; position: relative; z-index: 2; }
-        .tab-content.active { display: block; }
+        .tab-content { display: none; position: relative; z-index: 20; }
+        .tab-content.active { display: block; animation: fadeUp 0.3s ease; }
         @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
 
         .card {
             background: rgba(18, 10, 40, 0.7); backdrop-filter: blur(12px);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
             margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            position: relative; z-index: 3;
+            position: relative; z-index: 21;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -424,7 +424,7 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            position: relative; z-index: 10; text-decoration: none;
+            position: relative; z-index: 30; text-decoration: none; pointer-events: auto;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -437,7 +437,7 @@ HTML = """<!DOCTYPE html>
         textarea, .upload-area {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s; position: relative; z-index: 4;
+            resize: vertical; transition: 0.2s; position: relative; z-index: 22;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
@@ -447,12 +447,12 @@ HTML = """<!DOCTYPE html>
             justify-content: center; cursor: pointer; border-style: dashed; gap: 6px; text-align: center; color: #ffffff;
         }
 
-        /* ИСПРАВЛЕНИЕ: Блок результатов строго нейтральный с белым текстом и прокруткой */
+        /* Белый читаемый текст и прокрутка */
         .result-box {
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
-            position: relative; z-index: 5;
+            position: relative; z-index: 22;
         }
 
         .progress-bar {
@@ -462,7 +462,7 @@ HTML = """<!DOCTYPE html>
 
         .fresh-card {
             background: rgba(12, 12, 24, 0.9); border: 1px solid #1f1f3a; border-radius: 16px;
-            padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); position: relative; z-index: 3;
+            padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); position: relative; z-index: 21;
         }
         .fresh-header {
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px;
@@ -471,33 +471,33 @@ HTML = """<!DOCTYPE html>
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic; font-size: 22px; color: #e8e0ff; margin: 0;
         }
         .method-group {
-            display: flex; gap: 6px; background: #0a0a18; padding: 4px; border-radius: 40px; border: 1px solid #1a1a2e; position: relative; z-index: 5;
+            display: flex; gap: 6px; background: #0a0a18; padding: 4px; border-radius: 40px; border: 1px solid #1a1a2e; position: relative; z-index: 25;
         }
         .method-btn {
             padding: 8px 20px; border: none; border-radius: 30px; background: transparent; color: #6a6a8a;
-            font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; position: relative; z-index: 6;
+            font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; position: relative; z-index: 26; pointer-events: auto;
         }
         .method-btn.active {
             background: linear-gradient(135deg, #6c5ce7, #a855f7); color: #fff; box-shadow: 0 4px 16px rgba(108,92,231,0.3);
         }
         .fresh-textarea {
             width: 100%; min-height: 80px; padding: 14px 16px; background: #0a0a18; border: 1px solid #1a1a2e;
-            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical; position: relative; z-index: 4;
+            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical; position: relative; z-index: 22;
         }
         .fresh-controls {
-            display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; position: relative; z-index: 10;
+            display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; position: relative; z-index: 30;
         }
         .btn-start {
             background: linear-gradient(135deg, #00b894, #00a381); color: #fff; padding: 10px 32px; border: none;
-            border-radius: 40px; font-weight: 700; font-size: 14px; cursor: pointer; position: relative; z-index: 10;
+            border-radius: 40px; font-weight: 700; font-size: 14px; cursor: pointer; position: relative; z-index: 30; pointer-events: auto;
         }
         .btn-stop {
             background: #1a1a2e; color: #6a6a8a; padding: 10px 24px; border: 1px solid #2a2a4a;
-            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; position: relative; z-index: 10;
+            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; position: relative; z-index: 30; pointer-events: auto;
         }
         .btn-download {
             background: transparent; color: #6c5ce7; padding: 10px 20px; border: 1px solid #2a2a4a;
-            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; margin-left: auto; position: relative; z-index: 10;
+            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; margin-left: auto; position: relative; z-index: 30; pointer-events: auto;
         }
         .fresh-progress {
             margin-top: 16px; background: #0a0a18; border-radius: 40px; height: 8px; overflow: hidden; border: 1px solid #1a1a2e;
@@ -514,7 +514,7 @@ HTML = """<!DOCTYPE html>
         }
         .cookie-output code { font-family: 'Inter', monospace; font-size: 12px; color: #ffffff; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
         .copy-btn {
-            align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; z-index: 10;
+            align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; z-index: 30; pointer-events: auto;
         }
         .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
     </style>
@@ -523,7 +523,7 @@ HTML = """<!DOCTYPE html>
 
 <div class="kai-wrapper">
     <div class="header">
-        <div class="logo">MICE <span>CHECKER</span>[cite: 3]</div>
+        <div class="logo">MICE <span>CHECKER</span></div>
         <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
     </div>
 
@@ -556,7 +556,6 @@ HTML = """<!DOCTYPE html>
                 <button class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
-            <!-- ИСПРАВЛЕНИЕ: Сохранение истории чеков (накопление) -->
             <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
         </div>
     </div>
@@ -614,7 +613,7 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="footer">MICE CHECKER · PRO[cite: 3]</div>
+    <div class="footer">MICE CHECKER · PRO</div>
 </div>
 
 <script>
@@ -660,7 +659,6 @@ HTML = """<!DOCTYPE html>
         });
     });
 
-    // Хранилище истории для накопления отчетов
     let checkerHistory = [];
 
     async function runFullcheck() {
@@ -749,7 +747,6 @@ HTML = """<!DOCTYPE html>
         stopBtn.disabled = false;
         status.textContent = '⏳ Фрешим...';
         
-        // ИСПРАВЛЕНИЕ: Сбрасываем старые результаты при новом запуске, чтобы не дублировать историю
         let valid = 0, invalid = 0;
         let newCookies = [];
         validCount.textContent = '0';
