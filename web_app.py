@@ -193,7 +193,7 @@ def generate_full_txt_report(info):
     gp = info.get('PurchasedGamepasses', {})
     
     r = "╔══════════════════════════════════════════════════════════╗\n"
-    r += "║  🎮 MICE CHECKER REPORT                                  ║\n"
+    r += "║  🎮 KAI CHECKER REPORT                                   ║\n"
     r += "╠══════════════════════════════════════════════════════════╣\n"
     r += f"║  📋 {info['Username']}                                   ║\n"
     r += f"║  🟢 ✅ | 🆔 {info['UserID']}                            ║\n"
@@ -235,7 +235,7 @@ HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>mice checker</title>
+    <title>kai checker</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -246,7 +246,7 @@ HTML = """<!DOCTYPE html>
             padding: 24px;
             background: #0b081a;
             background-image: radial-gradient(circle at 10% 20%, #1a1040 0%, #0b081a 80%);
-            position: relative;
+            color: #ffffff;
         }
         
         .kai-wrapper {
@@ -257,8 +257,6 @@ HTML = """<!DOCTYPE html>
             border: 2px solid #6c5ce7;
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
-            position: relative;
-            z-index: 1;
         }
         
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -280,16 +278,13 @@ HTML = """<!DOCTYPE html>
 
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
-            position: relative;
-            z-index: 100;
         }
         
         .tab {
             padding: 10px 24px; background: rgba(26, 16, 64, 0.9);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
-            cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
+            cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s ease;
             user-select: none;
-            pointer-events: auto;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
@@ -297,15 +292,13 @@ HTML = """<!DOCTYPE html>
             color: #c084fc; box-shadow: 0 0 20px rgba(168,85,247,0.2);
         }
 
-        .tab-content { display: none; position: relative; z-index: 10; }
-        .tab-content.active { display: block; animation: fadeUp 0.3s ease; }
-        @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
 
         .card {
             background: rgba(18, 10, 40, 0.9);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
             margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            position: relative; z-index: 10;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -315,10 +308,7 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            text-decoration: none;
-            pointer-events: auto;
-            position: relative;
-            z-index: 20;
+            text-decoration: none; user-select: none;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -336,7 +326,6 @@ HTML = """<!DOCTYPE html>
             padding: 4px;
             gap: 4px;
             margin-bottom: 18px;
-            pointer-events: auto;
         }
         .toggle-btn {
             flex: 1;
@@ -350,7 +339,6 @@ HTML = """<!DOCTYPE html>
             cursor: pointer;
             transition: all 0.25s ease;
             text-align: center;
-            pointer-events: auto;
         }
         .toggle-btn.active {
             background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(217,70,239,0.3));
@@ -359,25 +347,18 @@ HTML = """<!DOCTYPE html>
             box-shadow: 0 4px 15px rgba(168,85,247,0.2);
         }
 
-        textarea, select {
+        textarea {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
             resize: vertical; transition: 0.2s;
-            pointer-events: auto;
-            position: relative;
-            z-index: 15;
         }
         textarea:focus {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
         }
         .upload-area {
-            width: 100%;
-            min-height: 100px; display: flex; flex-direction: column; align-items: center;
-            justify-content: center; cursor: pointer; border: 1px dashed #2a1a50;
+            width: 100%; height: 100%; min-height: 120px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; cursor: pointer; border: 1px dashed #2a1a50;
             border-radius: 14px; background: #0d0722; gap: 6px; text-align: center; color: #ffffff;
-            pointer-events: auto;
-            position: relative;
-            z-index: 15;
             user-select: none;
         }
         .upload-area:hover { border-color: #a855f7; background: rgba(168,85,247,0.05); }
@@ -386,7 +367,6 @@ HTML = """<!DOCTYPE html>
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
-            position: relative; z-index: 10;
         }
 
         .progress-bar {
@@ -402,7 +382,7 @@ HTML = """<!DOCTYPE html>
 
 <div class="kai-wrapper">
     <div class="header">
-        <div class="logo">mice checker</div>
+        <div class="logo">kai checker</div>
         <div style="display: flex; align-items: center; gap: 15px;">
             <span id="sessionTimer" style="color: #00b894; font-family: 'Inter', monospace; font-weight: 600; font-size: 13px; background: rgba(0, 184, 148, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(0, 184, 148, 0.2);">⏱️ 00:00:00</span>
             <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
@@ -410,10 +390,10 @@ HTML = """<!DOCTYPE html>
     </div>
 
     <div class="tabs">
-        <div class="tab active" data-tab="checker">🔍 Чекер</div>
-        <div class="tab" data-tab="validator">✅ Валидатор</div>
-        <div class="tab" data-tab="fresher">🔄 Фрешер</div>
-        <div class="tab" data-tab="tools">🧰 Инструменты</div>
+        <button class="tab active" data-tab="checker">🔍 Чекер</button>
+        <button class="tab" data-tab="validator">✅ Валидатор</button>
+        <button class="tab" data-tab="fresher">🔄 Фрешер</button>
+        <button class="tab" data-tab="tools">🧰 Инструменты</button>
     </div>
 
     <!-- ===== ЧЕКЕР ===== -->
@@ -434,8 +414,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
-                <button type="button" class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" id="btnRunChecker">🚀 Запустить проверку</button>
+                <button type="button" class="btn btn-secondary" id="btnClearChecker">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
             <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
@@ -459,8 +439,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" class="btn btn-primary" onclick="runValidator()">🧪 Запустить валидацию</button>
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('validatorCookies').value=''; document.getElementById('validatorResult').textContent='Здесь будет результат валидации...';">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" id="btnRunValidator">🧪 Запустить валидацию</button>
+                <button type="button" class="btn btn-secondary" id="btnClearValidator">🧹 Очистить</button>
             </div>
             <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
         </div>
@@ -473,8 +453,8 @@ HTML = """<!DOCTYPE html>
             <div style="margin-bottom: 8px;">
                 <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
                 <div class="toggle-group">
-                    <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Duplicate cookie (keep old working)</button>
-                    <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Kill old cookie (logout all devices / reset)</button>
+                    <button type="button" class="toggle-btn active" id="modeDuplicate">♻️ Duplicate cookie (keep old working)</button>
+                    <button type="button" class="toggle-btn" id="modeKill">💀 Kill old cookie (logout all devices / reset)</button>
                 </div>
                 <input type="hidden" id="fresherMode" value="duplicate">
             </div>
@@ -491,8 +471,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('fresherCookies').value=''; document.getElementById('fresherResult').textContent='Результаты фрешера появятся здесь...'; fresherHistory=[];">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" id="btnRunFresher">⚡ Обновить сессии</button>
+                <button type="button" class="btn btn-secondary" id="btnClearFresher">🧹 Очистить</button>
             </div>
             <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
         </div>
@@ -516,18 +496,22 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" class="btn btn-primary" onclick="runToolsMerge()">🔗 Объединить и удалить дубликаты</button>
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('toolsInput').value=''; document.getElementById('toolsResult').textContent='Результаты обработки появятся здесь...';">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" id="btnRunTools">🔗 Объединить и удалить дубликаты</button>
+                <button type="button" class="btn btn-secondary" id="btnClearTools">🧹 Очистить</button>
             </div>
             <div class="result-box" id="toolsResult">Результаты обработки появятся здесь...</div>
         </div>
     </div>
 
-    <div class="footer">mice checker · PRO</div>
+    <div class="footer">kai checker · PRO</div>
 </div>
 
 <script>
+    let checkerHistory = [];
+    let fresherHistory = [];
+
     document.addEventListener('DOMContentLoaded', function() {
+        // Таймер сессии
         let startTime = Date.now();
         setInterval(() => {
             let diff = Math.floor((Date.now() - startTime) / 1000);
@@ -538,80 +522,46 @@ HTML = """<!DOCTYPE html>
             if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
         }, 1000);
 
-        // Переключение вкладок
+        // Переключение Вкладок
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', function(e) {
                 e.preventDefault();
                 const tabId = this.getAttribute('data-tab');
                 if (!tabId) return;
+
                 document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
                 this.classList.add('active');
                 const target = document.getElementById('tab-' + tabId);
                 if (target) target.classList.add('active');
             });
         });
 
-        // Загрузка файла Чекер
-        const fileInput = document.getElementById('fullFile');
-        if (fileInput) {
-            fileInput.addEventListener('change', async function() {
-                if (this.files && this.files[0]) {
-                    const file = this.files[0];
-                    const formData = new FormData();
-                    formData.append('file', file);
+        // Переключение режимов Фрешера
+        const modeDup = document.getElementById('modeDuplicate');
+        const modeKill = document.getElementById('modeKill');
+        const modeInput = document.getElementById('fresherMode');
 
-                    document.getElementById('fileStatusInfo').textContent = '⏳ Загрузка и сохранение файла на сервере...';
-
-                    try {
-                        const response = await fetch('/api/upload', { method: 'POST', body: formData });
-                        const data = await response.json();
-                        if (data.success) {
-                            document.getElementById('fileStatusInfo').textContent = `✅ Файл "${data.filename}" успешно сохранен на сервере!`;
-                            const reader = new FileReader();
-                            reader.onload = function(evt) {
-                                document.getElementById('manualCookies').value = evt.target.result;
-                            };
-                            reader.readAsText(file);
-                        } else {
-                            document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сохранения файла';
-                        }
-                    } catch (err) {
-                        document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сети при загрузке';
-                    }
-                }
+        if (modeDup && modeKill) {
+            modeDup.addEventListener('click', function() {
+                modeInput.value = 'duplicate';
+                modeDup.classList.add('active');
+                modeKill.classList.remove('active');
+            });
+            modeKill.addEventListener('click', function() {
+                modeInput.value = 'kill';
+                modeKill.classList.add('active');
+                modeDup.classList.remove('active');
             });
         }
 
-        // Загрузка Валидатор
-        const validatorFileInput = document.getElementById('validatorFile');
-        if (validatorFileInput) {
-            validatorFileInput.addEventListener('change', function() {
-                if (this.files && this.files[0]) {
-                    const reader = new FileReader();
-                    reader.onload = function(evt) {
-                        document.getElementById('validatorCookies').value = evt.target.result;
-                    };
-                    reader.readAsText(this.files[0]);
-                }
-            });
-        }
+        // Загрузка файлов
+        bindFileInput('fullFile', 'manualCookies', true);
+        bindFileInput('validatorFile', 'validatorCookies', false);
+        bindFileInput('fresherFile', 'fresherCookies', false);
 
-        // Загрузка Фрешер
-        const fresherFileInput = document.getElementById('fresherFile');
-        if (fresherFileInput) {
-            fresherFileInput.addEventListener('change', function() {
-                if (this.files && this.files[0]) {
-                    const reader = new FileReader();
-                    reader.onload = function(evt) {
-                        document.getElementById('fresherCookies').value = evt.target.result;
-                    };
-                    reader.readAsText(this.files[0]);
-                }
-            });
-        }
-
-        // Загрузка Инструменты
+        // Множественная загрузка в Инструментах
         const toolsFileInput = document.getElementById('toolsFile');
         if (toolsFileInput) {
             toolsFileInput.addEventListener('change', function() {
@@ -632,23 +582,60 @@ HTML = """<!DOCTYPE html>
                 }
             });
         }
+
+        // Привязка действий к кнопкам
+        document.getElementById('btnRunChecker').addEventListener('click', runFullcheck);
+        document.getElementById('btnClearChecker').addEventListener('click', clearInputs);
+
+        document.getElementById('btnRunValidator').addEventListener('click', runValidator);
+        document.getElementById('btnClearValidator').addEventListener('click', function() {
+            document.getElementById('validatorCookies').value = '';
+            document.getElementById('validatorResult').textContent = 'Здесь будет результат валидации...';
+        });
+
+        document.getElementById('btnRunFresher').addEventListener('click', runFresher);
+        document.getElementById('btnClearFresher').addEventListener('click', function() {
+            document.getElementById('fresherCookies').value = '';
+            document.getElementById('fresherResult').textContent = 'Результаты фрешера появятся здесь...';
+            fresherHistory = [];
+        });
+
+        document.getElementById('btnRunTools').addEventListener('click', runToolsMerge);
+        document.getElementById('btnClearTools').addEventListener('click', function() {
+            document.getElementById('toolsInput').value = '';
+            document.getElementById('toolsResult').textContent = 'Результаты обработки появятся здесь...';
+        });
     });
 
-    function setFresherMode(mode) {
-        document.getElementById('fresherMode').value = mode;
-        const btnDup = document.getElementById('modeDuplicate');
-        const btnKill = document.getElementById('modeKill');
-        if (mode === 'duplicate') {
-            btnDup.classList.add('active');
-            btnKill.classList.remove('active');
-        } else {
-            btnKill.classList.add('active');
-            btnDup.classList.remove('active');
-        }
-    }
+    function bindFileInput(inputId, textareaId, isServerUpload) {
+        const fileInput = document.getElementById(inputId);
+        if (!fileInput) return;
 
-    let checkerHistory = [];
-    let fresherHistory = [];
+        fileInput.addEventListener('change', async function() {
+            if (this.files && this.files[0]) {
+                const file = this.files[0];
+                if (isServerUpload) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    document.getElementById('fileStatusInfo').textContent = '⏳ Загрузка на сервер...';
+                    try {
+                        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                        const data = await res.json();
+                        if (data.success) {
+                            document.getElementById('fileStatusInfo').textContent = `✅ Файл "${data.filename}" загружен!`;
+                        }
+                    } catch (e) {
+                        document.getElementById('fileStatusInfo').textContent = '❌ Ошибка загрузки файла';
+                    }
+                }
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    document.getElementById(textareaId).value = evt.target.result;
+                };
+                reader.readAsText(file);
+            }
+        });
+    }
 
     async function runFullcheck() {
         const resBox = document.getElementById('fullcheckResult');
@@ -859,7 +846,7 @@ def api_fullcheck():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     archive_name = f"reports_{timestamp}.zip"
     filepath = os.path.join("downloads", archive_name)
-    with open(filepath, 'wb' ) as f:
+    with open(filepath, 'wb') as f:
         f.write(zip_buffer.getvalue())
     
     return jsonify({
