@@ -146,7 +146,7 @@ HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KAI CHECKER</title>
+    <title>MICE CHECKER</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -291,7 +291,6 @@ HTML = """<!DOCTYPE html>
             gap: 6px;
             text-align: center;
         }
-        /* ===== ФИКС №1: все дочерние элементы не перехватывают клик ===== */
         .upload-area * {
             pointer-events: none;
         }
@@ -568,7 +567,7 @@ HTML = """<!DOCTYPE html>
 <div class="kai-wrapper">
 
     <div class="header">
-        <div class="logo">KAI <span>CHECKER</span></div>
+        <div class="logo">MICE <span>CHECKER</span></div>
         <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
     </div>
 
@@ -694,16 +693,11 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="footer">KAI CHECKER · PRO</div>
+    <div class="footer">MICE CHECKER · PRO</div>
 </div>
 
-<!-- ========================================================== -->
-<!-- ===== JAVASCRIPT ========================================= -->
-<!-- ========================================================== -->
 <script>
-    // ===== ФИКС №1: клики по .upload-area через addEventListener =====
     document.querySelectorAll('.upload-area').forEach(area => {
-        // Клик по зоне — открываем инпут
         area.addEventListener('click', function(e) {
             const input = this.parentElement.querySelector('input[type="file"]');
             if (input) {
@@ -711,7 +705,6 @@ HTML = """<!DOCTYPE html>
             }
         });
 
-        // Drag & Drop
         area.addEventListener('dragover', e => {
             e.preventDefault();
             this.classList.add('drag-active');
@@ -730,7 +723,6 @@ HTML = """<!DOCTYPE html>
         });
     });
 
-    // ===== ФИКС №2: переключение вкладок с проверкой data-tab =====
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const tabId = this.dataset.tab;
@@ -750,9 +742,6 @@ HTML = """<!DOCTYPE html>
         });
     });
 
-    // ============================================================
-    // ===== ЧЕКЕР ================================================
-    // ============================================================
     async function runFullcheck() {
         const resBox = document.getElementById('fullcheckResult');
         const manual = document.getElementById('manualCookies').value.trim();
@@ -814,7 +803,6 @@ HTML = """<!DOCTYPE html>
         document.getElementById('fullFile').value = '';
     }
 
-    // ===== ИСТОРИЯ ЧЕКЕРА =====
     function saveCheckerHistory(total, gamepasses, rap) {
         const history = JSON.parse(localStorage.getItem('checkerHistory') || '[]');
         history.unshift({ date: new Date().toLocaleString(), total, gamepasses, rap });
@@ -842,9 +830,6 @@ HTML = """<!DOCTYPE html>
         renderCheckerHistory();
     }
 
-    // ============================================================
-    // ===== ФРЕШЕР ===============================================
-    // ============================================================
     let freshMethod = 'ticket';
     let freshRunning = false;
     let freshAbort = false;
@@ -958,7 +943,6 @@ HTML = """<!DOCTYPE html>
         a.click();
     }
 
-    // ===== ИСТОРИЯ ФРЕШЕЙ =====
     function saveFreshHistory(total, valid, invalid, errors) {
         const history = JSON.parse(localStorage.getItem('freshHistory') || '[]');
         history.unshift({ date: new Date().toLocaleString(), total, valid, invalid, errors, method: freshMethod });
@@ -991,9 +975,6 @@ HTML = """<!DOCTYPE html>
         renderFreshHistory();
     }
 
-    // ============================================================
-    // ===== ВАЛИДАТОР ============================================
-    // ============================================================
     async function runValidator() {
         const fileInput = document.getElementById('validatorFile');
         const resBox = document.getElementById('validatorResult');
@@ -1022,9 +1003,6 @@ HTML = """<!DOCTYPE html>
         }
     }
 
-    // ============================================================
-    // ===== СОРТЕР ===============================================
-    // ============================================================
     async function runSorter() {
         const fileInput = document.getElementById('sorterFile');
         const resBox = document.getElementById('sorterResult');
@@ -1053,9 +1031,6 @@ HTML = """<!DOCTYPE html>
         }
     }
 
-    // ============================================================
-    // ===== РАЗДЕЛИТЕЛЬ ==========================================
-    // ============================================================
     async function runSplit() {
         const fileInput = document.getElementById('splitFile');
         const resBox = document.getElementById('splitResult');
@@ -1084,9 +1059,6 @@ HTML = """<!DOCTYPE html>
         }
     }
 
-    // ============================================================
-    // ===== СЛИЯНИЕ ==============================================
-    // ============================================================
     async function runMerge() {
         const fileInput = document.getElementById('mergeFile');
         const resBox = document.getElementById('mergeResult');
@@ -1115,7 +1087,6 @@ HTML = """<!DOCTYPE html>
         }
     }
 
-    // ===== ИНИЦИАЛИЗАЦИЯ =====
     renderCheckerHistory();
     renderFreshHistory();
 </script>
