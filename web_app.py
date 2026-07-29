@@ -240,14 +240,16 @@ HTML = """<!DOCTYPE html>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body {
             font-family: 'Inter', sans-serif;
             min-height: 100vh;
             padding: 24px;
             background: #0b081a;
             background-image: radial-gradient(circle at 10% 20%, #1a1040 0%, #0b081a 80%);
-            color: #ffffff;
+            position: relative;
         }
+        
         .kai-wrapper {
             max-width: 1400px;
             margin: 0 auto;
@@ -256,7 +258,10 @@ HTML = """<!DOCTYPE html>
             border: 2px solid #6c5ce7;
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
+            position: relative;
+            z-index: 5;
         }
+        
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0d0722; border-radius: 8px; }
         ::-webkit-scrollbar-thumb { background: #a855f7; border-radius: 8px; }
@@ -266,6 +271,7 @@ HTML = """<!DOCTYPE html>
             padding: 20px 0 16px; border-bottom: 1px solid #2a1a50;
             margin-bottom: 30px;
         }
+        
         .logo {
             font-family: 'Poppins', sans-serif;
             font-size: 34px; font-weight: 900; font-style: italic;
@@ -276,11 +282,12 @@ HTML = """<!DOCTYPE html>
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
         }
+        
         .tab {
             padding: 10px 24px; background: rgba(26, 16, 64, 0.9);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
             cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
-            user-select: none;
+            user-select: none; z-index: 10;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
@@ -296,6 +303,7 @@ HTML = """<!DOCTYPE html>
             background: rgba(18, 10, 40, 0.9);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
             margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            position: relative; z-index: 6;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -305,7 +313,7 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            text-decoration: none;
+            text-decoration: none; position: relative; z-index: 10;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -323,6 +331,8 @@ HTML = """<!DOCTYPE html>
             padding: 4px;
             gap: 4px;
             margin-bottom: 18px;
+            position: relative;
+            z-index: 8;
         }
         .toggle-btn {
             flex: 1;
@@ -344,10 +354,10 @@ HTML = """<!DOCTYPE html>
             box-shadow: 0 4px 15px rgba(168,85,247,0.2);
         }
 
-        textarea, .upload-area {
+        textarea, .upload-area, select {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s;
+            resize: vertical; transition: 0.2s; position: relative; z-index: 8;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
@@ -361,6 +371,7 @@ HTML = """<!DOCTYPE html>
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
+            position: relative; z-index: 8;
         }
 
         .progress-bar {
@@ -369,7 +380,6 @@ HTML = """<!DOCTYPE html>
         .progress-bar .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.3s ease; }
 
         .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
-        .hidden-input { display: none !important; }
         .tool-section {
             margin-bottom: 20px; padding: 16px; background: rgba(13,7,34,0.5); border-radius: 14px; border: 1px solid #2a1a50;
         }
@@ -406,16 +416,16 @@ HTML = """<!DOCTYPE html>
                     <div id="fileStatusInfo" style="margin-top:8px;color:#00b894;font-size:13px;"></div>
                 </div>
                 <div style="flex:1;">
-                    <div class="upload-area" id="fullArea">
+                    <div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                         <p style="font-size:12px; color:#9880c0;">Файл сохранится на сервере</p>
                     </div>
-                    <input type="file" id="fullFile" accept=".txt" class="hidden-input">
+                    <input type="file" id="fullFile" accept=".txt" style="display:none;">
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" id="btnRunChecker">🚀 Запустить проверку</button>
-                <button class="btn btn-secondary" id="btnClearChecker">🧹 Очистить</button>
+                <button class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
+                <button class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
             <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
@@ -431,13 +441,13 @@ HTML = """<!DOCTYPE html>
                     <textarea id="validatorCookies" placeholder="Вставьте куки для валидации..." rows="6"></textarea>
                 </div>
                 <div style="flex:1;">
-                    <div class="upload-area" id="validatorArea">
+                    <div class="upload-area" id="validatorArea" onclick="document.getElementById('validatorFile').click()">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                     </div>
-                    <input type="file" id="validatorFile" accept=".txt" class="hidden-input">
+                    <input type="file" id="validatorFile" accept=".txt" style="display:none;">
                 </div>
             </div>
-            <button class="btn btn-primary" id="btnRunValidator" style="margin-top:14px;">🧪 Запустить</button>
+            <button class="btn btn-primary" onclick="runValidator()" style="margin-top:14px;">🧪 Запустить</button>
             <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
         </div>
     </div>
@@ -449,8 +459,8 @@ HTML = """<!DOCTYPE html>
             <div style="margin-bottom: 8px;">
                 <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
                 <div class="toggle-group">
-                    <button type="button" class="toggle-btn active" id="modeDuplicate">♻️ Дублировать кук</button>
-                    <button type="button" class="toggle-btn" id="modeKill">💀 Убить старый кук</button>
+                    <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать кук (оставить старый рабочий)</button>
+                    <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Убить старый кук (выход со всех устройств / сброс)</button>
                 </div>
                 <input type="hidden" id="fresherMode" value="duplicate">
             </div>
@@ -459,15 +469,16 @@ HTML = """<!DOCTYPE html>
                     <textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="6"></textarea>
                 </div>
                 <div style="flex:1;">
-                    <div class="upload-area" id="fresherArea">
+                    <div class="upload-area" id="fresherArea" onclick="document.getElementById('fresherFile').click()">
                         <p>📁 <strong>Загрузить .txt</strong></p>
+                        <p style="font-size:12px; color:#9880c0;">Файл с куками</p>
                     </div>
-                    <input type="file" id="fresherFile" accept=".txt" class="hidden-input">
+                    <input type="file" id="fresherFile" accept=".txt" style="display:none;">
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" id="btnRunFresher">⚡ Обновить сессии</button>
-                <button class="btn btn-secondary" id="btnClearFresher">🧹 Очистить</button>
+                <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
+                <button class="btn btn-secondary" onclick="clearFresher()">🧹 Очистить</button>
             </div>
             <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
         </div>
@@ -487,13 +498,13 @@ HTML = """<!DOCTYPE html>
                         <textarea id="sorterInput" placeholder="Вставьте куки для сортировки..." rows="4"></textarea>
                     </div>
                     <div style="flex:1;">
-                        <div class="upload-area" id="sorterArea">
+                        <div class="upload-area" id="sorterArea" onclick="document.getElementById('sorterFile').click()">
                             <p>📁 <strong>Загрузить .txt</strong></p>
                         </div>
-                        <input type="file" id="sorterFile" accept=".txt" class="hidden-input">
+                        <input type="file" id="sorterFile" accept=".txt" style="display:none;">
                     </div>
                 </div>
-                <button class="btn btn-primary" id="btnRunSorter" style="margin-top:12px;">📦 Сортировать</button>
+                <button class="btn btn-primary" onclick="runSorter()" style="margin-top:12px;">📦 Сортировать</button>
                 <div class="result-box" id="sorterResult">Результат сортировки...</div>
             </div>
             
@@ -505,13 +516,13 @@ HTML = """<!DOCTYPE html>
                         <textarea id="splitInput" placeholder="Вставьте куки для разделения..." rows="4"></textarea>
                     </div>
                     <div style="flex:1;">
-                        <div class="upload-area" id="splitArea">
+                        <div class="upload-area" id="splitArea" onclick="document.getElementById('splitFile').click()">
                             <p>📁 <strong>Загрузить .txt</strong></p>
                         </div>
-                        <input type="file" id="splitFile" accept=".txt" class="hidden-input">
+                        <input type="file" id="splitFile" accept=".txt" style="display:none;">
                     </div>
                 </div>
-                <button class="btn btn-primary" id="btnRunSplit" style="margin-top:12px;">✂️ Разделить</button>
+                <button class="btn btn-primary" onclick="runSplit()" style="margin-top:12px;">✂️ Разделить</button>
                 <div class="result-box" id="splitResult">Результат разделения...</div>
             </div>
             
@@ -523,13 +534,13 @@ HTML = """<!DOCTYPE html>
                         <textarea id="mergeInput" placeholder="Вставьте куки для слияния..." rows="4"></textarea>
                     </div>
                     <div style="flex:1;">
-                        <div class="upload-area" id="mergeArea">
+                        <div class="upload-area" id="mergeArea" onclick="document.getElementById('mergeFile').click()">
                             <p>📁 <strong>Загрузить несколько .txt</strong></p>
                         </div>
-                        <input type="file" id="mergeFile" accept=".txt" multiple class="hidden-input">
+                        <input type="file" id="mergeFile" accept=".txt" multiple style="display:none;">
                     </div>
                 </div>
-                <button class="btn btn-primary" id="btnRunMerge" style="margin-top:12px;">🔗 Слить</button>
+                <button class="btn btn-primary" onclick="runMerge()" style="margin-top:12px;">🔗 Слить</button>
                 <div class="result-box" id="mergeResult">Результат слияния...</div>
             </div>
         </div>
@@ -539,74 +550,77 @@ HTML = """<!DOCTYPE html>
 </div>
 
 <script>
-    // ===== ТАЙМЕР =====
-    var startTime = Date.now();
-    setInterval(function() {
-        var diff = Math.floor((Date.now() - startTime) / 1000);
-        var h = String(Math.floor(diff / 3600)).padStart(2, '0');
-        var m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
-        var s = String(diff % 60).padStart(2, '0');
-        var timerEl = document.getElementById('sessionTimer');
-        if (timerEl) timerEl.textContent = '⏱️ ' + h + ':' + m + ':' + s;
+    let startTime = Date.now();
+    setInterval(() => {
+        let diff = Math.floor((Date.now() - startTime) / 1000);
+        let h = String(Math.floor(diff / 3600)).padStart(2, '0');
+        let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+        let s = String(diff % 60).padStart(2, '0');
+        const timerEl = document.getElementById('sessionTimer');
+        if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
     }, 1000);
 
-    // ===== ВКЛАДКИ =====
-    document.querySelectorAll('.tab').forEach(function(tab) {
-        tab.addEventListener('click', function() {
-            var tabId = this.getAttribute('data-tab');
-            if (!tabId) return;
-            document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-            document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
-            this.classList.add('active');
-            var target = document.getElementById('tab-' + tabId);
-            if (target) target.classList.add('active');
-        });
-    });
-
-    // ===== РЕЖИМЫ ФРЕШЕРА =====
-    document.getElementById('modeDuplicate').addEventListener('click', function() {
-        document.getElementById('fresherMode').value = 'duplicate';
-        this.classList.add('active');
-        document.getElementById('modeKill').classList.remove('active');
-    });
-    document.getElementById('modeKill').addEventListener('click', function() {
-        document.getElementById('fresherMode').value = 'kill';
-        this.classList.add('active');
-        document.getElementById('modeDuplicate').classList.remove('active');
-    });
+    // Функция переключения режима кликом
+    function setFresherMode(mode) {
+        document.getElementById('fresherMode').value = mode;
+        const btnDup = document.getElementById('modeDuplicate');
+        const btnKill = document.getElementById('modeKill');
+        if (mode === 'duplicate') {
+            btnDup.classList.add('active');
+            btnKill.classList.remove('active');
+        } else {
+            btnKill.classList.add('active');
+            btnDup.classList.remove('active');
+        }
+    }
 
     // ===== ЗАГРУЗКА ФАЙЛОВ =====
-    function setupFileInput(inputId, textareaId) {
-        var input = document.getElementById(inputId);
+    function setupFileInput(inputId, textareaId, isServerUpload) {
+        const input = document.getElementById(inputId);
         if (!input) return;
-        input.addEventListener('change', function() {
+        input.addEventListener('change', async function(e) {
             if (this.files && this.files[0]) {
-                var reader = new FileReader();
+                const file = this.files[0];
+                if (isServerUpload) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    const statusEl = document.getElementById('fileStatusInfo');
+                    if (statusEl) statusEl.textContent = '⏳ Загрузка на сервер...';
+                    try {
+                        const response = await fetch('/api/upload', { method: 'POST', body: formData });
+                        const data = await response.json();
+                        if (data.success && statusEl) {
+                            statusEl.textContent = `✅ Файл "${data.filename}" загружен!`;
+                        }
+                    } catch (err) {
+                        if (statusEl) statusEl.textContent = '❌ Ошибка загрузки';
+                    }
+                }
+                const reader = new FileReader();
                 reader.onload = function(evt) {
-                    var textarea = document.getElementById(textareaId);
+                    const textarea = document.getElementById(textareaId);
                     if (textarea) textarea.value = evt.target.result;
                 };
-                reader.readAsText(this.files[0]);
+                reader.readAsText(file);
             }
         });
     }
 
-    // Привязываем загрузку файлов к текстовым полям
-    setupFileInput('fullFile', 'manualCookies');
-    setupFileInput('validatorFile', 'validatorCookies');
-    setupFileInput('fresherFile', 'fresherCookies');
-    setupFileInput('sorterFile', 'sorterInput');
-    setupFileInput('splitFile', 'splitInput');
+    setupFileInput('fullFile', 'manualCookies', true);
+    setupFileInput('validatorFile', 'validatorCookies', false);
+    setupFileInput('fresherFile', 'fresherCookies', false);
+    setupFileInput('sorterFile', 'sorterInput', false);
+    setupFileInput('splitFile', 'splitInput', false);
 
     // Множественная загрузка для слияния
-    var mergeFileInput = document.getElementById('mergeFile');
+    const mergeFileInput = document.getElementById('mergeFile');
     if (mergeFileInput) {
-        mergeFileInput.addEventListener('change', function() {
+        mergeFileInput.addEventListener('change', function(e) {
             if (this.files && this.files.length > 0) {
-                var combined = '';
-                var count = 0;
-                Array.from(this.files).forEach(function(file) {
-                    var reader = new FileReader();
+                let combined = '';
+                let count = 0;
+                Array.from(this.files).forEach(file => {
+                    const reader = new FileReader();
                     reader.onload = function(evt) {
                         combined += evt.target.result + '\n';
                         count++;
@@ -620,249 +634,242 @@ HTML = """<!DOCTYPE html>
         });
     }
 
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const tabId = this.getAttribute('data-tab');
+            if (!tabId) return;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            const target = document.getElementById('tab-' + tabId);
+            if (target) target.classList.add('active');
+        });
+    });
+
+    let checkerHistory = [];
+    let fresherHistory = [];
+
     // ============================================================
     // ===== ЧЕКЕР ================================================
     // ============================================================
-    var checkerHistory = [];
-
-    document.getElementById('btnRunChecker').addEventListener('click', function() {
-        var resBox = document.getElementById('fullcheckResult');
-        var manual = document.getElementById('manualCookies').value.trim();
-        var progress = document.getElementById('checkerProgress');
+    async function runFullcheck() {
+        const resBox = document.getElementById('fullcheckResult');
+        const manual = document.getElementById('manualCookies').value.trim();
+        const progress = document.getElementById('checkerProgress');
         
         if (!manual) {
             resBox.textContent = '❌ Вставь куки или загрузи .txt!';
             return;
         }
 
-        var formData = new FormData();
+        const formData = new FormData();
         formData.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
 
         resBox.textContent = '⏳ Проверка аккаунтов запущена...';
         progress.style.width = '40%';
         
-        fetch('/api/fullcheck', { method: 'POST', body: formData })
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
-                progress.style.width = '100%';
-                setTimeout(function() { progress.style.width = '0%'; }, 1000);
-                
-                if (data.success) {
-                    if (data.reports && data.reports.length) {
-                        for (var i = 0; i < data.reports.length; i++) {
-                            checkerHistory.push(data.reports[i]);
-                        }
+        try {
+            const response = await fetch('/api/fullcheck', { method: 'POST', body: formData });
+            const data = await response.json();
+            progress.style.width = '100%';
+            setTimeout(() => { progress.style.width = '0%'; }, 1000);
+            
+            if (data.success) {
+                if (data.reports && data.reports.length) {
+                    for (const report of data.reports) {
+                        checkerHistory.push(report);
                     }
-                    
-                    var html = '✅ Проверено аккаунтов: ' + data.total + ' | Успешно валидных: ' + data.valid_count + '\n\n';
-                    for (var j = 0; j < checkerHistory.length; j++) {
-                        html += checkerHistory[j] + '\n────────────────────────────────────────\n';
-                    }
-                    if (data.download_url) {
-                        html += '\n📥 <a href="' + data.download_url + '" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Скачать ZIP со всеми отчетами (.txt)</a>';
-                    }
-                    resBox.innerHTML = html;
-                    resBox.scrollTop = resBox.scrollHeight;
-                } else {
-                    resBox.textContent = '❌ ' + (data.message || 'Ошибка');
                 }
-            })
-            .catch(function(e) {
-                resBox.textContent = '❌ Ошибка: ' + e.message;
-                progress.style.width = '0%';
-            });
-    });
+                
+                let html = `✅ Проверено аккаунтов: ${data.total} | Успешно валидных: ${data.valid_count}\n\n`;
+                for (const report of checkerHistory) {
+                    html += `${report}\n────────────────────────────────────────\n`;
+                }
+                if (data.download_url) {
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Скачать ZIP со всеми отчетами (.txt)</a>`;
+                }
+                resBox.innerHTML = html;
+                resBox.scrollTop = resBox.scrollHeight;
+            } else {
+                resBox.textContent = '❌ ' + (data.message || 'Ошибка');
+            }
+        } catch (e) {
+            resBox.textContent = '❌ Ошибка: ' + e.message;
+            progress.style.width = '0%';
+        }
+    }
 
-    document.getElementById('btnClearChecker').addEventListener('click', function() {
+    function clearInputs() {
         document.getElementById('manualCookies').value = '';
         document.getElementById('fileStatusInfo').textContent = '';
         checkerHistory = [];
         document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
-    });
+    }
 
     // ============================================================
     // ===== ВАЛИДАТОР ============================================
     // ============================================================
-    document.getElementById('btnRunValidator').addEventListener('click', function() {
-        var resBox = document.getElementById('validatorResult');
-        var cookies = document.getElementById('validatorCookies').value.trim();
+    async function runValidator() {
+        const resBox = document.getElementById('validatorResult');
+        const cookies = document.getElementById('validatorCookies').value.trim();
         if (!cookies) {
             resBox.textContent = '❌ Вставьте куки для валидации!';
             return;
         }
         resBox.textContent = '⏳ Выполняется быстрая валидация...';
-        fetch('/api/validator', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cookies: cookies })
-        })
-        .then(function(response) { return response.json(); })
-        .then(function(data) {
+        try {
+            const response = await fetch('/api/validator', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: cookies })
+            });
+            const data = await response.json();
             if (data.success) {
-                var html = '✅ Проверено: ' + data.total + ' | Живых (Valid): ' + data.valid_count + ' | Мертвых (Dead): ' + data.dead_count + '\n\n';
-                html += '🟢 ЖИВЫЕ КУКИ:\n' + (data.valid_list.length ? data.valid_list.join('\n') : 'Нет живых') + '\n\n';
-                html += '❌ МЕРТВЫЕ КУКИ:\n' + (data.dead_list.length ? data.dead_list.join('\n') : 'Нет мертвых');
+                let html = `✅ Проверено: ${data.total} | Живых (Valid): ${data.valid_count} | Мертвых (Dead): ${data.dead_count}\n\n`;
+                html += `🟢 ЖИВЫЕ КУКИ:\n` + (data.valid_list.length ? data.valid_list.join('\n') : 'Нет живых') + `\n\n`;
+                html += `❌ МЕРТВЫЕ КУКИ:\n` + (data.dead_list.length ? data.dead_list.join('\n') : 'Нет мертвых');
                 resBox.textContent = html;
             } else {
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка валидации');
             }
-        })
-        .catch(function(e) {
+        } catch (e) {
             resBox.textContent = '❌ Ошибка сети: ' + e.message;
-        });
-    });
+        }
+    }
 
     // ============================================================
     // ===== ФРЕШЕР ===============================================
     // ============================================================
-    var fresherHistory = [];
-
-    document.getElementById('btnRunFresher').addEventListener('click', function() {
-        var resBox = document.getElementById('fresherResult');
-        var cookies = document.getElementById('fresherCookies').value.trim();
-        var mode = document.getElementById('fresherMode').value;
+    async function runFresher() {
+        const resBox = document.getElementById('fresherResult');
+        const cookies = document.getElementById('fresherCookies').value.trim();
+        const mode = document.getElementById('fresherMode').value;
         if (!cookies) {
             resBox.textContent = '❌ Вставьте куки для фреша!';
             return;
         }
         resBox.textContent = '⏳ Выполняется обновление сессий...';
-        fetch('/api/fresher', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cookies: cookies, mode: mode })
-        })
-        .then(function(response) { return response.json(); })
-        .then(function(data) {
+        try {
+            const response = await fetch('/api/fresher', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: cookies, mode: mode })
+            });
+            const data = await response.json();
             if (data.success) {
                 if (data.refreshed_list && data.refreshed_list.length) {
-                    for (var i = 0; i < data.refreshed_list.length; i++) {
-                        fresherHistory.push(data.refreshed_list[i]);
+                    for (const item of data.refreshed_list) {
+                        fresherHistory.push(item);
                     }
                 }
-                var html = '✅ Успешно обновлено сессий (режим: ' + (mode === 'kill' ? 'Убийство старого кука' : 'Дублирование') + '): ' + data.refreshed_count + '\n\n';
-                for (var j = 0; j < fresherHistory.length; j++) {
-                    html += fresherHistory[j] + '\n────────────────────────────────────────\n';
+                let html = `✅ Успешно обновлено сессий (режим: ${mode === 'kill' ? 'Убийство старого кука' : 'Дублирование'}): ${data.refreshed_count}\n\n`;
+                for (const item of fresherHistory) {
+                    html += `${item}\n────────────────────────────────────────\n`;
                 }
                 resBox.textContent = html;
             } else {
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка фрешера');
             }
-        })
-        .catch(function(e) {
+        } catch (e) {
             resBox.textContent = '❌ Ошибка сети: ' + e.message;
-        });
-    });
+        }
+    }
 
-    document.getElementById('btnClearFresher').addEventListener('click', function() {
+    function clearFresher() {
         document.getElementById('fresherCookies').value = '';
         document.getElementById('fresherResult').textContent = 'Результаты фрешера появятся здесь...';
         fresherHistory = [];
-    });
+    }
 
     // ============================================================
     // ===== ИНСТРУМЕНТЫ ==========================================
     // ============================================================
-    
-    // Сортер
-    document.getElementById('btnRunSorter').addEventListener('click', function() {
-        var resBox = document.getElementById('sorterResult');
-        var input = document.getElementById('sorterInput').value.trim();
+    async function runSorter() {
+        const resBox = document.getElementById('sorterResult');
+        const input = document.getElementById('sorterInput').value.trim();
         if (!input) {
             resBox.textContent = '❌ Вставьте куки для сортировки!';
             return;
         }
         resBox.textContent = '⏳ Сортировка...';
-        fetch('/api/sorter', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cookies: input })
-        })
-        .then(function(response) { return response.json(); })
-        .then(function(data) {
+        try {
+            const response = await fetch('/api/sorter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: input })
+            });
+            const data = await response.json();
             if (data.success) {
-                var html = '✅ Сортировка завершена!\n📦 Куков: ' + data.total + '\n';
+                let html = `✅ Сортировка завершена!\n📦 Куков: ${data.total}\n`;
                 if (data.download_url) {
-                    html += '\n📥 <a href="' + data.download_url + '" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>';
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка');
             }
-        })
-        .catch(function(e) {
+        } catch (e) {
             resBox.textContent = '❌ Ошибка: ' + e.message;
-        });
-    });
+        }
+    }
 
-    // Разделитель
-    document.getElementById('btnRunSplit').addEventListener('click', function() {
-        var resBox = document.getElementById('splitResult');
-        var input = document.getElementById('splitInput').value.trim();
+    async function runSplit() {
+        const resBox = document.getElementById('splitResult');
+        const input = document.getElementById('splitInput').value.trim();
         if (!input) {
             resBox.textContent = '❌ Вставьте куки для разделения!';
             return;
         }
         resBox.textContent = '⏳ Разделение на 5 частей...';
-        fetch('/api/split', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cookies: input })
-        })
-        .then(function(response) { return response.json(); })
-        .then(function(data) {
+        try {
+            const response = await fetch('/api/split', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: input })
+            });
+            const data = await response.json();
             if (data.success) {
-                var html = '✅ Разделение завершено!\n📦 Куков: ' + data.total + '\n';
+                let html = `✅ Разделение завершено!\n📦 Куков: ${data.total}\n`;
                 if (data.download_url) {
-                    html += '\n📥 <a href="' + data.download_url + '" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>';
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка');
             }
-        })
-        .catch(function(e) {
+        } catch (e) {
             resBox.textContent = '❌ Ошибка: ' + e.message;
-        });
-    });
+        }
+    }
 
-    // Слияние
-    document.getElementById('btnRunMerge').addEventListener('click', function() {
-        var resBox = document.getElementById('mergeResult');
-        var input = document.getElementById('mergeInput').value.trim();
+    async function runMerge() {
+        const resBox = document.getElementById('mergeResult');
+        const input = document.getElementById('mergeInput').value.trim();
         if (!input) {
             resBox.textContent = '❌ Вставьте куки для слияния!';
             return;
         }
         resBox.textContent = '⏳ Слияние и удаление дублей...';
-        fetch('/api/merge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cookies: input })
-        })
-        .then(function(response) { return response.json(); })
-        .then(function(data) {
+        try {
+            const response = await fetch('/api/merge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: input })
+            });
+            const data = await response.json();
             if (data.success) {
-                var html = '✅ Слияние завершено!\n📦 Уникальных куков: ' + data.total + '\n🗑️ Дублей удалено: ' + data.duplicates + '\n';
+                let html = `✅ Слияние завершено!\n📦 Уникальных куков: ${data.total}\n🗑️ Дублей удалено: ${data.duplicates}\n`;
                 if (data.download_url) {
-                    html += '\n📥 <a href="' + data.download_url + '" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>';
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка');
             }
-        })
-        .catch(function(e) {
+        } catch (e) {
             resBox.textContent = '❌ Ошибка: ' + e.message;
-        });
-    });
-
-    // ===== ЗАГРУЗКА ФАЙЛОВ ЧЕРЕЗ КЛИК ПО .upload-area =====
-    document.querySelectorAll('.upload-area').forEach(function(area) {
-        area.addEventListener('click', function() {
-            var input = this.parentElement.querySelector('input[type="file"]');
-            if (input) input.click();
-        });
-    });
+        }
+    }
 </script>
 </body>
 </html>"""
@@ -929,7 +936,7 @@ def api_fullcheck():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     archive_name = f"reports_{timestamp}.zip"
     filepath = os.path.join("downloads", archive_name)
-    with open(filepath, 'wb') as f:
+    with open(filepath, 'wb' ) as f:
         f.write(zip_buffer.getvalue())
     
     return jsonify({
