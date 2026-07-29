@@ -193,7 +193,7 @@ def generate_full_txt_report(info):
     gp = info.get('PurchasedGamepasses', {})
     
     r = "╔══════════════════════════════════════════════════════════╗\n"
-    r += "║  🎮 KAI CHECKER REPORT                                   ║\n"
+    r += "║  🎮 MICE CHECKER REPORT                                  ║\n"
     r += "╠══════════════════════════════════════════════════════════╣\n"
     r += f"║  📋 {info['Username']}                                   ║\n"
     r += f"║  🟢 ✅ | 🆔 {info['UserID']}                            ║\n"
@@ -235,7 +235,7 @@ HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kai Checker</title>
+    <title>mice checker</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -258,6 +258,7 @@ HTML = """<!DOCTYPE html>
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
             position: relative;
+            z-index: 1;
         }
         
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -296,7 +297,7 @@ HTML = """<!DOCTYPE html>
             color: #c084fc; box-shadow: 0 0 20px rgba(168,85,247,0.2);
         }
 
-        .tab-content { display: none; }
+        .tab-content { display: none; position: relative; z-index: 10; }
         .tab-content.active { display: block; animation: fadeUp 0.3s ease; }
         @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
 
@@ -304,6 +305,7 @@ HTML = """<!DOCTYPE html>
             background: rgba(18, 10, 40, 0.9);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
             margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            position: relative; z-index: 10;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -315,6 +317,8 @@ HTML = """<!DOCTYPE html>
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
             text-decoration: none;
             pointer-events: auto;
+            position: relative;
+            z-index: 20;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -355,25 +359,34 @@ HTML = """<!DOCTYPE html>
             box-shadow: 0 4px 15px rgba(168,85,247,0.2);
         }
 
-        textarea, .upload-area, select {
+        textarea, select {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
             resize: vertical; transition: 0.2s;
             pointer-events: auto;
+            position: relative;
+            z-index: 15;
         }
-        textarea:focus, .upload-area:focus-within {
+        textarea:focus {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
         }
         .upload-area {
+            width: 100%;
             min-height: 100px; display: flex; flex-direction: column; align-items: center;
-            justify-content: center; cursor: pointer; border-style: dashed; gap: 6px; text-align: center; color: #ffffff;
+            justify-content: center; cursor: pointer; border: 1px dashed #2a1a50;
+            border-radius: 14px; background: #0d0722; gap: 6px; text-align: center; color: #ffffff;
             pointer-events: auto;
+            position: relative;
+            z-index: 15;
+            user-select: none;
         }
+        .upload-area:hover { border-color: #a855f7; background: rgba(168,85,247,0.05); }
 
         .result-box {
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
+            position: relative; z-index: 10;
         }
 
         .progress-bar {
@@ -382,13 +395,14 @@ HTML = """<!DOCTYPE html>
         .progress-bar .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.3s ease; }
 
         .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
+        .hidden-input { display: none !important; }
     </style>
 </head>
 <body>
 
 <div class="kai-wrapper">
     <div class="header">
-        <div class="logo">KAI CHECKER</div>
+        <div class="logo">mice checker</div>
         <div style="display: flex; align-items: center; gap: 15px;">
             <span id="sessionTimer" style="color: #00b894; font-family: 'Inter', monospace; font-weight: 600; font-size: 13px; background: rgba(0, 184, 148, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(0, 184, 148, 0.2);">⏱️ 00:00:00</span>
             <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
@@ -412,16 +426,16 @@ HTML = """<!DOCTYPE html>
                     <div id="fileStatusInfo" style="margin-top:8px;color:#00b894;font-size:13px;"></div>
                 </div>
                 <div style="flex:1;">
-                    <div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
+                    <label class="upload-area" for="fullFile">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                         <p style="font-size:12px; color:#9880c0;">Файл сохранится на сервере</p>
-                    </div>
-                    <input type="file" id="fullFile" accept=".txt" style="display:none;">
+                    </label>
+                    <input type="file" id="fullFile" accept=".txt" class="hidden-input">
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
-                <button class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
+                <button type="button" class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
             <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
@@ -437,16 +451,16 @@ HTML = """<!DOCTYPE html>
                     <textarea id="validatorCookies" placeholder="Вставьте куки для валидации..." rows="6"></textarea>
                 </div>
                 <div style="flex:1;">
-                    <div class="upload-area" onclick="document.getElementById('validatorFile').click()">
+                    <label class="upload-area" for="validatorFile">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                         <p style="font-size:12px; color:#9880c0;">Файл с куками</p>
-                    </div>
-                    <input type="file" id="validatorFile" accept=".txt" style="display:none;">
+                    </label>
+                    <input type="file" id="validatorFile" accept=".txt" class="hidden-input">
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="runValidator()">🧪 Запустить валидацию</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('validatorCookies').value=''; document.getElementById('validatorResult').textContent='Здесь будет результат валидации...';">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runValidator()">🧪 Запустить валидацию</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('validatorCookies').value=''; document.getElementById('validatorResult').textContent='Здесь будет результат валидации...';">🧹 Очистить</button>
             </div>
             <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
         </div>
@@ -469,16 +483,16 @@ HTML = """<!DOCTYPE html>
                     <textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="6"></textarea>
                 </div>
                 <div style="flex:1;">
-                    <div class="upload-area" onclick="document.getElementById('fresherFile').click()">
+                    <label class="upload-area" for="fresherFile">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                         <p style="font-size:12px; color:#9880c0;">Файл с куками</p>
-                    </div>
-                    <input type="file" id="fresherFile" accept=".txt" style="display:none;">
+                    </label>
+                    <input type="file" id="fresherFile" accept=".txt" class="hidden-input">
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('fresherCookies').value=''; document.getElementById('fresherResult').textContent='Результаты фрешера появятся здесь...'; fresherHistory=[];">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('fresherCookies').value=''; document.getElementById('fresherResult').textContent='Результаты фрешера появятся здесь...'; fresherHistory=[];">🧹 Очистить</button>
             </div>
             <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
         </div>
@@ -494,34 +508,131 @@ HTML = """<!DOCTYPE html>
                     <textarea id="toolsInput" placeholder="Вставьте куки для слияния или обработки..." rows="6"></textarea>
                 </div>
                 <div style="flex:1;">
-                    <div class="upload-area" onclick="document.getElementById('toolsFile').click()">
+                    <label class="upload-area" for="toolsFile">
                         <p>📁 <strong>Загрузить файлы</strong></p>
                         <p style="font-size:12px; color:#9880c0;">TXT файлы</p>
-                    </div>
-                    <input type="file" id="toolsFile" accept=".txt" multiple style="display:none;">
+                    </label>
+                    <input type="file" id="toolsFile" accept=".txt" multiple class="hidden-input">
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="runToolsMerge()">🔗 Объединить и удалить дубликаты</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('toolsInput').value=''; document.getElementById('toolsResult').textContent='Результаты обработки появятся здесь...';">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runToolsMerge()">🔗 Объединить и удалить дубликаты</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('toolsInput').value=''; document.getElementById('toolsResult').textContent='Результаты обработки появятся здесь...';">🧹 Очистить</button>
             </div>
             <div class="result-box" id="toolsResult">Результаты обработки появятся здесь...</div>
         </div>
     </div>
 
-    <div class="footer">KAI CHECKER · PRO</div>
+    <div class="footer">mice checker · PRO</div>
 </div>
 
 <script>
-    let startTime = Date.now();
-    setInterval(() => {
-        let diff = Math.floor((Date.now() - startTime) / 1000);
-        let h = String(Math.floor(diff / 3600)).padStart(2, '0');
-        let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
-        let s = String(diff % 60).padStart(2, '0');
-        const timerEl = document.getElementById('sessionTimer');
-        if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
-    }, 1000);
+    document.addEventListener('DOMContentLoaded', function() {
+        let startTime = Date.now();
+        setInterval(() => {
+            let diff = Math.floor((Date.now() - startTime) / 1000);
+            let h = String(Math.floor(diff / 3600)).padStart(2, '0');
+            let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+            let s = String(diff % 60).padStart(2, '0');
+            const timerEl = document.getElementById('sessionTimer');
+            if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
+        }, 1000);
+
+        // Переключение вкладок
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function(e) {
+                e.preventDefault();
+                const tabId = this.getAttribute('data-tab');
+                if (!tabId) return;
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                const target = document.getElementById('tab-' + tabId);
+                if (target) target.classList.add('active');
+            });
+        });
+
+        // Загрузка файла Чекер
+        const fileInput = document.getElementById('fullFile');
+        if (fileInput) {
+            fileInput.addEventListener('change', async function() {
+                if (this.files && this.files[0]) {
+                    const file = this.files[0];
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    document.getElementById('fileStatusInfo').textContent = '⏳ Загрузка и сохранение файла на сервере...';
+
+                    try {
+                        const response = await fetch('/api/upload', { method: 'POST', body: formData });
+                        const data = await response.json();
+                        if (data.success) {
+                            document.getElementById('fileStatusInfo').textContent = `✅ Файл "${data.filename}" успешно сохранен на сервере!`;
+                            const reader = new FileReader();
+                            reader.onload = function(evt) {
+                                document.getElementById('manualCookies').value = evt.target.result;
+                            };
+                            reader.readAsText(file);
+                        } else {
+                            document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сохранения файла';
+                        }
+                    } catch (err) {
+                        document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сети при загрузке';
+                    }
+                }
+            });
+        }
+
+        // Загрузка Валидатор
+        const validatorFileInput = document.getElementById('validatorFile');
+        if (validatorFileInput) {
+            validatorFileInput.addEventListener('change', function() {
+                if (this.files && this.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        document.getElementById('validatorCookies').value = evt.target.result;
+                    };
+                    reader.readAsText(this.files[0]);
+                }
+            });
+        }
+
+        // Загрузка Фрешер
+        const fresherFileInput = document.getElementById('fresherFile');
+        if (fresherFileInput) {
+            fresherFileInput.addEventListener('change', function() {
+                if (this.files && this.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        document.getElementById('fresherCookies').value = evt.target.result;
+                    };
+                    reader.readAsText(this.files[0]);
+                }
+            });
+        }
+
+        // Загрузка Инструменты
+        const toolsFileInput = document.getElementById('toolsFile');
+        if (toolsFileInput) {
+            toolsFileInput.addEventListener('change', function() {
+                if (this.files && this.files.length > 0) {
+                    let combinedText = "";
+                    let filesRead = 0;
+                    Array.from(this.files).forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = function(evt) {
+                            combinedText += evt.target.result + "\n";
+                            filesRead++;
+                            if (filesRead === toolsFileInput.files.length) {
+                                document.getElementById('toolsInput').value = combinedText;
+                            }
+                        };
+                        reader.readAsText(file);
+                    });
+                }
+            });
+        }
+    });
 
     function setFresherMode(mode) {
         document.getElementById('fresherMode').value = mode;
@@ -535,95 +646,6 @@ HTML = """<!DOCTYPE html>
             btnDup.classList.remove('active');
         }
     }
-
-    const fileInput = document.getElementById('fullFile');
-    if (fileInput) {
-        fileInput.addEventListener('change', async function(e) {
-            if (this.files && this.files[0]) {
-                const file = this.files[0];
-                const formData = new FormData();
-                formData.append('file', file);
-
-                document.getElementById('fileStatusInfo').textContent = '⏳ Загрузка и сохранение файла на сервере...';
-
-                try {
-                    const response = await fetch('/api/upload', { method: 'POST', body: formData });
-                    const data = await response.json();
-                    if (data.success) {
-                        document.getElementById('fileStatusInfo').textContent = `✅ Файл "${data.filename}" успешно сохранен на сервере!`;
-                        const reader = new FileReader();
-                        reader.onload = function(evt) {
-                            document.getElementById('manualCookies').value = evt.target.result;
-                        };
-                        reader.readAsText(file);
-                    } else {
-                        document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сохранения файла';
-                    }
-                } catch (err) {
-                    document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сети при загрузке';
-                }
-            }
-        });
-    }
-
-    const validatorFileInput = document.getElementById('validatorFile');
-    if (validatorFileInput) {
-        validatorFileInput.addEventListener('change', function(e) {
-            if (this.files && this.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function(evt) {
-                    document.getElementById('validatorCookies').value = evt.target.result;
-                };
-                reader.readAsText(this.files[0]);
-            }
-        });
-    }
-
-    const fresherFileInput = document.getElementById('fresherFile');
-    if (fresherFileInput) {
-        fresherFileInput.addEventListener('change', function(e) {
-            if (this.files && this.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function(evt) {
-                    document.getElementById('fresherCookies').value = evt.target.result;
-                };
-                reader.readAsText(this.files[0]);
-            }
-        });
-    }
-
-    const toolsFileInput = document.getElementById('toolsFile');
-    if (toolsFileInput) {
-        toolsFileInput.addEventListener('change', function(e) {
-            if (this.files && this.files.length > 0) {
-                let combinedText = "";
-                let filesRead = 0;
-                Array.from(this.files).forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = function(evt) {
-                        combinedText += evt.target.result + "\n";
-                        filesRead++;
-                        if (filesRead === toolsFileInput.files.length) {
-                            document.getElementById('toolsInput').value = combinedText;
-                        }
-                    };
-                    reader.readAsText(file);
-                });
-            }
-        });
-    }
-
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', function() {
-            const tabId = this.getAttribute('data-tab');
-            if (!tabId) return;
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            this.classList.add('active');
-            const target = document.getElementById('tab-' + tabId);
-            if (target) target.classList.add('active');
-        });
-    });
 
     let checkerHistory = [];
     let fresherHistory = [];
