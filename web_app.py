@@ -239,7 +239,6 @@ HTML = """<!DOCTYPE html>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        
         body {
             font-family: 'Inter', sans-serif;
             min-height: 100vh;
@@ -248,7 +247,6 @@ HTML = """<!DOCTYPE html>
             background-image: radial-gradient(circle at 10% 20%, #1a1040 0%, #0b081a 80%);
             color: #ffffff;
         }
-        
         .kai-wrapper {
             max-width: 1400px;
             margin: 0 auto;
@@ -258,7 +256,6 @@ HTML = """<!DOCTYPE html>
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
         }
-        
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0d0722; border-radius: 8px; }
         ::-webkit-scrollbar-thumb { background: #a855f7; border-radius: 8px; }
@@ -268,7 +265,6 @@ HTML = """<!DOCTYPE html>
             padding: 20px 0 16px; border-bottom: 1px solid #2a1a50;
             margin-bottom: 30px;
         }
-        
         .logo {
             font-family: 'Poppins', sans-serif;
             font-size: 34px; font-weight: 900; font-style: italic;
@@ -279,7 +275,6 @@ HTML = """<!DOCTYPE html>
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
         }
-        
         .tab {
             padding: 10px 24px; background: rgba(26, 16, 64, 0.9);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
@@ -414,8 +409,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" class="btn btn-primary" id="btnRunChecker">🚀 Запустить проверку</button>
-                <button type="button" class="btn btn-secondary" id="btnClearChecker">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
+                <button type="button" class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
             <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
@@ -439,8 +434,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" class="btn btn-primary" id="btnRunValidator">🧪 Запустить валидацию</button>
-                <button type="button" class="btn btn-secondary" id="btnClearValidator">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runValidator()">🧪 Запустить валидацию</button>
+                <button type="button" class="btn btn-secondary" onclick="clearValidator()">🧹 Очистить</button>
             </div>
             <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
         </div>
@@ -453,8 +448,8 @@ HTML = """<!DOCTYPE html>
             <div style="margin-bottom: 8px;">
                 <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
                 <div class="toggle-group">
-                    <button type="button" class="toggle-btn active" id="modeDuplicate">♻️ Duplicate cookie (keep old working)</button>
-                    <button type="button" class="toggle-btn" id="modeKill">💀 Kill old cookie (logout all devices / reset)</button>
+                    <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Duplicate cookie (keep old working)</button>
+                    <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Kill old cookie (logout all devices / reset)</button>
                 </div>
                 <input type="hidden" id="fresherMode" value="duplicate">
             </div>
@@ -471,8 +466,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" class="btn btn-primary" id="btnRunFresher">⚡ Обновить сессии</button>
-                <button type="button" class="btn btn-secondary" id="btnClearFresher">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
+                <button type="button" class="btn btn-secondary" onclick="clearFresher()">🧹 Очистить</button>
             </div>
             <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
         </div>
@@ -496,8 +491,8 @@ HTML = """<!DOCTYPE html>
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button type="button" class="btn btn-primary" id="btnRunTools">🔗 Объединить и удалить дубликаты</button>
-                <button type="button" class="btn btn-secondary" id="btnClearTools">🧹 Очистить</button>
+                <button type="button" class="btn btn-primary" onclick="runToolsMerge()">🔗 Объединить и удалить дубликаты</button>
+                <button type="button" class="btn btn-secondary" onclick="clearTools()">🧹 Очистить</button>
             </div>
             <div class="result-box" id="toolsResult">Результаты обработки появятся здесь...</div>
         </div>
@@ -517,81 +512,62 @@ HTML = """<!DOCTYPE html>
     // ============================================================
     // ТАЙМЕР СЕССИИ
     // ============================================================
-    setInterval(() => {
+    setInterval(function() {
         let diff = Math.floor((Date.now() - startTime) / 1000);
         let h = String(Math.floor(diff / 3600)).padStart(2, '0');
         let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
         let s = String(diff % 60).padStart(2, '0');
-        const timerEl = document.getElementById('sessionTimer');
-        if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
+        var timerEl = document.getElementById('sessionTimer');
+        if (timerEl) timerEl.textContent = '⏱️ ' + h + ':' + m + ':' + s;
     }, 1000);
 
     // ============================================================
     // ВКЛАДКИ
     // ============================================================
-    document.querySelectorAll('.tab').forEach(tab => {
+    document.querySelectorAll('.tab').forEach(function(tab) {
         tab.addEventListener('click', function(e) {
             e.preventDefault();
-            const tabId = this.getAttribute('data-tab');
+            var tabId = this.getAttribute('data-tab');
             if (!tabId) return;
 
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+            document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
 
             this.classList.add('active');
-            const target = document.getElementById('tab-' + tabId);
+            var target = document.getElementById('tab-' + tabId);
             if (target) target.classList.add('active');
         });
     });
 
     // ============================================================
-    // ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ФРЕШЕРА
-    // ============================================================
-    const modeDup = document.getElementById('modeDuplicate');
-    const modeKill = document.getElementById('modeKill');
-    const modeInput = document.getElementById('fresherMode');
-
-    if (modeDup && modeKill) {
-        modeDup.addEventListener('click', function() {
-            modeInput.value = 'duplicate';
-            modeDup.classList.add('active');
-            modeKill.classList.remove('active');
-        });
-        modeKill.addEventListener('click', function() {
-            modeInput.value = 'kill';
-            modeKill.classList.add('active');
-            modeDup.classList.remove('active');
-        });
-    }
-
-    // ============================================================
     // ЗАГРУЗКА ФАЙЛОВ
     // ============================================================
     function bindFileInput(inputId, textareaId, isServerUpload) {
-        const fileInput = document.getElementById(inputId);
+        var fileInput = document.getElementById(inputId);
         if (!fileInput) return;
 
-        fileInput.addEventListener('change', async function() {
+        fileInput.addEventListener('change', function() {
             if (this.files && this.files[0]) {
-                const file = this.files[0];
+                var file = this.files[0];
                 if (isServerUpload) {
-                    const formData = new FormData();
+                    var formData = new FormData();
                     formData.append('file', file);
-                    const statusEl = document.getElementById('fileStatusInfo');
+                    var statusEl = document.getElementById('fileStatusInfo');
                     if (statusEl) statusEl.textContent = '⏳ Загрузка на сервер...';
-                    try {
-                        const res = await fetch('/api/upload', { method: 'POST', body: formData });
-                        const data = await res.json();
-                        if (data.success && statusEl) {
-                            statusEl.textContent = `✅ Файл "${data.filename}" загружен!`;
-                        }
-                    } catch (e) {
-                        if (statusEl) statusEl.textContent = '❌ Ошибка загрузки файла';
-                    }
+                    fetch('/api/upload', { method: 'POST', body: formData })
+                        .then(function(res) { return res.json(); })
+                        .then(function(data) {
+                            if (data.success && statusEl) {
+                                statusEl.textContent = '✅ Файл "' + data.filename + '" загружен!';
+                            }
+                        })
+                        .catch(function() {
+                            if (statusEl) statusEl.textContent = '❌ Ошибка загрузки файла';
+                        });
                 }
-                const reader = new FileReader();
+                var reader = new FileReader();
                 reader.onload = function(evt) {
-                    const textarea = document.getElementById(textareaId);
+                    var textarea = document.getElementById(textareaId);
                     if (textarea) textarea.value = evt.target.result;
                 };
                 reader.readAsText(file);
@@ -604,19 +580,19 @@ HTML = """<!DOCTYPE html>
     bindFileInput('fresherFile', 'fresherCookies', false);
 
     // Множественная загрузка в Инструментах
-    const toolsFileInput = document.getElementById('toolsFile');
+    var toolsFileInput = document.getElementById('toolsFile');
     if (toolsFileInput) {
         toolsFileInput.addEventListener('change', function() {
             if (this.files && this.files.length > 0) {
-                let combinedText = "";
-                let filesRead = 0;
-                Array.from(this.files).forEach(file => {
-                    const reader = new FileReader();
+                var combinedText = "";
+                var filesRead = 0;
+                Array.from(this.files).forEach(function(file) {
+                    var reader = new FileReader();
                     reader.onload = function(evt) {
                         combinedText += evt.target.result + "\n";
                         filesRead++;
                         if (filesRead === toolsFileInput.files.length) {
-                            const toolsInput = document.getElementById('toolsInput');
+                            var toolsInput = document.getElementById('toolsInput');
                             if (toolsInput) toolsInput.value = combinedText;
                         }
                     };
@@ -627,56 +603,70 @@ HTML = """<!DOCTYPE html>
     }
 
     // ============================================================
+    // РЕЖИМЫ ФРЕШЕРА
+    // ============================================================
+    function setFresherMode(mode) {
+        document.getElementById('fresherMode').value = mode;
+        var dupBtn = document.getElementById('modeDuplicate');
+        var killBtn = document.getElementById('modeKill');
+        if (mode === 'duplicate') {
+            dupBtn.classList.add('active');
+            killBtn.classList.remove('active');
+        } else {
+            killBtn.classList.add('active');
+            dupBtn.classList.remove('active');
+        }
+    }
+
+    // ============================================================
     // ===== ЧЕКЕР ================================================
     // ============================================================
-    document.getElementById('btnRunChecker').addEventListener('click', runFullcheck);
-    document.getElementById('btnClearChecker').addEventListener('click', clearInputs);
-
-    async function runFullcheck() {
-        const resBox = document.getElementById('fullcheckResult');
-        const manual = document.getElementById('manualCookies').value.trim();
-        const progress = document.getElementById('checkerProgress');
+    function runFullcheck() {
+        var resBox = document.getElementById('fullcheckResult');
+        var manual = document.getElementById('manualCookies').value.trim();
+        var progress = document.getElementById('checkerProgress');
         
         if (!manual) {
             resBox.textContent = '❌ Вставь куки или загрузи .txt!';
             return;
         }
 
-        const formData = new FormData();
+        var formData = new FormData();
         formData.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
 
         resBox.textContent = '⏳ Проверка аккаунтов запущена...';
         progress.style.width = '40%';
         
-        try {
-            const response = await fetch('/api/fullcheck', { method: 'POST', body: formData });
-            const data = await response.json();
-            progress.style.width = '100%';
-            setTimeout(() => { progress.style.width = '0%'; }, 1000);
-            
-            if (data.success) {
-                if (data.reports && data.reports.length) {
-                    for (const report of data.reports) {
-                        checkerHistory.push(report);
-                    }
-                }
+        fetch('/api/fullcheck', { method: 'POST', body: formData })
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                progress.style.width = '100%';
+                setTimeout(function() { progress.style.width = '0%'; }, 1000);
                 
-                let html = `✅ Проверено аккаунтов: ${data.total} | Успешно валидных: ${data.valid_count}\n\n`;
-                for (const report of checkerHistory) {
-                    html += `${report}\n────────────────────────────────────────\n`;
+                if (data.success) {
+                    if (data.reports && data.reports.length) {
+                        for (var i = 0; i < data.reports.length; i++) {
+                            checkerHistory.push(data.reports[i]);
+                        }
+                    }
+                    
+                    var html = '✅ Проверено аккаунтов: ' + data.total + ' | Успешно валидных: ' + data.valid_count + '\n\n';
+                    for (var j = 0; j < checkerHistory.length; j++) {
+                        html += checkerHistory[j] + '\n────────────────────────────────────────\n';
+                    }
+                    if (data.download_url) {
+                        html += '\n📥 <a href="' + data.download_url + '" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Скачать ZIP со всеми отчетами (.txt)</a>';
+                    }
+                    resBox.innerHTML = html;
+                    resBox.scrollTop = resBox.scrollHeight;
+                } else {
+                    resBox.textContent = '❌ ' + (data.message || 'Ошибка');
                 }
-                if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Скачать ZIP со всеми отчетами (.txt)</a>`;
-                }
-                resBox.innerHTML = html;
-                resBox.scrollTop = resBox.scrollHeight;
-            } else {
-                resBox.textContent = '❌ ' + (data.message || 'Ошибка');
-            }
-        } catch (e) {
-            resBox.textContent = '❌ Ошибка: ' + e.message;
-            progress.style.width = '0%';
-        }
+            })
+            .catch(function(e) {
+                resBox.textContent = '❌ Ошибка: ' + e.message;
+                progress.style.width = '0%';
+            });
     }
 
     function clearInputs() {
@@ -689,108 +679,102 @@ HTML = """<!DOCTYPE html>
     // ============================================================
     // ===== ВАЛИДАТОР ============================================
     // ============================================================
-    document.getElementById('btnRunValidator').addEventListener('click', runValidator);
-    document.getElementById('btnClearValidator').addEventListener('click', function() {
-        document.getElementById('validatorCookies').value = '';
-        document.getElementById('validatorResult').textContent = 'Здесь будет результат валидации...';
-    });
-
-    async function runValidator() {
-        const resBox = document.getElementById('validatorResult');
-        const cookies = document.getElementById('validatorCookies').value.trim();
+    function runValidator() {
+        var resBox = document.getElementById('validatorResult');
+        var cookies = document.getElementById('validatorCookies').value.trim();
         if (!cookies) {
             resBox.textContent = '❌ Вставьте куки для валидации!';
             return;
         }
         resBox.textContent = '⏳ Выполняется быстрая валидация...';
-        try {
-            const response = await fetch('/api/validator', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cookies: cookies })
-            });
-            const data = await response.json();
+        fetch('/api/validator', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cookies: cookies })
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
             if (data.success) {
-                let html = `✅ Проверено: ${data.total} | Живых (Valid): ${data.valid_count} | Мертвых (Dead): ${data.dead_count}\n\n`;
-                html += `🟢 ЖИВЫЕ КУКИ:\n` + (data.valid_list.length ? data.valid_list.join('\n') : 'Нет живых') + `\n\n`;
-                html += `❌ МЕРТВЫЕ КУКИ:\n` + (data.dead_list.length ? data.dead_list.join('\n') : 'Нет мертвых');
+                var html = '✅ Проверено: ' + data.total + ' | Живых (Valid): ' + data.valid_count + ' | Мертвых (Dead): ' + data.dead_count + '\n\n';
+                html += '🟢 ЖИВЫЕ КУКИ:\n' + (data.valid_list.length ? data.valid_list.join('\n') : 'Нет живых') + '\n\n';
+                html += '❌ МЕРТВЫЕ КУКИ:\n' + (data.dead_list.length ? data.dead_list.join('\n') : 'Нет мертвых');
                 resBox.textContent = html;
             } else {
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка валидации');
             }
-        } catch (e) {
+        })
+        .catch(function(e) {
             resBox.textContent = '❌ Ошибка сети: ' + e.message;
-        }
+        });
+    }
+
+    function clearValidator() {
+        document.getElementById('validatorCookies').value = '';
+        document.getElementById('validatorResult').textContent = 'Здесь будет результат валидации...';
     }
 
     // ============================================================
     // ===== ФРЕШЕР ===============================================
     // ============================================================
-    document.getElementById('btnRunFresher').addEventListener('click', runFresher);
-    document.getElementById('btnClearFresher').addEventListener('click', function() {
-        document.getElementById('fresherCookies').value = '';
-        document.getElementById('fresherResult').textContent = 'Результаты фрешера появятся здесь...';
-        fresherHistory = [];
-    });
-
-    async function runFresher() {
-        const resBox = document.getElementById('fresherResult');
-        const cookies = document.getElementById('fresherCookies').value.trim();
-        const mode = document.getElementById('fresherMode').value;
+    function runFresher() {
+        var resBox = document.getElementById('fresherResult');
+        var cookies = document.getElementById('fresherCookies').value.trim();
+        var mode = document.getElementById('fresherMode').value;
         if (!cookies) {
             resBox.textContent = '❌ Вставьте куки для фреша!';
             return;
         }
         resBox.textContent = '⏳ Выполняется обновление сессий...';
-        try {
-            const response = await fetch('/api/fresher', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cookies: cookies, mode: mode })
-            });
-            const data = await response.json();
+        fetch('/api/fresher', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cookies: cookies, mode: mode })
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
             if (data.success) {
                 if (data.refreshed_list && data.refreshed_list.length) {
-                    for (const item of data.refreshed_list) {
-                        fresherHistory.push(item);
+                    for (var i = 0; i < data.refreshed_list.length; i++) {
+                        fresherHistory.push(data.refreshed_list[i]);
                     }
                 }
-                let html = `✅ Успешно обновлено сессий (режим: ${mode === 'kill' ? 'Kill old cookie' : 'Duplicate cookie'}): ${data.refreshed_count}\n\n`;
-                for (const item of fresherHistory) {
-                    html += `${item}\n────────────────────────────────────────\n`;
+                var html = '✅ Успешно обновлено сессий (режим: ' + (mode === 'kill' ? 'Kill old cookie' : 'Duplicate cookie') + '): ' + data.refreshed_count + '\n\n';
+                for (var j = 0; j < fresherHistory.length; j++) {
+                    html += fresherHistory[j] + '\n────────────────────────────────────────\n';
                 }
                 resBox.textContent = html;
             } else {
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка фрешера');
             }
-        } catch (e) {
+        })
+        .catch(function(e) {
             resBox.textContent = '❌ Ошибка сети: ' + e.message;
-        }
+        });
+    }
+
+    function clearFresher() {
+        document.getElementById('fresherCookies').value = '';
+        document.getElementById('fresherResult').textContent = 'Результаты фрешера появятся здесь...';
+        fresherHistory = [];
     }
 
     // ============================================================
     // ===== ИНСТРУМЕНТЫ ==========================================
     // ============================================================
-    document.getElementById('btnRunTools').addEventListener('click', runToolsMerge);
-    document.getElementById('btnClearTools').addEventListener('click', function() {
-        document.getElementById('toolsInput').value = '';
-        document.getElementById('toolsResult').textContent = 'Результаты обработки появятся здесь...';
-    });
-
     function runToolsMerge() {
-        const input = document.getElementById('toolsInput').value;
-        const resBox = document.getElementById('toolsResult');
+        var input = document.getElementById('toolsInput').value;
+        var resBox = document.getElementById('toolsResult');
         if (!input.trim()) {
             resBox.textContent = '❌ Нет данных для слияния!';
             return;
         }
-        const lines = input.split('\n');
-        const uniqueLines = [];
-        const seen = new Set();
-        let skipped = 0;
+        var lines = input.split('\n');
+        var uniqueLines = [];
+        var seen = new Set();
+        var skipped = 0;
 
-        for (let line of lines) {
-            const trimmed = line.trim();
+        for (var i = 0; i < lines.length; i++) {
+            var trimmed = lines[i].trim();
             if (trimmed.length > 20) {
                 if (!seen.has(trimmed)) {
                     seen.add(trimmed);
@@ -801,7 +785,12 @@ HTML = """<!DOCTYPE html>
             }
         }
 
-        resBox.textContent = `✅ Успешно объединено!\n📦 Уникальных куков: ${uniqueLines.length}\n🗑️ Удалено дубликатов: ${skipped}\n\n` + uniqueLines.join('\n');
+        resBox.textContent = '✅ Успешно объединено!\n📦 Уникальных куков: ' + uniqueLines.length + '\n🗑️ Удалено дубликатов: ' + skipped + '\n\n' + uniqueLines.join('\n');
+    }
+
+    function clearTools() {
+        document.getElementById('toolsInput').value = '';
+        document.getElementById('toolsResult').textContent = 'Результаты обработки появятся здесь...';
     }
 </script>
 </body>
