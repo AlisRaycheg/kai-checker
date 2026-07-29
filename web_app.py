@@ -365,13 +365,12 @@ HTML = """<!DOCTYPE html>
             max-width: 1400px;
             margin: 0 auto;
             padding: 30px;
-            background: rgba(18, 10, 40, 0.85);
+            background: rgba(18, 10, 40, 0.95);
             backdrop-filter: blur(16px);
             border: 2px solid #6c5ce7;
             border-radius: 32px;
-            box-shadow: 0 0 60px rgba(108, 92, 231, 0.25), inset 0 0 60px rgba(108, 92, 231, 0.05);
+            box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
             position: relative;
-            z-index: 1;
         }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0d0722; border-radius: 8px; }
@@ -392,29 +391,27 @@ HTML = """<!DOCTYPE html>
 
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
-            position: relative; z-index: 50;
         }
         .tab {
-            padding: 10px 24px; background: rgba(26, 16, 64, 0.6);
+            padding: 10px 24px; background: rgba(26, 16, 64, 0.8);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
             cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
-            user-select: none; position: relative; z-index: 51; pointer-events: auto;
+            user-select: none;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
-            border-color: #c084fc; background: rgba(168, 85, 247, 0.15);
-            color: #c084fc; box-shadow: 0 0 20px rgba(168,85,247,0.15);
+            border-color: #c084fc; background: rgba(168, 85, 247, 0.25);
+            color: #c084fc; box-shadow: 0 0 20px rgba(168,85,247,0.2);
         }
 
-        .tab-content { display: none; position: relative; z-index: 20; }
+        .tab-content { display: none; }
         .tab-content.active { display: block; animation: fadeUp 0.3s ease; }
         @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
 
         .card {
-            background: rgba(18, 10, 40, 0.7); backdrop-filter: blur(12px);
+            background: rgba(18, 10, 40, 0.8); backdrop-filter: blur(12px);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
             margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            position: relative; z-index: 21;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -424,7 +421,7 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            position: relative; z-index: 30; text-decoration: none; pointer-events: auto;
+            text-decoration: none;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -437,7 +434,7 @@ HTML = """<!DOCTYPE html>
         textarea, .upload-area {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s; position: relative; z-index: 22;
+            resize: vertical; transition: 0.2s;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
@@ -447,12 +444,10 @@ HTML = """<!DOCTYPE html>
             justify-content: center; cursor: pointer; border-style: dashed; gap: 6px; text-align: center; color: #ffffff;
         }
 
-        /* Белый читаемый текст и прокрутка */
         .result-box {
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
-            position: relative; z-index: 22;
         }
 
         .progress-bar {
@@ -462,7 +457,7 @@ HTML = """<!DOCTYPE html>
 
         .fresh-card {
             background: rgba(12, 12, 24, 0.9); border: 1px solid #1f1f3a; border-radius: 16px;
-            padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); position: relative; z-index: 21;
+            padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
         }
         .fresh-header {
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px;
@@ -471,33 +466,33 @@ HTML = """<!DOCTYPE html>
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic; font-size: 22px; color: #e8e0ff; margin: 0;
         }
         .method-group {
-            display: flex; gap: 6px; background: #0a0a18; padding: 4px; border-radius: 40px; border: 1px solid #1a1a2e; position: relative; z-index: 25;
+            display: flex; gap: 6px; background: #0a0a18; padding: 4px; border-radius: 40px; border: 1px solid #1a1a2e;
         }
         .method-btn {
             padding: 8px 20px; border: none; border-radius: 30px; background: transparent; color: #6a6a8a;
-            font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; position: relative; z-index: 26; pointer-events: auto;
+            font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s;
         }
         .method-btn.active {
             background: linear-gradient(135deg, #6c5ce7, #a855f7); color: #fff; box-shadow: 0 4px 16px rgba(108,92,231,0.3);
         }
         .fresh-textarea {
             width: 100%; min-height: 80px; padding: 14px 16px; background: #0a0a18; border: 1px solid #1a1a2e;
-            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical; position: relative; z-index: 22;
+            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical;
         }
         .fresh-controls {
-            display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; position: relative; z-index: 30;
+            display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px;
         }
         .btn-start {
             background: linear-gradient(135deg, #00b894, #00a381); color: #fff; padding: 10px 32px; border: none;
-            border-radius: 40px; font-weight: 700; font-size: 14px; cursor: pointer; position: relative; z-index: 30; pointer-events: auto;
+            border-radius: 40px; font-weight: 700; font-size: 14px; cursor: pointer;
         }
         .btn-stop {
             background: #1a1a2e; color: #6a6a8a; padding: 10px 24px; border: 1px solid #2a2a4a;
-            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; position: relative; z-index: 30; pointer-events: auto;
+            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer;
         }
         .btn-download {
             background: transparent; color: #6c5ce7; padding: 10px 20px; border: 1px solid #2a2a4a;
-            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; margin-left: auto; position: relative; z-index: 30; pointer-events: auto;
+            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; margin-left: auto;
         }
         .fresh-progress {
             margin-top: 16px; background: #0a0a18; border-radius: 40px; height: 8px; overflow: hidden; border: 1px solid #1a1a2e;
@@ -514,7 +509,7 @@ HTML = """<!DOCTYPE html>
         }
         .cookie-output code { font-family: 'Inter', monospace; font-size: 12px; color: #ffffff; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
         .copy-btn {
-            align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; z-index: 30; pointer-events: auto;
+            align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer;
         }
         .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
     </style>
