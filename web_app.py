@@ -39,7 +39,7 @@ def get_next_test_info():
 TEST_NUM, SERVER_START_TIME = get_next_test_info()
 
 # ============================================================
-# ФУНКЦИИ
+# ФУНКЦИИ (100% СТАБИЛЬНЫЙ ЧЕКЕР)
 # ============================================================
 
 def get_full_info(cookie: str) -> dict:
@@ -52,18 +52,26 @@ def get_full_info(cookie: str) -> dict:
         s = requests.Session()
         s.headers.update({
             'Cookie': f'.ROBLOSECURITY={cleaned_cookie}',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Accept': 'application/json'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Referer': 'https://www.roblox.com/',
+            'Origin': 'https://www.roblox.com'
         })
+        
         r = s.get('https://users.roblox.com/v1/users/authenticated', timeout=15, verify=False)
         if r.status_code == 200:
             d = r.json()
-            info['UserID'] = d.get('id')
-            info['Username'] = d.get('name')
-            info['status'] = '✅'
+            if 'id' in d:
+                info['UserID'] = d.get('id')
+                info['Username'] = d.get('name')
+                info['status'] = '✅'
+            else:
+                info['status'] = '❌'
+                return info
         else:
             info['status'] = '❌'
             return info
+            
         uid = info['UserID']
 
         rb = s.get(f'https://economy.roblox.com/v1/users/{uid}/currency', verify=False, timeout=10)
@@ -77,7 +85,7 @@ def get_full_info(cookie: str) -> dict:
                 total_rap += item.get('recentAveragePrice', 0) or 0
             info['TotalRAP'] = total_rap
     except:
-        pass
+        info['status'] = '❌'
     return info
 
 # ============================================================
@@ -665,7 +673,7 @@ HTML = """<!DOCTYPE html>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
                 <div style="flex:2;">
                     <textarea id="manualCookies" placeholder="Вставь куки сюда (по одному или несколько) ..." rows="6" style="width:100%;"></textarea>
-                    <div style="margin-top:8px;color:#4a3a6a;font-size:13px;">или загрузи .txt</div>
+                    <div style="margin-top:8px;color:#4a3a6a;font-size:13px;">или загрузи .txt файл прямо сюда</div>
                 </div>
                 <div style="flex:1;">
                     <div class="upload-area" id="fullArea">
@@ -807,6 +815,17 @@ HTML = """<!DOCTYPE html>
         });
     });
 
+    // Автоматическая загрузка txt в текстовое поле чекера при выборе файла
+    document.getElementById('fullFile').addEventListener('change', function(e) {
+        if (this.files && this.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                document.getElementById('manualCookies').value = evt.target.result;
+            };
+            reader.readAsText(this.files[0]);
+        }
+    });
+
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const tabId = this.getAttribute('data-tab');
@@ -826,22 +845,17 @@ HTML = """<!DOCTYPE html>
     async function runFullcheck() {
         const resBox = document.getElementById('fullcheckResult');
         const manual = document.getElementById('manualCookies').value.trim();
-        const fileInput = document.getElementById('fullFile');
         const progress = document.getElementById('checkerProgress');
         
-        if (!manual && !fileInput.files.length) {
+        if (!manual) {
             resBox.className = 'result-box error';
-            resBox.textContent = '❌ Вставь куки или загрузи .txt!';
+            resBox.textContent = '❌ Вставь куки или загрузи .txt файл!';
             return;
         }
 
         const formData = new FormData();
-        if (manual) {
-            const blob = new Blob([manual], { type: 'text/plain' });
-            formData.append('file', blob, 'manual.txt');
-        } else if (fileInput.files.length) {
-            formData.append('file', fileInput.files[0]);
-        }
+        const blob = new Blob([manual], { type: 'text/plain' });
+        formData.append('file', blob, 'manual.txt');
 
         resBox.textContent = '⏳ Проверка...';
         resBox.className = 'result-box';
@@ -1201,13 +1215,13 @@ def api_fullcheck():
     if 'file' not in request.files:
         return jsonify({"success": False, "message": "Файл не найден"})
     content = request.files['file'].read().decode('utf-8', errors='ignore')
-    cookies = [line.strip() for line in content.split('\n') if '.ROBLOSECURITY' in line and len(line) > 50]
+    cookies = [line.strip() for line in content.split('\n') if '.ROBLOSECURITY' in line or len(line) > 50]
     if not cookies:
         return jsonify({"success": False, "message": "Куки не найдены"})
     reports = []
     total_rap = 0
     total_gamepasses = 0
-    for c in cookies[:10]:
+    for c in cookies[:20]:
         info = get_full_info(c)
         if info['status'] == '✅':
             reports.append(f"📋 {info['Username']} | 💰 {info['Robux']} | 💎 {info['TotalRAP']}")
@@ -1232,9 +1246,9 @@ def api_fresh():
 @app.route("/api/validate", methods=["POST"])
 def api_validate():
     content = request.files['file'].read().decode('utf-8', errors='ignore')
-    cookies = [line.strip() for line in content.split('\n') if '.ROBLOSECURITY' in line and len(line) > 50]
+    cookies = [line.strip() for line in content.split('\n') if len(line) > 50]
     valid, invalid = [], []
-    for c in cookies[:20]:
+    for c in cookies[:30]:
         if get_full_info(c)['status'] == '✅':
             valid.append(c)
         else:
@@ -1255,7 +1269,7 @@ def api_validate():
 @app.route("/api/sorter", methods=["POST"])
 def api_sorter():
     content = request.files['file'].read().decode('utf-8', errors='ignore')
-    cookies = [line.strip() for line in content.split('\n') if '.ROBLOSECURITY' in line and len(line) > 50]
+    cookies = [line.strip() for line in content.split('\n') if len(line) > 50]
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
         for i, c in enumerate(cookies[:50]):
@@ -1269,7 +1283,7 @@ def api_sorter():
 @app.route("/api/split", methods=["POST"])
 def api_split():
     content = request.files['file'].read().decode('utf-8', errors='ignore')
-    cookies = [line.strip() for line in content.split('\n') if '.ROBLOSECURITY' in line and len(line) > 50]
+    cookies = [line.strip() for line in content.split('\n') if len(line) > 50]
     chunk_size = max(1, len(cookies) // 5)
     chunks = [cookies[i:i+chunk_size] for i in range(0, len(cookies), chunk_size)]
     zip_buffer = BytesIO()
@@ -1287,7 +1301,7 @@ def api_merge():
     all_cookies = []
     for f in request.files.getlist('files'):
         content = f.read().decode('utf-8', errors='ignore')
-        all_cookies.extend([line.strip() for line in content.split('\n') if '.ROBLOSECURITY' in line and len(line) > 50])
+        all_cookies.extend([line.strip() for line in content.split('\n') if len(line) > 50])
     unique = list(dict.fromkeys(all_cookies))
     filename = f"merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     with open(f"downloads/{filename}", 'w', encoding='utf-8') as f:
