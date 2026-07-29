@@ -396,7 +396,7 @@ HTML = """<!DOCTYPE html>
             padding: 10px 24px; background: rgba(26, 16, 64, 0.8);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
             cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
-            user-select: none;
+            user-select: none; position: relative; z-index: 10;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
@@ -404,7 +404,7 @@ HTML = """<!DOCTYPE html>
             color: #c084fc; box-shadow: 0 0 20px rgba(168,85,247,0.2);
         }
 
-        .tab-content { display: none; }
+        .tab-content { display: none; position: relative; z-index: 5; }
         .tab-content.active { display: block; animation: fadeUp 0.3s ease; }
         @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
 
@@ -421,7 +421,7 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            text-decoration: none;
+            text-decoration: none; position: relative; z-index: 10;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -434,7 +434,7 @@ HTML = """<!DOCTYPE html>
         textarea, .upload-area {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s;
+            resize: vertical; transition: 0.2s; position: relative; z-index: 5;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
@@ -457,7 +457,7 @@ HTML = """<!DOCTYPE html>
 
         .fresh-card {
             background: rgba(12, 12, 24, 0.9); border: 1px solid #1f1f3a; border-radius: 16px;
-            padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); position: relative; z-index: 5;
         }
         .fresh-header {
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px;
@@ -470,29 +470,29 @@ HTML = """<!DOCTYPE html>
         }
         .method-btn {
             padding: 8px 20px; border: none; border-radius: 30px; background: transparent; color: #6a6a8a;
-            font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s;
+            font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; position: relative; z-index: 10;
         }
         .method-btn.active {
             background: linear-gradient(135deg, #6c5ce7, #a855f7); color: #fff; box-shadow: 0 4px 16px rgba(108,92,231,0.3);
         }
         .fresh-textarea {
             width: 100%; min-height: 80px; padding: 14px 16px; background: #0a0a18; border: 1px solid #1a1a2e;
-            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical;
+            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical; position: relative; z-index: 10;
         }
         .fresh-controls {
-            display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px;
+            display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; position: relative; z-index: 10;
         }
         .btn-start {
             background: linear-gradient(135deg, #00b894, #00a381); color: #fff; padding: 10px 32px; border: none;
-            border-radius: 40px; font-weight: 700; font-size: 14px; cursor: pointer;
+            border-radius: 40px; font-weight: 700; font-size: 14px; cursor: pointer; position: relative; z-index: 10;
         }
         .btn-stop {
             background: #1a1a2e; color: #6a6a8a; padding: 10px 24px; border: 1px solid #2a2a4a;
-            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer;
+            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; position: relative; z-index: 10;
         }
         .btn-download {
             background: transparent; color: #6c5ce7; padding: 10px 20px; border: 1px solid #2a2a4a;
-            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; margin-left: auto;
+            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; margin-left: auto; position: relative; z-index: 10;
         }
         .fresh-progress {
             margin-top: 16px; background: #0a0a18; border-radius: 40px; height: 8px; overflow: hidden; border: 1px solid #1a1a2e;
@@ -509,7 +509,7 @@ HTML = """<!DOCTYPE html>
         }
         .cookie-output code { font-family: 'Inter', monospace; font-size: 12px; color: #ffffff; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
         .copy-btn {
-            align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer;
+            align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; position: relative; z-index: 10;
         }
         .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
     </style>
@@ -519,7 +519,10 @@ HTML = """<!DOCTYPE html>
 <div class="kai-wrapper">
     <div class="header">
         <div class="logo">MICE <span>CHECKER</span></div>
-        <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <span style="color: #c084fc; font-weight: 700; font-size: 14px; background: rgba(168, 85, 247, 0.15); padding: 4px 12px; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 20px;">ТЕСТ</span>
+            <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
+        </div>
     </div>
 
     <div class="tabs">
@@ -559,7 +562,7 @@ HTML = """<!DOCTYPE html>
     <div class="tab-content" id="tab-fresher">
         <div class="fresh-card">
             <div class="fresh-header">
-                <h2>🔄 Mass Refresher</h2>
+                <h2>🔄 Фрешер валид (Mass Refresher)</h2>
                 <div class="method-group">
                     <button class="method-btn active" id="ticketMethod" onclick="setFreshMethod('ticket')">Ticket method</button>
                     <button class="method-btn" id="logoutMethod" onclick="setFreshMethod('logout')">Logout method</button>
@@ -846,11 +849,12 @@ def api_fullcheck():
     with open(filepath, 'wb') as f:
         f.write(zip_buffer.getvalue())
     
+    str_url = f"/downloads/{filename}"
     return jsonify({
         "success": True,
         "total": len(cookies),
         "reports": reports,
-        "download_url": f"/downloads/{filename}"
+        "download_url": str_url
     })
 
 @app.route("/api/fresh", methods=["POST"])
