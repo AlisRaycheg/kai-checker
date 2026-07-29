@@ -1,5 +1,5 @@
 import requests, json, time, logging, re, os, urllib3, html, sys, asyncio, zipfile
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
 from io import BytesIO
 from curl_cffi.requests import AsyncSession
@@ -15,6 +15,30 @@ try:
     HAS_CFFI = True
 except ImportError:
     HAS_CFFI = False
+
+# Файл для хранения номера теста, чтобы он автоматически увеличивался при каждом обновлении кода
+TEST_COUNTER_FILE = "test_counter.json"
+
+def get_next_test_info():
+    counter = 1
+    if os.path.exists(TEST_COUNTER_FILE):
+        try:
+            with open(TEST_COUNTER_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                counter = data.get('counter', 1) + 1
+        except:
+            pass
+    try:
+        with open(TEST_COUNTER_FILE, 'w', encoding='utf-8') as f:
+            json.dump({'counter': counter}, f)
+    except:
+        pass
+    
+    # Время по МСК (UTC +3)
+    msk_time = datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')
+    return counter, msk_time
+
+TEST_NUM, SERVER_START_TIME = get_next_test_info()
 
 # ============================================================
 # ФУНКЦИИ
@@ -138,14 +162,12 @@ def refresh_cookie_sync(cookie: str, kill_old: bool = True) -> tuple:
 
 app = Flask(__name__)
 
-SERVER_START_TIME = datetime.now().strftime('%H:%M:%S')
-
 HTML = """<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KAI CHECKER</title>
+    <title>MICE CHECKER</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -545,7 +567,6 @@ HTML = """<!DOCTYPE html>
         .history-item .ok { color: #00b894; }
         .history-item .fail { color: #ff6b6b; }
 
-        /* Стили для истории одиночных фрешей */
         .single-fresh-section {
             margin-top: 24px;
             background: rgba(14, 10, 30, 0.6);
@@ -633,13 +654,13 @@ HTML = """<!DOCTYPE html>
 <body>
 
 <div class="host-test-badge">
-    <span></span> тест 1 (запуск: <strong id="serverTime">{{ server_time }}</strong>)
+    <span></span> тест {{ test_num }} (МСК: <strong id="serverTime">{{ server_time }}</strong>)
 </div>
 
 <div class="kai-wrapper">
 
     <div class="header">
-        <div class="logo">KAI <span>CHECKER</span></div>
+        <div class="logo">MICE <span>CHECKER</span></div>
         <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
     </div>
 
@@ -777,7 +798,7 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="footer">KAI CHECKER · PRO</div>
+    <div class="footer">MICE CHECKER · PRO</div>
 </div>
 
 <script>
@@ -856,15 +877,15 @@ HTML = """<!DOCTYPE html>
             
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Проверено: ${data.total || 0}\n📦 Активных: ${data.total_gamepasses || 0}\n💎 RAP: ${data.total_rap || 0}\n\n`;
+                let html = `✅ Проверено: ${data.total || 0}\\n📦 Активных: ${data.total_gamepasses || 0}\\n💎 RAP: ${data.total_rap || 0}\\n\\n`;
                 if (data.reports && data.reports.length) {
-                    html += `<b>📋 ОТЧЁТЫ:</b>\n`;
+                    html += `<b>📋 ОТЧЁТЫ:</b>\\n`;
                     for (const report of data.reports) {
-                        html += `\n${report}\n─────────────────\n`;
+                        html += `\\n${report}\\n─────────────────\\n`;
                     }
                 }
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
                 saveCheckerHistory(data.total || 0, data.total_gamepasses || 0, data.total_rap || 0);
@@ -935,7 +956,7 @@ HTML = """<!DOCTYPE html>
         const resultWrapper = document.getElementById('freshResultWrapper');
         const resultCode = document.getElementById('freshResultCode');
         
-        const cookies = input.value.trim().split('\n').filter(c => c.trim().length > 50);
+        const cookies = input.value.trim().split('\\n').filter(c => c.trim().length > 50);
         if (!cookies.length) {
             status.textContent = '❌ Нет куков';
             return;
@@ -979,7 +1000,6 @@ HTML = """<!DOCTYPE html>
                     newCookies.push(data.new_cookie);
                     validCount.textContent = valid;
                     
-                    // Если это был одиночный фреш (1 кук), сразу сохраняем в историю одиночных
                     if (cookies.length === 1) {
                         saveSingleFreshHistory(data.new_cookie, freshMethod);
                     }
@@ -1002,10 +1022,10 @@ HTML = """<!DOCTYPE html>
         progressText.textContent = '100%';
         
         if (newCookies.length) {
-            resultCode.textContent = newCookies.join('\n');
+            resultCode.textContent = newCookies.join('\\n');
             resultWrapper.style.display = 'flex';
             document.getElementById('freshCopyBtn').onclick = function() {
-                navigator.clipboard.writeText(newCookies.join('\n')).then(() => {
+                navigator.clipboard.writeText(newCookies.join('\\n')).then(() => {
                     this.textContent = '✅ Скопировано!';
                     setTimeout(() => { this.textContent = '📋 Копировать'; }, 2000);
                 });
@@ -1029,7 +1049,6 @@ HTML = """<!DOCTYPE html>
         a.click();
     }
 
-    // Логика истории одиночных фрешей
     function saveSingleFreshHistory(cookie, method) {
         const history = JSON.parse(localStorage.getItem('singleFreshHistory') || '[]');
         history.unshift({ date: new Date().toLocaleTimeString(), cookie, method });
@@ -1118,9 +1137,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Валидных: ${data.valid}\n❌ Невалидных: ${data.invalid}\n📊 Всего: ${data.total}`;
+                let html = `✅ Валидных: ${data.valid}\\n❌ Невалидных: ${data.invalid}\\n📊 Всего: ${data.total}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать валидные</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать валидные</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1146,9 +1165,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Сортировка завершена!\n📦 Куков: ${data.total}`;
+                let html = `✅ Сортировка завершена!\\n📦 Куков: ${data.total}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1174,9 +1193,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Разделение завершено!\n📦 Куков: ${data.total}`;
+                let html = `✅ Разделение завершено!\\n📦 Куков: ${data.total}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1202,9 +1221,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Слияние завершено!\n📦 Куков: ${data.total}\n🔄 Дублей удалено: ${data.duplicates}`;
+                let html = `✅ Слияние завершено!\\n📦 Куков: ${data.total}\\n🔄 Дублей удалено: ${data.duplicates}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1230,7 +1249,7 @@ HTML = """<!DOCTYPE html>
 
 @app.route("/")
 def index():
-    return render_template_string(HTML, server_time=SERVER_START_TIME)
+    return render_template_string(HTML, server_time=SERVER_START_TIME, test_num=TEST_NUM)
 
 @app.route("/api/fullcheck", methods=["POST"])
 def api_fullcheck():
