@@ -291,8 +291,10 @@ HTML = """<!DOCTYPE html>
             gap: 6px;
             text-align: center;
         }
-        .upload-area p { pointer-events: none; color: #9880c0; }
-        .upload-area strong { color: #c084fc; }
+        /* ===== ФИКС №1: все дочерние элементы не перехватывают клик ===== */
+        .upload-area * {
+            pointer-events: none;
+        }
 
         .result-box {
             background: #0d0722;
@@ -587,7 +589,7 @@ HTML = """<!DOCTYPE html>
                     <div style="margin-top:8px;color:#4a3a6a;font-size:13px;">или загрузи .txt</div>
                 </div>
                 <div style="flex:1;">
-                    <div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
+                    <div class="upload-area" id="fullArea">
                         <p>📁 <strong>Загрузить .txt</strong></p>
                         <p style="font-size:12px;">.ROBLOSECURITY или _|WARNING</p>
                     </div>
@@ -652,7 +654,7 @@ HTML = """<!DOCTYPE html>
     <div class="tab-content" id="tab-validator">
         <div class="card">
             <h2>✅ Валидатор (отсев мёртвых)</h2>
-            <div class="upload-area" id="validatorArea" onclick="document.getElementById('validatorFile').click()">
+            <div class="upload-area" id="validatorArea">
                 <p>📁 <strong>Загрузить .txt</strong></p>
             </div>
             <input type="file" id="validatorFile" accept=".txt" style="display:none;">
@@ -665,7 +667,7 @@ HTML = """<!DOCTYPE html>
     <div class="tab-content" id="tab-tools">
         <div class="card">
             <h2>📂 Сортер (по одному)</h2>
-            <div class="upload-area" id="sorterArea" onclick="document.getElementById('sorterFile').click()">
+            <div class="upload-area" id="sorterArea">
                 <p>📁 <strong>Загрузить .txt</strong></p>
             </div>
             <input type="file" id="sorterFile" accept=".txt" style="display:none;">
@@ -674,7 +676,7 @@ HTML = """<!DOCTYPE html>
         </div>
         <div class="card">
             <h2>✂️ Разделитель (на 5 частей)</h2>
-            <div class="upload-area" id="splitArea" onclick="document.getElementById('splitFile').click()">
+            <div class="upload-area" id="splitArea">
                 <p>📁 <strong>Загрузить .txt</strong></p>
             </div>
             <input type="file" id="splitFile" accept=".txt" style="display:none;">
@@ -683,7 +685,7 @@ HTML = """<!DOCTYPE html>
         </div>
         <div class="card">
             <h2>📦 Слияние (удаление дублей)</h2>
-            <div class="upload-area" id="mergeArea" onclick="document.getElementById('mergeFile').click()">
+            <div class="upload-area" id="mergeArea">
                 <p>📁 <strong>Загрузить несколько .txt</strong></p>
             </div>
             <input type="file" id="mergeFile" accept=".txt" multiple style="display:none;">
@@ -699,25 +701,52 @@ HTML = """<!DOCTYPE html>
 <!-- ===== JAVASCRIPT ========================================= -->
 <!-- ========================================================== -->
 <script>
-    // ===== ВКЛАДКИ =====
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', function() {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            this.classList.add('active');
-            document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+    // ===== ФИКС №1: клики по .upload-area через addEventListener =====
+    document.querySelectorAll('.upload-area').forEach(area => {
+        // Клик по зоне — открываем инпут
+        area.addEventListener('click', function(e) {
+            const input = this.parentElement.querySelector('input[type="file"]');
+            if (input) {
+                input.click();
+            }
+        });
+
+        // Drag & Drop
+        area.addEventListener('dragover', e => {
+            e.preventDefault();
+            this.classList.add('drag-active');
+        });
+        area.addEventListener('dragleave', () => {
+            this.classList.remove('drag-active');
+        });
+        area.addEventListener('drop', e => {
+            e.preventDefault();
+            this.classList.remove('drag-active');
+            const input = this.parentElement.querySelector('input[type="file"]');
+            if (input) {
+                input.files = e.dataTransfer.files;
+                input.dispatchEvent(new Event('change'));
+            }
         });
     });
 
-    // ===== DRAG & DROP =====
-    document.querySelectorAll('.upload-area').forEach(area => {
-        area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-active'); });
-        area.addEventListener('dragleave', () => area.classList.remove('drag-active'));
-        area.addEventListener('drop', e => {
-            e.preventDefault();
-            area.classList.remove('drag-active');
-            const input = area.parentElement.querySelector('input[type="file"]');
-            if (input) { input.files = e.dataTransfer.files; input.dispatchEvent(new Event('change')); }
+    // ===== ФИКС №2: переключение вкладок с проверкой data-tab =====
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const tabId = this.dataset.tab;
+            if (!tabId) {
+                console.error('❌ Ошибка: у кнопки нет data-tab');
+                return;
+            }
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            const content = document.getElementById('tab-' + tabId);
+            if (content) {
+                content.classList.add('active');
+            } else {
+                console.error('❌ Ошибка: контент с id tab-' + tabId + ' не найден');
+            }
         });
     });
 
