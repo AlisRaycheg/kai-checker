@@ -350,10 +350,10 @@ HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MICE CHECKER</title>
+    <title>KAI CHECKER</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; pointer-events: auto; }
         body {
             font-family: 'Inter', sans-serif;
             min-height: 100vh;
@@ -371,6 +371,7 @@ HTML = """<!DOCTYPE html>
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
             position: relative;
+            z-index: 1;
         }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0d0722; border-radius: 8px; }
@@ -379,7 +380,7 @@ HTML = """<!DOCTYPE html>
         .header {
             display: flex; justify-content: space-between; align-items: center;
             padding: 20px 0 16px; border-bottom: 1px solid #2a1a50;
-            margin-bottom: 30px;
+            margin-bottom: 30px; position: relative; z-index: 10;
         }
         .logo {
             font-family: 'Poppins', sans-serif;
@@ -390,7 +391,7 @@ HTML = """<!DOCTYPE html>
         .logo span { font-weight: 400; font-style: normal; -webkit-text-fill-color: #a78bfa; }
 
         .tabs {
-            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
+            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; position: relative; z-index: 10;
         }
         .tab {
             padding: 10px 24px; background: rgba(26, 16, 64, 0.8);
@@ -411,7 +412,7 @@ HTML = """<!DOCTYPE html>
         .card {
             background: rgba(18, 10, 40, 0.8); backdrop-filter: blur(12px);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
-            margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); position: relative; z-index: 5;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -421,7 +422,7 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            text-decoration: none; position: relative; z-index: 10;
+            text-decoration: none; position: relative; z-index: 100;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -434,7 +435,7 @@ HTML = """<!DOCTYPE html>
         textarea, .upload-area {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s; position: relative; z-index: 5;
+            resize: vertical; transition: 0.2s; position: relative; z-index: 10;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
@@ -447,7 +448,7 @@ HTML = """<!DOCTYPE html>
         .result-box {
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
-            font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
+            font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word; position: relative; z-index: 10;
         }
 
         .progress-bar {
@@ -457,7 +458,7 @@ HTML = """<!DOCTYPE html>
 
         .fresh-card {
             background: rgba(12, 12, 24, 0.9); border: 1px solid #1f1f3a; border-radius: 16px;
-            padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); position: relative; z-index: 5;
+            padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); position: relative; z-index: 10;
         }
         .fresh-header {
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px;
@@ -466,33 +467,33 @@ HTML = """<!DOCTYPE html>
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic; font-size: 22px; color: #e8e0ff; margin: 0;
         }
         .method-group {
-            display: flex; gap: 6px; background: #0a0a18; padding: 4px; border-radius: 40px; border: 1px solid #1a1a2e;
+            display: flex; gap: 6px; background: #0a0a18; padding: 4px; border-radius: 40px; border: 1px solid #1a1a2e; position: relative; z-index: 20;
         }
         .method-btn {
             padding: 8px 20px; border: none; border-radius: 30px; background: transparent; color: #6a6a8a;
-            font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; position: relative; z-index: 10;
+            font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; position: relative; z-index: 20;
         }
         .method-btn.active {
             background: linear-gradient(135deg, #6c5ce7, #a855f7); color: #fff; box-shadow: 0 4px 16px rgba(108,92,231,0.3);
         }
         .fresh-textarea {
             width: 100%; min-height: 80px; padding: 14px 16px; background: #0a0a18; border: 1px solid #1a1a2e;
-            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical; position: relative; z-index: 10;
+            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical; position: relative; z-index: 20;
         }
         .fresh-controls {
-            display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; position: relative; z-index: 10;
+            display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; position: relative; z-index: 20;
         }
         .btn-start {
             background: linear-gradient(135deg, #00b894, #00a381); color: #fff; padding: 10px 32px; border: none;
-            border-radius: 40px; font-weight: 700; font-size: 14px; cursor: pointer; position: relative; z-index: 10;
+            border-radius: 40px; font-weight: 700; font-size: 14px; cursor: pointer; position: relative; z-index: 20;
         }
         .btn-stop {
             background: #1a1a2e; color: #6a6a8a; padding: 10px 24px; border: 1px solid #2a2a4a;
-            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; position: relative; z-index: 10;
+            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; position: relative; z-index: 20;
         }
         .btn-download {
             background: transparent; color: #6c5ce7; padding: 10px 20px; border: 1px solid #2a2a4a;
-            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; margin-left: auto; position: relative; z-index: 10;
+            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; margin-left: auto; position: relative; z-index: 20;
         }
         .fresh-progress {
             margin-top: 16px; background: #0a0a18; border-radius: 40px; height: 8px; overflow: hidden; border: 1px solid #1a1a2e;
@@ -505,11 +506,11 @@ HTML = """<!DOCTYPE html>
         .fresh-stats .valid { color: #00b894; }
         .fresh-stats .invalid { color: #ff6b6b; }
         .cookie-output {
-            background: #0a0a18; border: 1px solid #1a1a2e; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+            background: #0a0a18; border: 1px solid #1a1a2e; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; position: relative; z-index: 20;
         }
         .cookie-output code { font-family: 'Inter', monospace; font-size: 12px; color: #ffffff; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
         .copy-btn {
-            align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; position: relative; z-index: 10;
+            align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; position: relative; z-index: 20;
         }
         .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
     </style>
@@ -518,9 +519,10 @@ HTML = """<!DOCTYPE html>
 
 <div class="kai-wrapper">
     <div class="header">
-        <div class="logo">MICE <span>CHECKER</span></div>
+        <div class="logo">KAI <span>CHECKER</span></div>
         <div style="display: flex; align-items: center; gap: 15px;">
             <span style="color: #c084fc; font-weight: 700; font-size: 14px; background: rgba(168, 85, 247, 0.15); padding: 4px 12px; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 20px;">ТЕСТ</span>
+            <span id="sessionTimer" style="color: #00b894; font-family: 'Inter', monospace; font-weight: 600; font-size: 13px; background: rgba(0, 184, 148, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(0, 184, 148, 0.2);">⏱️ 00:00:00</span>
             <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
         </div>
     </div>
@@ -611,10 +613,21 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="footer">MICE CHECKER · PRO</div>
+    <div class="footer">KAI CHECKER · PRO</div>
 </div>
 
 <script>
+    // Таймер запуска / сессии
+    let startTime = Date.now();
+    setInterval(() => {
+        let diff = Math.floor((Date.now() - startTime) / 1000);
+        let h = String(Math.floor(diff / 3600)).padStart(2, '0');
+        let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+        let s = String(diff % 60).padStart(2, '0');
+        const timerEl = document.getElementById('sessionTimer');
+        if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
+    }, 1000);
+
     function setupFileUpload(fileInputId, targetTextareaId) {
         const fileInput = document.getElementById(fileInputId);
         if (fileInput) {
@@ -688,12 +701,12 @@ HTML = """<!DOCTYPE html>
                     }
                 }
                 
-                let html = `✅ Всего добавлено в историю: ${checkerHistory.length}\n\n`;
+                let html = `✅ Всего добавлено в историю: ${checkerHistory.length}\\n\\n`;
                 for (const report of checkerHistory) {
-                    html += `${report}\n────────────────────────────────────────\n`;
+                    html += `${report}\\n────────────────────────────────────────\\n`;
                 }
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать ZIP с полными отчетами (.txt)</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать ZIP с полными отчетами (.txt)</a>`;
                 }
                 resBox.innerHTML = html;
                 resBox.scrollTop = resBox.scrollHeight;
@@ -735,7 +748,7 @@ HTML = """<!DOCTYPE html>
         const resultWrapper = document.getElementById('freshResultWrapper');
         const resultCode = document.getElementById('freshResultCode');
         
-        const cookies = input.value.trim().split('\n').filter(c => c.trim().length > 50);
+        const cookies = input.value.trim().split('\\n').filter(c => c.trim().length > 50);
         if (!cookies.length) { status.textContent = '❌ Нет куков'; return; }
         
         if (freshRunning) return;
@@ -787,7 +800,7 @@ HTML = """<!DOCTYPE html>
         status.textContent = '✅ Готово';
         
         if (newCookies.length) {
-            resultCode.textContent = newCookies.join('\n');
+            resultCode.textContent = newCookies.join('\\n');
             resultWrapper.style.display = 'block';
         }
     }
@@ -849,12 +862,11 @@ def api_fullcheck():
     with open(filepath, 'wb') as f:
         f.write(zip_buffer.getvalue())
     
-    str_url = f"/downloads/{filename}"
     return jsonify({
         "success": True,
         "total": len(cookies),
         "reports": reports,
-        "download_url": str_url
+        "download_url": f"/downloads/{filename}"
     })
 
 @app.route("/api/fresh", methods=["POST"])
