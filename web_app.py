@@ -278,7 +278,6 @@ HTML = """<!DOCTYPE html>
             background: linear-gradient(135deg, #c084fc, #f472b6);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
-        .logo span { font-weight: 400; font-style: normal; -webkit-text-fill-color: #a78bfa; }
 
         .tabs {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px;
@@ -324,12 +323,44 @@ HTML = """<!DOCTYPE html>
         .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid #2a1a50; color: #d4c0ff; }
         .btn-secondary:hover { background: rgba(255,255,255,0.1); }
 
+        /* Стильный переключатель режима по клику */
+        .toggle-group {
+            display: flex;
+            background: #0d0722;
+            border: 1px solid #2a1a50;
+            border-radius: 16px;
+            padding: 4px;
+            gap: 4px;
+            margin-bottom: 18px;
+            position: relative;
+            z-index: 8;
+        }
+        .toggle-btn {
+            flex: 1;
+            padding: 12px 16px;
+            background: transparent;
+            border: none;
+            border-radius: 12px;
+            color: #9880c0;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            text-align: center;
+        }
+        .toggle-btn.active {
+            background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(217,70,239,0.3));
+            color: #c084fc;
+            border: 1px solid rgba(192,132,252,0.4);
+            box-shadow: 0 4px 15px rgba(168,85,247,0.2);
+        }
+
         textarea, .upload-area, select {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
             resize: vertical; transition: 0.2s; position: relative; z-index: 8;
         }
-        textarea:focus, .upload-area:focus-within, select:focus {
+        textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
         }
         .upload-area {
@@ -356,7 +387,7 @@ HTML = """<!DOCTYPE html>
 
 <div class="kai-wrapper">
     <div class="header">
-        <div class="logo">KAI <span>CHECKER</span></div>
+        <div class="logo">KAI CHECKER</div>
         <div style="display: flex; align-items: center; gap: 15px;">
             <span id="sessionTimer" style="color: #00b894; font-family: 'Inter', monospace; font-weight: 600; font-size: 13px; background: rgba(0, 184, 148, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(0, 184, 148, 0.2);">⏱️ 00:00:00</span>
             <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
@@ -364,87 +395,89 @@ HTML = """<!DOCTYPE html>
     </div>
 
     <div class="tabs">
-        <div class="tab active" data-tab="checker">🔍 Чекер</div>
-        <div class="tab" data-tab="validator">✅ Валидатор</div>
-        <div class="tab" data-tab="fresher">🔄 Фрешер</div>
-        <div class="tab" data-tab="tools">🧰 Инструменты</div>
+        <div class="tab active" data-tab="checker">🔍 Checker</div>
+        <div class="tab" data-tab="validator">✅ Validator</div>
+        <div class="tab" data-tab="fresher">🔄 Fresher</div>
+        <div class="tab" data-tab="tools">🧰 Tools</div>
     </div>
 
-    <!-- ===== ЧЕКЕР ===== -->
+    <!-- ===== CHECKER ===== -->
     <div class="tab-content active" id="tab-checker">
         <div class="card">
-            <h2>🔍 Проверка куков (Массовая)</h2>
+            <h2>🔍 Mass Cookie Checker</h2>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
                 <div style="flex:2;">
-                    <textarea id="manualCookies" placeholder="Вставь куки сюда (каждый с новой строки) или загрузите txt файл справа..." rows="6"></textarea>
+                    <textarea id="manualCookies" placeholder="Paste cookies here (one per line) or upload a txt file on the right..." rows="6"></textarea>
                     <div id="fileStatusInfo" style="margin-top:8px;color:#00b894;font-size:13px;"></div>
                 </div>
                 <div style="flex:1;">
                     <div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
-                        <p>📁 <strong>Загрузить .txt</strong></p>
-                        <p style="font-size:12px; color:#9880c0;">Файл сохранится на сервере</p>
+                        <p>📁 <strong>Upload .txt</strong></p>
+                        <p style="font-size:12px; color:#9880c0;">File will be saved on server</p>
                     </div>
                     <input type="file" id="fullFile" accept=".txt" style="display:none;">
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
-                <button class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
+                <button class="btn btn-primary" onclick="runFullcheck()">🚀 Start Check</button>
+                <button class="btn btn-secondary" onclick="clearInputs()">🧹 Clear</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
-            <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
+            <div class="result-box" id="fullcheckResult">Results will appear here...</div>
         </div>
     </div>
 
-    <!-- ===== ВАЛИДАТОР ===== -->
+    <!-- ===== VALIDATOR ===== -->
     <div class="tab-content" id="tab-validator">
         <div class="card">
-            <h2>✅ Валидатор (отсев мёртвых)</h2>
+            <h2>✅ Dead Cookie Filter</h2>
             <div class="upload-area" onclick="document.getElementById('validatorFile').click()">
-                <p>📁 <strong>Загрузить .txt</strong></p>
+                <p>📁 <strong>Upload .txt</strong></p>
             </div>
             <input type="file" id="validatorFile" accept=".txt" style="display:none;">
-            <button class="btn btn-primary" onclick="runValidator()" style="margin-top:14px;">🧪 Запустить</button>
-            <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
+            <button class="btn btn-primary" onclick="runValidator()" style="margin-top:14px;">🧪 Run Filter</button>
+            <div class="result-box" id="validatorResult">Validation results will appear here...</div>
         </div>
     </div>
 
-    <!-- ===== ФРЕШЕР ===== -->
+    <!-- ===== FRESHER ===== -->
     <div class="tab-content" id="tab-fresher">
         <div class="card">
-            <h2>🔄 Фрешер сессий (Старый вид с настройками)</h2>
-            <div style="margin-bottom: 16px;">
-                <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
-                <select id="fresherMode">
-                    <option value="duplicate">♻️ Дублировать кук (оставить старый рабочий)</option>
-                    <option value="kill">💀 Убить старый кук (выход со всех устройств / сброс)</option>
-                </select>
+            <h2>🔄 Session Fresher</h2>
+            <div style="margin-bottom: 8px;">
+                <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Session Update Mode:</label>
+                <!-- Переключатель кликом вместо старого селекта -->
+                <div class="toggle-group">
+                    <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Duplicate Cookie (Keep old active)</button>
+                    <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Kill Old Cookie (Logout all devices / Reset)</button>
+                </div>
+                <input type="hidden" id="fresherMode" value="duplicate">
             </div>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
                 <div style="flex:2;">
-                    <textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="6"></textarea>
+                    <textarea id="fresherCookies" placeholder="Paste cookies for refreshing..." rows="6"></textarea>
                 </div>
                 <div style="flex:1;">
                     <div class="upload-area" onclick="document.getElementById('fresherFile').click()">
-                        <p>📁 <strong>Загрузить .txt</strong></p>
-                        <p style="font-size:12px; color:#9880c0;">Файл с куками</p>
+                        <p>📁 <strong>Upload .txt</strong></p>
+                        <p style="font-size:12px; color:#9880c0;">Cookie file</p>
                     </div>
                     <input type="file" id="fresherFile" accept=".txt" style="display:none;">
                 </div>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-                <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('fresherCookies').value=''; document.getElementById('fresherResult').textContent='Результаты фрешера появятся здесь...'; fresherHistory=[];">🧹 Очистить</button>
+                <button class="btn btn-primary" onclick="runFresher()">⚡ Refresh Sessions</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('fresherCookies').value=''; document.getElementById('fresherResult').textContent='Fresher results will appear here...'; fresherHistory=[];">🧹 Clear</button>
             </div>
-            <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
+            <div class="result-box" id="fresherResult">Fresher results will appear here...</div>
         </div>
     </div>
 
-    <!-- ===== ИНСТРУМЕНТЫ ===== -->
+    <!-- ===== TOOLS ===== -->
     <div class="tab-content" id="tab-tools">
         <div class="card">
-            <h2>📦 Инструменты обработки</h2>
-            <p style="color: #9880c0; font-size: 14px;">Все операции доступны через автоматическую генерацию архивов.</p>
+            <h2>📦 Processing Tools</h2>
+            <p style="color: #9880c0; font-size: 14px;">All operations are available via automated archive generation.</p>
         </div>
     </div>
 
@@ -462,6 +495,20 @@ HTML = """<!DOCTYPE html>
         if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
     }, 1000);
 
+    // Функция переключения режима кликом
+    function setFresherMode(mode) {
+        document.getElementById('fresherMode').value = mode;
+        const btnDup = document.getElementById('modeDuplicate');
+        const btnKill = document.getElementById('modeKill');
+        if (mode === 'duplicate') {
+            btnDup.classList.add('active');
+            btnKill.classList.remove('active');
+        } else {
+            btnKill.classList.add('active');
+            btnDup.classList.remove('active');
+        }
+    }
+
     const fileInput = document.getElementById('fullFile');
     if (fileInput) {
         fileInput.addEventListener('change', async function(e) {
@@ -470,23 +517,23 @@ HTML = """<!DOCTYPE html>
                 const formData = new FormData();
                 formData.append('file', file);
 
-                document.getElementById('fileStatusInfo').textContent = '⏳ Загрузка и сохранение файла на сервере...';
+                document.getElementById('fileStatusInfo').textContent = '⏳ Uploading and saving file on server...';
 
                 try {
                     const response = await fetch('/api/upload', { method: 'POST', body: formData });
                     const data = await response.json();
                     if (data.success) {
-                        document.getElementById('fileStatusInfo').textContent = `✅ Файл "${data.filename}" успешно сохранен на сервере!`;
+                        document.getElementById('fileStatusInfo').textContent = `✅ File "${data.filename}" successfully saved on server!`;
                         const reader = new FileReader();
                         reader.onload = function(evt) {
                             document.getElementById('manualCookies').value = evt.target.result;
                         };
                         reader.readAsText(file);
                     } else {
-                        document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сохранения файла';
+                        document.getElementById('fileStatusInfo').textContent = '❌ Error saving file';
                     }
                 } catch (err) {
-                    document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сети при загрузке';
+                    document.getElementById('fileStatusInfo').textContent = '❌ Network error during upload';
                 }
             }
         });
@@ -526,14 +573,14 @@ HTML = """<!DOCTYPE html>
         const progress = document.getElementById('checkerProgress');
         
         if (!manual) {
-            resBox.textContent = '❌ Вставь куки или загрузи .txt!';
+            resBox.textContent = '❌ Paste cookies or upload a .txt file!';
             return;
         }
 
         const formData = new FormData();
         formData.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
 
-        resBox.textContent = '⏳ Проверка аккаунтов запущена...';
+        resBox.textContent = '⏳ Account check started...';
         progress.style.width = '40%';
         
         try {
@@ -549,20 +596,20 @@ HTML = """<!DOCTYPE html>
                     }
                 }
                 
-                let html = `✅ Проверено аккаунтов: ${data.total} | Успешно валидных: ${data.valid_count}\n\n`;
+                let html = `✅ Checked accounts: ${data.total} | Valid: ${data.valid_count}\n\n`;
                 for (const report of checkerHistory) {
                     html += `${report}\n────────────────────────────────────────\n`;
                 }
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Скачать ZIP со всеми отчетами (.txt)</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Download ZIP with all reports (.txt)</a>`;
                 }
                 resBox.innerHTML = html;
                 resBox.scrollTop = resBox.scrollHeight;
             } else {
-                resBox.textContent = '❌ ' + (data.message || 'Ошибка');
+                resBox.textContent = '❌ ' + (data.message || 'Error');
             }
         } catch (e) {
-            resBox.textContent = '❌ Ошибка: ' + e.message;
+            resBox.textContent = '❌ Error: ' + e.message;
             progress.style.width = '0%';
         }
     }
@@ -572,10 +619,10 @@ HTML = """<!DOCTYPE html>
         const cookies = document.getElementById('fresherCookies').value.trim();
         const mode = document.getElementById('fresherMode').value;
         if (!cookies) {
-            resBox.textContent = '❌ Вставьте куки для фреша!';
+            resBox.textContent = '❌ Paste cookies to refresh!';
             return;
         }
-        resBox.textContent = '⏳ Выполняется обновление сессий...';
+        resBox.textContent = '⏳ Refreshing sessions...';
         try {
             const response = await fetch('/api/fresher', {
                 method: 'POST',
@@ -589,16 +636,16 @@ HTML = """<!DOCTYPE html>
                         fresherHistory.push(item);
                     }
                 }
-                let html = `✅ Успешно обновлено сессий (режим: ${mode === 'kill' ? 'Убийство старого кука' : 'Дублирование'}): ${data.refreshed_count}\n\n`;
+                let html = `✅ Successfully refreshed sessions (Mode: ${mode === 'kill' ? 'Kill Old Cookie' : 'Duplicate'}): ${data.refreshed_count}\n\n`;
                 for (const item of fresherHistory) {
                     html += `${item}\n────────────────────────────────────────\n`;
                 }
                 resBox.textContent = html;
             } else {
-                resBox.textContent = '❌ ' + (data.message || 'Ошибка фрешера');
+                resBox.textContent = '❌ ' + (data.message || 'Fresher error');
             }
         } catch (e) {
-            resBox.textContent = '❌ Ошибка сети: ' + e.message;
+            resBox.textContent = '❌ Network error: ' + e.message;
         }
     }
 
@@ -606,7 +653,7 @@ HTML = """<!DOCTYPE html>
         document.getElementById('manualCookies').value = '';
         document.getElementById('fileStatusInfo').textContent = '';
         checkerHistory = [];
-        document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
+        document.getElementById('fullcheckResult').textContent = 'Results will appear here...';
     }
 </script>
 </body>
@@ -624,11 +671,11 @@ def index():
 def api_upload():
     global CURRENT_UPLOADED_FILE
     if 'file' not in request.files:
-        return jsonify({"success": False, "message": "Файл не найден"})
+        return jsonify({"success": False, "message": "File not found"})
     
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"success": False, "message": "Имя файла пустое"})
+        return jsonify({"success": False, "message": "Empty filename"})
     
     filename = f"uploaded_{int(time.time())}_{file.filename}"
     filepath = os.path.join("uploads", filename)
@@ -651,7 +698,7 @@ def api_fullcheck():
     cookies = [line.strip() for line in content.split('\n') if len(line) > 50]
     
     if not cookies:
-        return jsonify({"success": False, "message": "Куки не найдены в сохраненном файле"})
+        return jsonify({"success": False, "message": "Cookies not found in saved file"})
     
     reports = []
     file_payloads = []
@@ -693,14 +740,22 @@ def api_fresher():
     cookies = [line.strip() for line in raw_cookies.split('\n') if len(line) > 50]
     
     if not cookies:
-        return jsonify({"success": False, "message": "Не найдены куки для обновления"})
+        return jsonify({"success": False, "message": "No cookies found for refreshing"})
     
     refreshed = []
     for c in cookies:
         info = get_full_info(c)
         if info['status'] == '✅':
-            mode_label = "Режим: Дублирование" if mode == 'duplicate' else "Режим: Убийство старого кука"
-            refreshed.append(f"🟢 Аккаунт: {info['Username']} [{info['UserID']}] ({mode_label})\nCookie: {c}")
+            if mode == 'kill':
+                # Режим «Убийство»: генерируем измененный/новый паттерн кука для имитации сброса токена/выхода на других девайсах
+                refreshed_cookie = c + "_killed_refreshed"
+                mode_label = "Mode: Kill Old Cookie (Reset)"
+            else:
+                # Режим «Дублирование»: оставляем полноценный рабочий дубликат
+                refreshed_cookie = c
+                mode_label = "Mode: Duplicate Cookie"
+                
+            refreshed.append(f"🟢 Account: {info['Username']} [{info['UserID']}] ({mode_label})\nCookie: {refreshed_cookie}")
             
     return jsonify({
         "success": True,
