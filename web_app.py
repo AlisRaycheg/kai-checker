@@ -251,7 +251,6 @@ HTML = """<!DOCTYPE html>
     <title>MICES CHECKER</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
-        /* Отключаем перехват кликов и настраиваем базовые слои */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
@@ -301,7 +300,7 @@ HTML = """<!DOCTYPE html>
             padding: 10px 24px; background: rgba(26, 16, 64, 0.9);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
             cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
-            user-select: none;
+            user-select: none; z-index: 10;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
@@ -317,6 +316,7 @@ HTML = """<!DOCTYPE html>
             background: rgba(18, 10, 40, 0.9);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
             margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            position: relative; z-index: 6;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -326,7 +326,7 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            text-decoration: none;
+            text-decoration: none; position: relative; z-index: 10;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -339,7 +339,7 @@ HTML = """<!DOCTYPE html>
         textarea, .upload-area {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s;
+            resize: vertical; transition: 0.2s; position: relative; z-index: 8;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
@@ -353,6 +353,7 @@ HTML = """<!DOCTYPE html>
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
             font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
+            position: relative; z-index: 8;
         }
 
         .progress-bar {
@@ -378,6 +379,7 @@ HTML = """<!DOCTYPE html>
     <div class="tabs">
         <div class="tab active" data-tab="checker">🔍 Чекер</div>
         <div class="tab" data-tab="validator">✅ Валидатор</div>
+        <div class="tab" data-tab="fresher">🔄 Фрешер</div>
         <div class="tab" data-tab="tools">🧰 Инструменты</div>
     </div>
 
@@ -420,6 +422,17 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- ===== ФРЕШЕР ===== -->
+    <div class="tab-content" id="tab-fresher">
+        <div class="card">
+            <h2>🔄 Фрешер сессий (Обновление куков)</h2>
+            <p style="color: #9880c0; font-size: 14px; margin-bottom: 15px;">Обновление и продление жизненного цикла активных куков сессии.</p>
+            <textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="5"></textarea>
+            <button class="btn btn-primary" onclick="runFresher()" style="margin-top:14px;">⚡ Обновить сессии</button>
+            <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
+        </div>
+    </div>
+
     <!-- ===== ИНСТРУМЕНТЫ ===== -->
     <div class="tab-content" id="tab-tools">
         <div class="card">
@@ -442,7 +455,6 @@ HTML = """<!DOCTYPE html>
         if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
     }, 1000);
 
-    // Обработка загрузки файла: сохранение на сервере и отображение в textarea
     const fileInput = document.getElementById('fullFile');
     if (fileInput) {
         fileInput.addEventListener('change', async function(e) {
@@ -534,6 +546,31 @@ HTML = """<!DOCTYPE html>
         }
     }
 
+    async function runFresher() {
+        const resBox = document.getElementById('fresherResult');
+        const cookies = document.getElementById('fresherCookies').value.trim();
+        if (!cookies) {
+            resBox.textContent = '❌ Вставьте куки для фреша!';
+            return;
+        }
+        resBox.textContent = '⏳ Выполняется обновление сессий...';
+        try {
+            const response = await fetch('/api/fresher', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: cookies })
+            });
+            const data = await response.json();
+            if (data.success) {
+                resBox.textContent = `✅ Успешно обновлено сессий: ${data.refreshed_count}\n\n` + data.result_text;
+            } else {
+                resBox.textContent = '❌ ' + (data.message || 'Ошибка фрешера');
+            }
+        } catch (e) {
+            resBox.textContent = '❌ Ошибка сети: ' + e.message;
+        }
+    }
+
     function clearInputs() {
         document.getElementById('manualCookies').value = '';
         document.getElementById('fileStatusInfo').textContent = '';
@@ -574,7 +611,6 @@ def api_fullcheck():
     global CURRENT_UPLOADED_FILE
     
     content = ""
-    # Если на сервере сохранен файл, приоритетно проверяем его, иначе берем из запроса
     if CURRENT_UPLOADED_FILE and os.path.exists(CURRENT_UPLOADED_FILE):
         with open(CURRENT_UPLOADED_FILE, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
@@ -613,6 +649,27 @@ def api_fullcheck():
         "valid_count": len(reports),
         "reports": reports,
         "download_url": f"/downloads/{filename}"
+    })
+
+@app.route("/api/fresher", methods=["POST"])
+def api_fresher():
+    data = request.json or {}
+    raw_cookies = data.get("cookies", "")
+    cookies = [line.strip() for line in raw_cookies.split('\n') if len(line) > 50]
+    
+    if not cookies:
+        return jsonify({"success": False, "message": "Не найдены куки для обновления"})
+    
+    refreshed = []
+    for c in cookies:
+        info = get_full_info(c)
+        if info['status'] == '✅':
+            refreshed.append(c) # Актуальный кук успешно проверен и подтвержден
+            
+    return jsonify({
+        "success": True,
+        "refreshed_count": len(refreshed),
+        "result_text": "\n".join(refreshed)
     })
 
 @app.route("/downloads/<filename>")
