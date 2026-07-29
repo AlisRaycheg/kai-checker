@@ -353,26 +353,31 @@ HTML = """<!DOCTYPE html>
     <title>KAI CHECKER</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; pointer-events: auto; }
+        /* Глобальные настройки кликабельности */
+        * { margin: 0; padding: 0; box-sizing: border-box; pointer-events: auto !important; }
+        
         body {
             font-family: 'Inter', sans-serif;
             min-height: 100vh;
             padding: 24px;
             background: #0b081a;
             background-image: radial-gradient(circle at 10% 20%, #1a1040 0%, #0b081a 80%);
+            position: relative;
+            z-index: 1;
         }
+        
         .kai-wrapper {
             max-width: 1400px;
             margin: 0 auto;
             padding: 30px;
             background: rgba(18, 10, 40, 0.95);
-            backdrop-filter: blur(16px);
             border: 2px solid #6c5ce7;
             border-radius: 32px;
             box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
             position: relative;
-            z-index: 1;
+            z-index: 10;
         }
+        
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0d0722; border-radius: 8px; }
         ::-webkit-scrollbar-thumb { background: #a855f7; border-radius: 8px; }
@@ -380,8 +385,9 @@ HTML = """<!DOCTYPE html>
         .header {
             display: flex; justify-content: space-between; align-items: center;
             padding: 20px 0 16px; border-bottom: 1px solid #2a1a50;
-            margin-bottom: 30px; position: relative; z-index: 10;
+            margin-bottom: 30px; position: relative; z-index: 20;
         }
+        
         .logo {
             font-family: 'Poppins', sans-serif;
             font-size: 34px; font-weight: 900; font-style: italic;
@@ -391,28 +397,29 @@ HTML = """<!DOCTYPE html>
         .logo span { font-weight: 400; font-style: normal; -webkit-text-fill-color: #a78bfa; }
 
         .tabs {
-            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; position: relative; z-index: 10;
+            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; position: relative; z-index: 30;
         }
+        
         .tab {
-            padding: 10px 24px; background: rgba(26, 16, 64, 0.8);
+            padding: 10px 24px; background: rgba(26, 16, 64, 0.9);
             border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
             cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
-            user-select: none; position: relative; z-index: 10;
+            user-select: none; position: relative; z-index: 35;
         }
         .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
         .tab.active {
-            border-color: #c084fc; background: rgba(168, 85, 247, 0.25);
+            border-color: #c084fc; background: rgba(168, 85, 247, 0.3);
             color: #c084fc; box-shadow: 0 0 20px rgba(168,85,247,0.2);
         }
 
-        .tab-content { display: none; position: relative; z-index: 5; }
+        .tab-content { display: none; position: relative; z-index: 15; }
         .tab-content.active { display: block; animation: fadeUp 0.3s ease; }
         @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
 
         .card {
-            background: rgba(18, 10, 40, 0.8); backdrop-filter: blur(12px);
+            background: rgba(18, 10, 40, 0.9);
             border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
-            margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); position: relative; z-index: 5;
+            margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); position: relative; z-index: 20;
         }
         .card h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
@@ -422,7 +429,7 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            text-decoration: none; position: relative; z-index: 100;
+            text-decoration: none; position: relative; z-index: 50;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
@@ -435,7 +442,7 @@ HTML = """<!DOCTYPE html>
         textarea, .upload-area {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
             border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s; position: relative; z-index: 10;
+            resize: vertical; transition: 0.2s; position: relative; z-index: 30;
         }
         textarea:focus, .upload-area:focus-within {
             border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
@@ -448,71 +455,71 @@ HTML = """<!DOCTYPE html>
         .result-box {
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
             margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
-            font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word; position: relative; z-index: 10;
+            font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word; position: relative; z-index: 30;
         }
 
         .progress-bar {
-            margin-top: 12px; background: #0d0722; border-radius: 40px; height: 6px; overflow: hidden; border: 1px solid #1a1040;
+            margin-top: 12px; background: #0d0722; border-radius: 40px; height: 6px; overflow: hidden; border: 1px solid #1a1040; position: relative; z-index: 25;
         }
         .progress-bar .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.3s ease; }
 
         .fresh-card {
-            background: rgba(12, 12, 24, 0.9); border: 1px solid #1f1f3a; border-radius: 16px;
-            padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); position: relative; z-index: 10;
+            background: rgba(12, 12, 24, 0.95); border: 1px solid #1f1f3a; border-radius: 16px;
+            padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); position: relative; z-index: 20;
         }
         .fresh-header {
-            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px;
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; position: relative; z-index: 25;
         }
         .fresh-header h2 {
             font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic; font-size: 22px; color: #e8e0ff; margin: 0;
         }
         .method-group {
-            display: flex; gap: 6px; background: #0a0a18; padding: 4px; border-radius: 40px; border: 1px solid #1a1a2e; position: relative; z-index: 20;
+            display: flex; gap: 6px; background: #0a0a18; padding: 4px; border-radius: 40px; border: 1px solid #1a1a2e; position: relative; z-index: 40;
         }
         .method-btn {
             padding: 8px 20px; border: none; border-radius: 30px; background: transparent; color: #6a6a8a;
-            font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; position: relative; z-index: 20;
+            font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; position: relative; z-index: 45;
         }
         .method-btn.active {
             background: linear-gradient(135deg, #6c5ce7, #a855f7); color: #fff; box-shadow: 0 4px 16px rgba(108,92,231,0.3);
         }
         .fresh-textarea {
             width: 100%; min-height: 80px; padding: 14px 16px; background: #0a0a18; border: 1px solid #1a1a2e;
-            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical; position: relative; z-index: 20;
+            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical; position: relative; z-index: 30;
         }
         .fresh-controls {
-            display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; position: relative; z-index: 20;
+            display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; position: relative; z-index: 40;
         }
         .btn-start {
             background: linear-gradient(135deg, #00b894, #00a381); color: #fff; padding: 10px 32px; border: none;
-            border-radius: 40px; font-weight: 700; font-size: 14px; cursor: pointer; position: relative; z-index: 20;
+            border-radius: 40px; font-weight: 700; font-size: 14px; cursor: pointer; position: relative; z-index: 50;
         }
         .btn-stop {
             background: #1a1a2e; color: #6a6a8a; padding: 10px 24px; border: 1px solid #2a2a4a;
-            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; position: relative; z-index: 20;
+            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; position: relative; z-index: 50;
         }
         .btn-download {
             background: transparent; color: #6c5ce7; padding: 10px 20px; border: 1px solid #2a2a4a;
-            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; margin-left: auto; position: relative; z-index: 20;
+            border-radius: 40px; font-weight: 600; font-size: 14px; cursor: pointer; margin-left: auto; position: relative; z-index: 50;
         }
         .fresh-progress {
-            margin-top: 16px; background: #0a0a18; border-radius: 40px; height: 8px; overflow: hidden; border: 1px solid #1a1a2e;
+            margin-top: 16px; background: #0a0a18; border-radius: 40px; height: 8px; overflow: hidden; border: 1px solid #1a1a2e; position: relative; z-index: 25;
         }
         .fresh-progress .fill {
             height: 100%; width: 0%; background: linear-gradient(90deg, #6c5ce7, #a855f7, #ec4899); transition: width 0.3s ease;
         }
-        .fresh-stats { display: flex; gap: 24px; margin-top: 10px; font-size: 13px; color: #6a6a8a; }
+        .fresh-stats { display: flex; gap: 24px; margin-top: 10px; font-size: 13px; color: #6a6a8a; position: relative; z-index: 25; }
         .fresh-stats strong { color: #d0d0e0; }
         .fresh-stats .valid { color: #00b894; }
         .fresh-stats .invalid { color: #ff6b6b; }
         .cookie-output {
-            background: #0a0a18; border: 1px solid #1a1a2e; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; position: relative; z-index: 20;
+            background: #0a0a18; border: 1px solid #1a1a2e; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; position: relative; z-index: 30;
         }
         .cookie-output code { font-family: 'Inter', monospace; font-size: 12px; color: #ffffff; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
         .copy-btn {
-            align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; position: relative; z-index: 20;
+            align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; position: relative; z-index: 50;
         }
-        .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
+        .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; position: relative; z-index: 20; }
     </style>
 </head>
 <body>
@@ -520,7 +527,7 @@ HTML = """<!DOCTYPE html>
 <div class="kai-wrapper">
     <div class="header">
         <div class="logo">KAI <span>CHECKER</span></div>
-        <div style="display: flex; align-items: center; gap: 15px;">
+        <div style="display: flex; align-items: center; gap: 15px; position: relative; z-index: 25;">
             <span style="color: #c084fc; font-weight: 700; font-size: 14px; background: rgba(168, 85, 247, 0.15); padding: 4px 12px; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 20px;">ПРОФФИ</span>
             <span id="sessionTimer" style="color: #00b894; font-family: 'Inter', monospace; font-weight: 600; font-size: 13px; background: rgba(0, 184, 148, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(0, 184, 148, 0.2);">⏱️ 00:00:00</span>
             <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
