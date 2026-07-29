@@ -3,13 +3,10 @@ import time
 import logging
 import re
 import urllib3
-import html
-import sys
-import asyncio
-import zipfile
 import json
 import requests
-from datetime import datetime, timezone, timedelta
+import zipfile
+from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
 from io import BytesIO
 
@@ -18,21 +15,20 @@ os.makedirs("downloads", exist_ok=True)
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("temp", exist_ok=True)
 os.makedirs("history", exist_ok=True)
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 CURRENT_UPLOADED_FILE = None
-
-# ============================================================
-# ФУНКЦИИ РАБОТЫ С ИСТОРИЕЙ
-# ============================================================
-
 CHECKER_HISTORY_FILE = "history/checker_history.json"
 FRESHER_HISTORY_FILE = "history/fresher_history.json"
 
+# ============================================================
+# ФУНКЦИИ ИСТОРИИ
+# ============================================================
+
 def load_history(filepath):
-    """Загружает историю из JSON файла"""
     if not os.path.exists(filepath):
         return []
     try:
@@ -42,7 +38,6 @@ def load_history(filepath):
         return []
 
 def save_history(filepath, data):
-    """Сохраняет историю в JSON файл"""
     try:
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -50,41 +45,32 @@ def save_history(filepath, data):
         logger.error(f"Error saving history: {e}")
 
 def add_to_checker_history(entry):
-    """Добавляет запись в историю чекера"""
     history = load_history(CHECKER_HISTORY_FILE)
     history.append({
         'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'total': entry.get('total', 0),
         'valid': entry.get('valid', 0),
-        'cookies': entry.get('cookies', []),
+        'cookies': entry.get('cookies', [])[:20],
         'download_url': entry.get('download_url', '')
     })
-    # Храним последние 50 записей
     if len(history) > 50:
         history = history[-50:]
     save_history(CHECKER_HISTORY_FILE, history)
 
 def add_to_fresher_history(entry):
-    """Добавляет запись в историю фрешера"""
     history = load_history(FRESHER_HISTORY_FILE)
     history.append({
         'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'mode': entry.get('mode', 'duplicate'),
         'refreshed_count': entry.get('refreshed_count', 0),
-        'cookies': entry.get('cookies', [])
+        'cookies': entry.get('cookies', [])[:20]
     })
     if len(history) > 50:
         history = history[-50:]
     save_history(FRESHER_HISTORY_FILE, history)
 
-def clear_checker_history():
-    save_history(CHECKER_HISTORY_FILE, [])
-
-def clear_fresher_history():
-    save_history(FRESHER_HISTORY_FILE, [])
-
 # ============================================================
-# ПОЛНЫЙ ЧЕКЕР ИНФОРМАЦИИ
+# ЧЕКЕР
 # ============================================================
 
 def get_full_info(cookie: str) -> dict:
@@ -93,13 +79,9 @@ def get_full_info(cookie: str) -> dict:
         'TotalRAP': 0, 'Created': '?', 'Country': '?',
         'EmailSet': False, 'TwoFactorEnabled': False,
         'AccountPinEnabled': False, 'PhoneSet': False,
-        'SecurityStatus': '⚠️ НИЗКИЙ (НЕЗАЩИЩЕН!)',
-        'Cookie': cookie,
-        'PurchasedGamepasses': {},
-        'RareItems': [],
-        'CreditCardsCount': 0,
-        'IsPremium': False,
-        'DonationTotal': 0
+        'SecurityStatus': '⚠️ НИЗКИЙ', 'Cookie': cookie,
+        'PurchasedGamepasses': {}, 'CreditCardsCount': 0,
+        'IsPremium': False, 'DonationTotal': 0
     }
     try:
         cleaned_cookie = cookie.strip()
@@ -109,10 +91,8 @@ def get_full_info(cookie: str) -> dict:
         s = requests.Session()
         s.headers.update({
             'Cookie': f'.ROBLOSECURITY={cleaned_cookie}',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
-            'Referer': 'https://www.roblox.com/',
-            'Origin': 'https://www.roblox.com'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json'
         })
         
         r = s.get('https://users.roblox.com/v1/users/authenticated', timeout=15, verify=False)
@@ -128,7 +108,7 @@ def get_full_info(cookie: str) -> dict:
         else:
             info['status'] = '❌'
             return info
-            
+
         uid = info['UserID']
 
         def g(url):
@@ -140,16 +120,16 @@ def get_full_info(cookie: str) -> dict:
 
         d = g('https://www.roblox.com/my/settings/json')
         if d:
-            security = d.get('MyAccountSecurityModel', {})
-            info['EmailSet'] = security.get('IsEmailSet', False)
-            info['TwoFactorEnabled'] = security.get('IsTwoStepEnabled', False)
-            info['AccountPinEnabled'] = security.get('IsAccountPinEnabled', False)
-            info['PhoneSet'] = security.get('IsPhoneSet', False)
-            billing = d.get('BillingModel', {})
-            info['CreditCardsCount'] = len(billing.get('SavedPaymentMethods', []))
+            sec = d.get('MyAccountSecurityModel', {})
+            info['EmailSet'] = sec.get('IsEmailSet', False)
+            info['TwoFactorEnabled'] = sec.get('IsTwoStepEnabled', False)
+            info['AccountPinEnabled'] = sec.get('IsAccountPinEnabled', False)
+            info['PhoneSet'] = sec.get('IsPhoneSet', False)
+            bill = d.get('BillingModel', {})
+            info['CreditCardsCount'] = len(bill.get('SavedPaymentMethods', []))
 
         prem = g(f'https://premiumfeatures.roblox.com/v1/users/{uid}/subscriptions')
-        if prem and prem.get('isSubscribed', False):
+        if prem and prem.get('isSubscribed'):
             info['IsPremium'] = True
 
         rd = g(f'https://users.roblox.com/v1/users/{uid}')
@@ -168,13 +148,13 @@ def get_full_info(cookie: str) -> dict:
         if country:
             info['Country'] = country.get('countryCode', '?')
 
+        # Gamepasses
         try:
             gp_url = f"https://economy.roblox.com/v2/users/{uid}/transactions?limit=100&transactionType=Purchase"
             cursor = ""
             page = 0
             gamepasses_dict = {}
             total_donated = 0
-            
             while page < 10:
                 url = gp_url + f"&cursor={cursor}" if cursor else gp_url
                 r = s.get(url, verify=False, timeout=12)
@@ -185,11 +165,10 @@ def get_full_info(cookie: str) -> dict:
                     details = item.get('details', {})
                     price = abs(item.get('currency', {}).get('amount', 0))
                     total_donated += price
-                    item_type = str(details.get('type', ''))
-                    if price >= 50 and (item_type in ['GamePass', 'DeveloperProduct'] or 'GamePass' in str(details)):
+                    if price >= 50:
                         name = details.get('name', 'Товар')
-                        place_info = details.get('place', {})
-                        place_name = place_info.get('name', 'Другие игры')
+                        place = details.get('place', {})
+                        place_name = place.get('name', 'Другие игры')
                         if place_name not in gamepasses_dict:
                             gamepasses_dict[place_name] = []
                         gamepasses_dict[place_name].append({'name': name, 'price': price})
@@ -198,135 +177,100 @@ def get_full_info(cookie: str) -> dict:
                     break
                 page += 1
                 time.sleep(0.15)
-            
             info['PurchasedGamepasses'] = gamepasses_dict
             info['DonationTotal'] = total_donated
-        except Exception as e:
-            logger.error(f"Gamepass error: {e}")
+        except:
+            pass
 
-        security_score = 0
-        if info.get('EmailSet'): security_score += 1
-        if info.get('TwoFactorEnabled'): security_score += 2
-        if info.get('AccountPinEnabled'): security_score += 1
-        if info.get('PhoneSet'): security_score += 1
-
-        if security_score >= 4:
-            info['SecurityStatus'] = '🔒 ВЫСОКИЙ'
-        elif security_score >= 2:
-            info['SecurityStatus'] = '🔐 СРЕДНИЙ'
-        else:
-            info['SecurityStatus'] = '⚠️ НИЗКИЙ (НЕЗАЩИЩЕН!)'
+        score = 0
+        if info['EmailSet']: score += 1
+        if info['TwoFactorEnabled']: score += 2
+        if info['AccountPinEnabled']: score += 1
+        if info['PhoneSet']: score += 1
+        info['SecurityStatus'] = '🔒 ВЫСОКИЙ' if score >= 4 else ('🔐 СРЕДНИЙ' if score >= 2 else '⚠️ НИЗКИЙ')
     except Exception as e:
-        logger.error(f"Err: {e}")
+        logger.error(f"Check error: {e}")
         info['status'] = '❌'
     return info
 
 def format_short_report(info):
     if info['status'] != '✅':
         return f"❌ Невалидный кук\nCookie: {info['Cookie']}"
-    
     gp = info.get('PurchasedGamepasses', {})
-    total_gp_robux = sum(p['price'] for passes in gp.values() for p in passes)
-    
-    r = f"📋 Аккаунт: {info['Username']} [{info['UserID']}]\n"
-    r += f"🟢 VALID | 🆔 {info['UserID']}\n"
-    r += f"📅 {info['Created']} | 🌍 {info['Country']} | {'✅ Premium' if info['IsPremium'] else '❌ Premium'}\n"
+    total_gp = sum(p['price'] for passes in gp.values() for p in passes)
+    r = f"📋 {info['Username']} [{info['UserID']}]\n"
+    r += f"🟢 VALID | 📅 {info['Created']} | 🌍 {info['Country']}\n"
     r += f"💰 Robux: ⏣ {info['Robux']:,} | 💸 Донат: ⏣ {info['DonationTotal']:,}\n"
-    r += f"💎 RAP: {'❌ Нет' if info['TotalRAP'] == 0 else f'⏣ {info['TotalRAP']:,}'}\n"
-    r += f"🛡️ БЕЗОПАСНОСТЬ: Почта: {'✅' if info['EmailSet'] else '❌'} | 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'} | {info['SecurityStatus']}\n"
-    
+    r += f"🛡️ Почта: {'✅' if info['EmailSet'] else '❌'} | 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'} | {info['SecurityStatus']}\n"
     if gp:
-        r += f"📦 ГЕЙМПАССЫ ({total_gp_robux:,} R$):\n"
+        r += f"📦 ГЕЙМПАССЫ ({total_gp:,} R$):\n"
         for game, passes in list(gp.items())[:3]:
-            game_total = sum(p['price'] for p in passes)
-            r += f"   🎮 {game} (⏣ {game_total:,}):\n"
+            r += f"   🎮 {game}:\n"
             for p in passes[:6]:
                 r += f"      └ {p['name']} — ⏣ {p['price']:,}\n"
-    else:
-        r += "📦 ГЕЙМПАССЫ: ❌ Нет\n"
-    
     r += f"\n🍪 COOKIE:\n{info['Cookie']}"
     return r
 
 def generate_full_txt_report(info):
     if info['status'] != '✅':
         return f"❌ Невалидный кук\nCookie: {info['Cookie']}"
-    
     gp = info.get('PurchasedGamepasses', {})
-    
-    r = "╔══════════════════════════════════════════════════════════╗\n"
-    r += "║  🎮 ROBLOX COOKIE CHECK REPORT                           ║\n"
-    r += "╠══════════════════════════════════════════════════════════╣\n"
-    r += f"║  📋 {info['Username']}                                   ║\n"
-    r += f"║  🟢 ✅ | 🆔 {info['UserID']}                            ║\n"
-    r += f"║  📅 {info['Created']} | 🌍 {info['Country']}             ║\n"
-    r += "╠══════════════════════════════════════════════════════════╣\n"
-    r += f"║  💰 Robux: ⏣ {info['Robux']:,}                           ║\n"
-    r += f"║  💸 Донат: ⏣ {info['DonationTotal']:,}                   ║\n"
-    r += f"║  💎 RAP: {'❌ No' if info['TotalRAP'] == 0 else f'⏣ {info['TotalRAP']:,}'}                           ║\n"
-    r += "╠══════════════════════════════════════════════════════════╣\n"
-    r += f"║  📧 Почта: {'Да' if info['EmailSet'] else 'Нет'} | 🔐 2FA: {'Да' if info['TwoFactorEnabled'] else 'Нет'}      ║\n"
-    r += f"║  ⭐ Premium: {'Да' if info['IsPremium'] else 'Нет'} | 💳 Карты: {info['CreditCardsCount']}          ║\n"
-    r += "╠══════════════════════════════════════════════════════════╣\n"
-    r += "║  🔫 ГЕЙМПАССЫ ПО ИГРАХ                                   ║\n"
-    
+    r = "=" * 60 + "\n"
+    r += f"ROBLOX COOKIE CHECK REPORT\n"
+    r += "=" * 60 + "\n"
+    r += f"Аккаунт: {info['Username']} [{info['UserID']}]\n"
+    r += f"Создан: {info['Created']} | Страна: {info['Country']}\n"
+    r += f"Robux: {info['Robux']:,} | Донат: {info['DonationTotal']:,}\n"
+    r += f"Premium: {'Да' if info['IsPremium'] else 'Нет'} | Карты: {info['CreditCardsCount']}\n"
+    r += f"Почта: {'Да' if info['EmailSet'] else 'Нет'} | 2FA: {'Да' if info['TwoFactorEnabled'] else 'Нет'}\n"
+    r += "=" * 60 + "\n"
     if gp:
+        r += "ГЕЙМПАССЫ:\n"
         for game, passes in gp.items():
-            game_total = sum(p['price'] for p in passes)
-            r += f"║  🎮 {game} (Total: {game_total:,} R$):           ║\n"
             for p in passes:
-                r += f"║    └ {p['name']} ({p['price']} R$)               ║\n"
-    else:
-        r += "║  🎮 ГЕЙМПАССЫ: ❌ Нет                                    ║\n"
-        
-    r += "╠══════════════════════════════════════════════════════════╣\n"
-    r += "║  🍪 COOKIE:                                              ║\n"
-    r += "╚══════════════════════════════════════════════════════════╝\n\n"
-    r += f"{info['Cookie']}\n\n"
-    r += f"Generated: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+                r += f"  {game} - {p['name']} ({p['price']} R$)\n"
+    r += "=" * 60 + "\n"
+    r += f"COOKIE:\n{info['Cookie']}\n"
+    r += f"\nGenerated: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
     return r
 
 # ============================================================
-# ИНСТРУМЕНТЫ СЛИЯНИЯ И РАЗДЕЛЕНИЯ
+# ИНСТРУМЕНТЫ
 # ============================================================
 
-def merge_cookie_files(file_contents_list):
+def merge_cookie_files(contents):
     all_cookies = set()
-    for content in file_contents_list:
-        lines = content.split('\n')
-        for line in lines:
+    for content in contents:
+        for line in content.split('\n'):
             line = line.strip()
             if len(line) > 20:
                 all_cookies.add(line)
     return '\n'.join(sorted(all_cookies))
 
-def split_cookies_by_count(content, count_per_file):
-    cookies = [line.strip() for line in content.split('\n') if len(line) > 20]
+def split_cookies_by_count(content, count):
+    cookies = [l.strip() for l in content.split('\n') if len(l) > 20]
     files = []
-    for i in range(0, len(cookies), count_per_file):
-        chunk = cookies[i:i + count_per_file]
-        files.append('\n'.join(chunk))
+    for i in range(0, len(cookies), count):
+        files.append('\n'.join(cookies[i:i+count]))
     return files
 
-def split_cookies_by_files(content, num_files):
-    cookies = [line.strip() for line in content.split('\n') if len(line) > 20]
-    if num_files <= 0:
+def split_cookies_by_files(content, num):
+    cookies = [l.strip() for l in content.split('\n') if len(l) > 20]
+    if num <= 0:
         return []
-    cookies_per_file = len(cookies) // num_files
-    remainder = len(cookies) % num_files
+    per_file = len(cookies) // num
+    rem = len(cookies) % num
     files = []
-    start_idx = 0
-    for i in range(num_files):
-        end_idx = start_idx + cookies_per_file + (1 if i < remainder else 0)
-        chunk = cookies[start_idx:end_idx]
-        files.append('\n'.join(chunk))
-        start_idx = end_idx
+    idx = 0
+    for i in range(num):
+        end = idx + per_file + (1 if i < rem else 0)
+        files.append('\n'.join(cookies[idx:end]))
+        idx = end
     return files
 
 def remove_duplicates(content):
-    cookies = [line.strip() for line in content.split('\n') if len(line) > 20]
-    unique_cookies = list(dict.fromkeys(cookies))
-    return '\n'.join(unique_cookies)
+    cookies = [l.strip() for l in content.split('\n') if len(l) > 20]
+    return '\n'.join(list(dict.fromkeys(cookies)))
 
 def clean_cookies(content):
     cookies = []
@@ -335,347 +279,353 @@ def clean_cookies(content):
         if not line:
             continue
         if '.ROBLOSECURITY=' in line:
-            cookie_value = line.split('.ROBLOSECURITY=')[-1].split(';')[0].strip()
-            cookies.append(f'.ROBLOSECURITY={cookie_value}')
+            val = line.split('.ROBLOSECURITY=')[-1].split(';')[0].strip()
+            cookies.append(f'.ROBLOSECURITY={val}')
         elif len(line) > 50 and not line.startswith('#'):
             cookies.append(line)
     return '\n'.join(cookies)
 
 # ============================================================
-# ВЕБ-СЕРВЕР И ИНТЕРФЕЙС
+# FLASK APP
 # ============================================================
 
 app = Flask(__name__)
 
-HTML = """<!DOCTYPE html>
+HTML = r"""<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kai Checker PRO</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            font-family: 'Inter', sans-serif;
-            min-height: 100vh;
-            padding: 24px;
-            background: #0b081a;
-            background-image: radial-gradient(circle at 10% 20%, #1a1040 0%, #0b081a 80%);
-            position: relative;
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{
+            font-family:'Inter',sans-serif;
+            min-height:100vh;
+            padding:24px;
+            background:#0b081a;
+            background-image:radial-gradient(circle at 10% 20%, #1a1040 0%, #0b081a 80%);
         }
-        
-        .kai-wrapper {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 30px;
-            background: rgba(18, 10, 40, 0.95);
-            border: 2px solid #6c5ce7;
-            border-radius: 32px;
-            box-shadow: 0 0 60px rgba(108, 92, 231, 0.25);
-            position: relative;
-            z-index: 5;
+        .wrapper{
+            max-width:1400px;
+            margin:0 auto;
+            padding:30px;
+            background:rgba(18,10,40,0.95);
+            border:2px solid #6c5ce7;
+            border-radius:32px;
+            box-shadow:0 0 60px rgba(108,92,231,0.25);
         }
-        
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0d0722; border-radius: 8px; }
-        ::-webkit-scrollbar-thumb { background: #a855f7; border-radius: 8px; }
-
-        .header {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 20px 0 16px; border-bottom: 1px solid #2a1a50;
-            margin-bottom: 30px;
+        ::-webkit-scrollbar{width:6px;height:6px}
+        ::-webkit-scrollbar-track{background:#0d0722;border-radius:8px}
+        ::-webkit-scrollbar-thumb{background:#a855f7;border-radius:8px}
+        .header{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            padding:20px 0 16px;
+            border-bottom:1px solid #2a1a50;
+            margin-bottom:30px;
         }
-        
-        .logo {
-            font-family: 'Poppins', sans-serif;
-            font-size: 34px; font-weight: 900; font-style: italic;
-            background: linear-gradient(135deg, #c084fc, #f472b6);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        .logo{
+            font-size:34px;
+            font-weight:900;
+            font-style:italic;
+            background:linear-gradient(135deg,#c084fc,#f472b6);
+            -webkit-background-clip:text;
+            -webkit-text-fill-color:transparent;
         }
-
-        .tabs {
-            display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 28px;
+        .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px}
+        .tab{
+            padding:10px 22px;
+            background:rgba(26,16,64,0.9);
+            border:1px solid #2a1a50;
+            border-radius:40px;
+            color:#9880c0;
+            cursor:pointer;
+            font-size:14px;
+            font-weight:600;
+            transition:all 0.25s;
+            user-select:none;
         }
-        
-        .tab {
-            padding: 10px 22px; background: rgba(26, 16, 64, 0.9);
-            border: 1px solid #2a1a50; border-radius: 40px; color: #9880c0;
-            cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.25s;
-            user-select: none; z-index: 10;
+        .tab:hover{border-color:#a855f7;color:#fff;transform:translateY(-2px)}
+        .tab.active{
+            border-color:#c084fc;
+            background:rgba(168,85,247,0.3);
+            color:#c084fc;
+            box-shadow:0 0 20px rgba(168,85,247,0.2);
         }
-        .tab:hover { border-color: #a855f7; color: #fff; transform: translateY(-2px); }
-        .tab.active {
-            border-color: #c084fc; background: rgba(168, 85, 247, 0.3);
-            color: #c084fc; box-shadow: 0 0 20px rgba(168,85,247,0.2);
+        .tab-content{display:none}
+        .tab-content.active{display:block;animation:fadeUp 0.3s ease}
+        @keyframes fadeUp{
+            0%{opacity:0;transform:translateY(12px)}
+            100%{opacity:1;transform:translateY(0)}
         }
-
-        .tab-content { display: none; }
-        .tab-content.active { display: block; animation: fadeUp 0.3s ease; }
-        @keyframes fadeUp { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
-
-        .card {
-            background: rgba(18, 10, 40, 0.9);
-            border: 1px solid #2a1a50; border-radius: 20px; padding: 28px 30px;
-            margin-bottom: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-            position: relative; z-index: 6;
+        .card{
+            background:rgba(18,10,40,0.9);
+            border:1px solid #2a1a50;
+            border-radius:20px;
+            padding:28px 30px;
+            margin-bottom:24px;
+            box-shadow:0 20px 40px rgba(0,0,0,0.6);
         }
-        .card h2 {
-            font-family: 'Poppins', sans-serif; font-weight: 700; font-style: italic;
-            font-size: 20px; color: #d4c0ff; margin-bottom: 18px; display: flex; align-items: center; gap: 10px;
+        .card h2{
+            font-size:20px;
+            color:#d4c0ff;
+            margin-bottom:18px;
+            display:flex;
+            align-items:center;
+            gap:10px;
+            font-weight:700;
         }
-
-        .btn {
-            padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
-            cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            text-decoration: none; position: relative; z-index: 10;
+        .btn{
+            padding:12px 28px;
+            border:none;
+            border-radius:40px;
+            font-size:14px;
+            font-weight:700;
+            cursor:pointer;
+            transition:all 0.25s;
+            display:inline-flex;
+            align-items:center;
+            gap:10px;
+            text-decoration:none;
+            color:#fff;
         }
-        .btn-primary {
-            background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
-            box-shadow: 0 8px 24px rgba(168,85,247,0.25);
+        .btn-primary{
+            background:linear-gradient(135deg,#a855f7,#d946ef);
+            box-shadow:0 8px 24px rgba(168,85,247,0.25);
         }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(168,85,247,0.4); color: #fff; }
-        .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid #2a1a50; color: #d4c0ff; }
-        .btn-secondary:hover { background: rgba(255,255,255,0.1); }
-        .btn-danger { background: rgba(220, 38, 38, 0.2); border: 1px solid rgba(220, 38, 38, 0.3); color: #fca5a5; }
-        .btn-danger:hover { background: rgba(220, 38, 38, 0.3); }
-
-        .toggle-group {
-            display: flex;
-            background: #0d0722;
-            border: 1px solid #2a1a50;
-            border-radius: 16px;
-            padding: 4px;
-            gap: 4px;
-            margin-bottom: 18px;
-            position: relative;
-            z-index: 8;
+        .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(168,85,247,0.4)}
+        .btn-secondary{
+            background:rgba(255,255,255,0.06);
+            border:1px solid #2a1a50;
+            color:#d4c0ff;
         }
-        .toggle-btn {
-            flex: 1;
-            padding: 12px 16px;
-            background: transparent;
-            border: none;
-            border-radius: 12px;
-            color: #9880c0;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.25s ease;
-            text-align: center;
+        .btn-secondary:hover{background:rgba(255,255,255,0.1)}
+        .btn-danger{
+            background:rgba(220,38,38,0.2);
+            border:1px solid rgba(220,38,38,0.3);
+            color:#fca5a5;
         }
-        .toggle-btn.active {
-            background: linear-gradient(135deg, rgba(168,85,247,0.3), rgba(217,70,239,0.3));
-            color: #c084fc;
-            border: 1px solid rgba(192,132,252,0.4);
-            box-shadow: 0 4px 15px rgba(168,85,247,0.2);
+        .btn-danger:hover{background:rgba(220,38,38,0.3)}
+        .btn-sm{padding:8px 16px;font-size:12px}
+        .toggle-group{
+            display:flex;
+            background:#0d0722;
+            border:1px solid #2a1a50;
+            border-radius:16px;
+            padding:4px;
+            gap:4px;
+            margin-bottom:18px;
         }
-
-        textarea, .upload-area, select, input[type="number"] {
-            width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
-            border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
-            resize: vertical; transition: 0.2s; position: relative; z-index: 8;
+        .toggle-btn{
+            flex:1;
+            padding:12px 16px;
+            background:transparent;
+            border:none;
+            border-radius:12px;
+            color:#9880c0;
+            font-size:13px;
+            font-weight:600;
+            cursor:pointer;
+            transition:all 0.25s;
+            text-align:center;
         }
-        textarea:focus, .upload-area:focus-within, input[type="number"]:focus {
-            border-color: #a855f7; outline: none; box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
+        .toggle-btn.active{
+            background:linear-gradient(135deg,rgba(168,85,247,0.3),rgba(217,70,239,0.3));
+            color:#c084fc;
+            border:1px solid rgba(192,132,252,0.4);
+            box-shadow:0 4px 15px rgba(168,85,247,0.2);
         }
-        .upload-area {
-            min-height: 100px; display: flex; flex-direction: column; align-items: center;
-            justify-content: center; cursor: pointer; border-style: dashed; gap: 6px; text-align: center; color: #ffffff;
+        textarea,.upload-area,input[type="number"]{
+            width:100%;
+            padding:14px 16px;
+            background:#0d0722;
+            border:1px solid #2a1a50;
+            border-radius:14px;
+            color:#fff;
+            font-family:'Inter',monospace;
+            font-size:14px;
+            resize:vertical;
+            transition:0.2s;
         }
-
-        .result-box {
-            background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
-            margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
-            font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
-            position: relative; z-index: 8;
+        textarea:focus,.upload-area:focus-within,input[type="number"]:focus{
+            border-color:#a855f7;
+            outline:none;
+            box-shadow:0 0 0 3px rgba(168,85,247,0.2);
         }
-
-        .progress-bar {
-            margin-top: 12px; background: #0d0722; border-radius: 40px; height: 6px; overflow: hidden; border: 1px solid #1a1040;
+        .upload-area{
+            min-height:100px;
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            justify-content:center;
+            cursor:pointer;
+            border-style:dashed;
+            gap:6px;
+            text-align:center;
         }
-        .progress-bar .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.3s ease; }
-
-        .footer { text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px; border-top: 1px solid #1a1040; margin-top: 30px; }
-        
-        /* Стили для инструментов */
-        .tool-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 20px;
+        .result-box{
+            background:#0d0722;
+            border:1px solid #2a1a50;
+            border-radius:16px;
+            padding:18px;
+            margin-top:20px;
+            max-height:500px;
+            overflow-y:auto;
+            font-family:'Inter',monospace;
+            font-size:13px;
+            color:#fff;
+            white-space:pre-wrap;
+            word-break:break-word;
         }
-        
-        .tool-card {
-            background: rgba(18, 10, 40, 0.9);
-            border: 1px solid #2a1a50;
-            border-radius: 20px;
-            padding: 24px;
-            transition: all 0.3s ease;
-            display: flex;
-            flex-direction: column;
+        .progress-bar{
+            margin-top:12px;
+            background:#0d0722;
+            border-radius:40px;
+            height:6px;
+            overflow:hidden;
+            border:1px solid #1a1040;
         }
-        
-        .tool-card:hover {
-            border-color: #6c5ce7;
-            box-shadow: 0 8px 32px rgba(108, 92, 231, 0.2);
+        .progress-fill{
+            height:100%;
+            width:0%;
+            background:linear-gradient(90deg,#a855f7,#ec4899);
+            transition:width 0.3s;
         }
-        
-        .tool-card h3 {
-            font-family: 'Poppins', sans-serif;
-            font-size: 16px;
-            color: #c084fc;
-            margin-bottom: 16px;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        .footer{
+            text-align:center;
+            padding:30px 0 12px;
+            color:#4a3a6a;
+            font-size:13px;
+            border-top:1px solid #1a1040;
+            margin-top:30px;
         }
-        
-        .tool-card p {
-            color: #9880c0;
-            font-size: 13px;
-            margin-bottom: 16px;
-            line-height: 1.5;
+        .tool-grid{
+            display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(400px,1fr));
+            gap:20px;
         }
-        
-        .tool-card .upload-area {
-            min-height: 70px;
-            margin-bottom: 12px;
+        .tool-card{
+            background:rgba(18,10,40,0.9);
+            border:1px solid #2a1a50;
+            border-radius:20px;
+            padding:24px;
+            transition:all 0.3s;
+            display:flex;
+            flex-direction:column;
         }
-        
-        .tool-card .input-row {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            margin-bottom: 12px;
+        .tool-card:hover{
+            border-color:#6c5ce7;
+            box-shadow:0 8px 32px rgba(108,92,231,0.2);
         }
-        
-        .tool-card .input-row input {
-            flex: 1;
+        .tool-card h3{
+            font-size:16px;
+            color:#c084fc;
+            margin-bottom:8px;
+            font-weight:700;
         }
-        
-        .tool-card .input-row span {
-            color: #9880c0;
-            font-size: 14px;
-            white-space: nowrap;
+        .tool-card .desc{
+            color:#9880c0;
+            font-size:13px;
+            margin-bottom:16px;
+            line-height:1.5;
         }
-        
-        .tool-card .btn {
-            margin-top: auto;
+        .tool-card .upload-area{min-height:70px;margin-bottom:12px}
+        .input-row{
+            display:flex;
+            gap:10px;
+            align-items:center;
+            margin-bottom:12px;
         }
-        
-        .tool-card .result-box {
-            max-height: 150px;
-            margin-top: 12px;
-            font-size: 12px;
+        .input-row input{flex:1}
+        .input-row span{color:#9880c0;font-size:14px;white-space:nowrap}
+        .tool-card .btn{margin-top:auto}
+        .tool-card .result-box{max-height:150px;margin-top:12px;font-size:12px}
+        .file-list{
+            max-height:150px;
+            overflow-y:auto;
+            margin:10px 0;
+            padding:8px;
+            background:#0d0722;
+            border-radius:10px;
+            border:1px solid #1a1040;
         }
-        
-        .file-list {
-            max-height: 150px;
-            overflow-y: auto;
-            margin: 10px 0;
-            padding: 8px;
-            background: #0d0722;
-            border-radius: 10px;
-            border: 1px solid #1a1040;
+        .file-item{
+            background:rgba(26,16,64,0.6);
+            padding:8px 12px;
+            margin:4px 0;
+            border-radius:8px;
+            font-size:12px;
+            color:#9880c0;
+            border:1px solid #2a1a50;
         }
-        
-        .file-item {
-            background: rgba(26, 16, 64, 0.6);
-            padding: 8px 12px;
-            margin: 4px 0;
-            border-radius: 8px;
-            font-size: 12px;
-            color: #9880c0;
-            border: 1px solid #2a1a50;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        .history-section{margin-top:24px;border-top:1px solid #1a1040;padding-top:20px}
+        .history-section h3{
+            font-size:16px;
+            color:#d4c0ff;
+            margin-bottom:14px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
         }
-        
-        .file-item .dot {
-            width: 6px;
-            height: 6px;
-            background: #a855f7;
-            border-radius: 50%;
+        .history-item{
+            background:rgba(14,8,30,0.8);
+            border:1px solid #1a1040;
+            border-radius:12px;
+            padding:14px 16px;
+            margin-bottom:10px;
+            cursor:pointer;
+            transition:all 0.2s;
         }
-        
-        /* Стили для истории */
-        .history-section {
-            margin-top: 24px;
-            border-top: 1px solid #1a1040;
-            padding-top: 20px;
+        .history-item:hover{border-color:#a855f7;background:rgba(26,16,64,0.6)}
+        .hist-header{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            margin-bottom:8px;
         }
-        
-        .history-section h3 {
-            font-family: 'Poppins', sans-serif;
-            font-size: 16px;
-            color: #d4c0ff;
-            margin-bottom: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+        .hist-date{color:#a855f7;font-size:13px;font-weight:600}
+        .hist-stats{color:#9880c0;font-size:12px}
+        .hist-detail{
+            display:none;
+            margin-top:10px;
+            white-space:pre-wrap;
+            font-size:12px;
+            color:#d4c0ff;
+            max-height:200px;
+            overflow-y:auto;
         }
-        
-        .history-item {
-            background: rgba(14, 8, 30, 0.8);
-            border: 1px solid #1a1040;
-            border-radius: 12px;
-            padding: 14px 16px;
-            margin-bottom: 10px;
-            transition: all 0.2s;
-            cursor: pointer;
+        .empty-history{text-align:center;padding:30px;color:#4a3a6a;font-size:14px}
+        .flex-row{display:flex;flex-wrap:wrap;gap:18px}
+        .flex-2{flex:2}
+        .flex-1{flex:1}
+        .mt-12{margin-top:12px}
+        .mt-18{margin-top:18px}
+        .gap-12{display:flex;gap:12px;flex-wrap:wrap}
+        .gap-8{display:flex;gap:8px}
+        .timer{
+            color:#00b894;
+            font-family:'Inter',monospace;
+            font-weight:600;
+            font-size:13px;
+            background:rgba(0,184,148,0.1);
+            padding:4px 10px;
+            border-radius:12px;
+            border:1px solid rgba(0,184,148,0.2);
         }
-        
-        .history-item:hover {
-            border-color: #a855f7;
-            background: rgba(26, 16, 64, 0.6);
-        }
-        
-        .history-item .hist-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        
-        .history-item .hist-date {
-            color: #a855f7;
-            font-size: 13px;
-            font-weight: 600;
-        }
-        
-        .history-item .hist-stats {
-            color: #9880c0;
-            font-size: 12px;
-        }
-        
-        .history-item .hist-preview {
-            color: #6b5b8a;
-            font-size: 11px;
-            margin-top: 6px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .empty-history {
-            text-align: center;
-            padding: 30px;
-            color: #4a3a6a;
-            font-size: 14px;
-        }
+        .badge{color:#4a3a6a;font-size:14px}
+        .status-info{margin-top:8px;color:#00b894;font-size:13px}
     </style>
 </head>
 <body>
-
-<div class="kai-wrapper">
+<div class="wrapper">
     <div class="header">
         <div class="logo">KAI CHECKER</div>
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <span id="sessionTimer" style="color: #00b894; font-family: 'Inter', monospace; font-weight: 600; font-size: 13px; background: rgba(0, 184, 148, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(0, 184, 148, 0.2);">⏱️ 00:00:00</span>
-            <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
+        <div style="display:flex;align-items:center;gap:15px;">
+            <span class="timer" id="sessionTimer">⏱️ 00:00:00</span>
+            <span class="badge">⚡ PRO</span>
         </div>
     </div>
 
@@ -686,44 +636,37 @@ HTML = """<!DOCTYPE html>
         <div class="tab" data-tab="tools">🧰 Инструменты</div>
     </div>
 
-    <!-- ===== ЧЕКЕР ===== -->
+    <!-- ЧЕКЕР -->
     <div class="tab-content active" id="tab-checker">
         <div class="card">
             <h2>🔍 Проверка куков (Массовая)</h2>
-            <div style="display:flex; flex-wrap:wrap; gap:18px;">
-                <div style="flex:2;">
-                    <textarea id="manualCookies" placeholder="Вставь куки сюда (каждый с новой строки) или загрузите txt файл справа..." rows="6"></textarea>
-                    <div id="fileStatusInfo" style="margin-top:8px;color:#00b894;font-size:13px;"></div>
+            <div class="flex-row">
+                <div class="flex-2">
+                    <textarea id="manualCookies" placeholder="Вставь куки сюда (каждый с новой строки) или загрузи txt файл справа..." rows="6"></textarea>
+                    <div class="status-info" id="fileStatusInfo"></div>
                 </div>
-                <div style="flex:1;">
-                    <div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
+                <div class="flex-1">
+                    <div class="upload-area" onclick="document.getElementById('fullFile').click()">
                         <p>📁 <strong>Загрузить .txt</strong></p>
-                        <p style="font-size:12px; color:#9880c0;">Файл сохранится на сервере</p>
+                        <p style="font-size:12px;color:#9880c0;">Файл сохранится на сервере</p>
                     </div>
                     <input type="file" id="fullFile" accept=".txt" style="display:none;">
                 </div>
             </div>
-            <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
+            <div class="mt-18 gap-12">
                 <button class="btn btn-primary" onclick="runFullcheck()">🚀 Запустить проверку</button>
                 <button class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
             </div>
-            <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
+            <div class="progress-bar"><div class="progress-fill" id="checkerProgress"></div></div>
             <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
         </div>
-        
-        <!-- История чекера -->
         <div class="card history-section">
-            <h3>
-                📋 История проверок
-                <button class="btn btn-danger" onclick="clearCheckerHistory()" style="padding: 8px 16px; font-size: 12px;">🗑️ Очистить историю</button>
-            </h3>
-            <div id="checkerHistoryList">
-                <div class="empty-history">Загрузка истории...</div>
-            </div>
+            <h3>📋 История проверок <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()">🗑️ Очистить</button></h3>
+            <div id="checkerHistoryList"><div class="empty-history">Загрузка...</div></div>
         </div>
     </div>
 
-    <!-- ===== ВАЛИДАТОР ===== -->
+    <!-- ВАЛИДАТОР -->
     <div class="tab-content" id="tab-validator">
         <div class="card">
             <h2>✅ Валидатор (отсев мёртвых)</h2>
@@ -731,91 +674,81 @@ HTML = """<!DOCTYPE html>
                 <p>📁 <strong>Загрузить .txt</strong></p>
             </div>
             <input type="file" id="validatorFile" accept=".txt" style="display:none;">
-            <button class="btn btn-primary" onclick="runValidator()" style="margin-top:14px;">🧪 Запустить</button>
+            <button class="btn btn-primary mt-12" onclick="runValidator()">🧪 Запустить</button>
             <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
         </div>
     </div>
 
-    <!-- ===== ФРЕШЕР ===== -->
+    <!-- ФРЕШЕР -->
     <div class="tab-content" id="tab-fresher">
         <div class="card">
             <h2>🔄 Фрешер сессий</h2>
-            <div style="margin-bottom: 8px;">
-                <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
-                <div class="toggle-group">
-                    <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать кук (оставить старый рабочий)</button>
-                    <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Убить старый кук (сброс сессии)</button>
-                </div>
-                <input type="hidden" id="fresherMode" value="duplicate">
+            <label style="color:#d4c0ff;font-size:14px;font-weight:600;display:block;margin-bottom:8px;">Режим обновления:</label>
+            <div class="toggle-group">
+                <button class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать (оставить старый)</button>
+                <button class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Сбросить сессию</button>
             </div>
-            <div style="display:flex; flex-wrap:wrap; gap:18px;">
-                <div style="flex:2;">
+            <input type="hidden" id="fresherMode" value="duplicate">
+            <div class="flex-row">
+                <div class="flex-2">
                     <textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="6"></textarea>
                 </div>
-                <div style="flex:1;">
+                <div class="flex-1">
                     <div class="upload-area" onclick="document.getElementById('fresherFile').click()">
                         <p>📁 <strong>Загрузить .txt</strong></p>
-                        <p style="font-size:12px; color:#9880c0;">Файл с куками</p>
                     </div>
                     <input type="file" id="fresherFile" accept=".txt" style="display:none;">
                 </div>
             </div>
-            <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
+            <div class="mt-18 gap-12">
                 <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('fresherCookies').value=''; document.getElementById('fresherResult').textContent='Результаты фрешера появятся здесь...';">🧹 Очистить</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('fresherCookies').value='';document.getElementById('fresherResult').textContent='Результаты появятся здесь...';">🧹 Очистить</button>
             </div>
             <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
         </div>
-        
-        <!-- История фрешера -->
         <div class="card history-section">
-            <h3>
-                📋 История обновлений
-                <button class="btn btn-danger" onclick="clearFresherHistory()" style="padding: 8px 16px; font-size: 12px;">🗑️ Очистить историю</button>
-            </h3>
-            <div id="fresherHistoryList">
-                <div class="empty-history">Загрузка истории...</div>
-            </div>
+            <h3>📋 История обновлений <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()">🗑️ Очистить</button></h3>
+            <div id="fresherHistoryList"><div class="empty-history">Загрузка...</div></div>
         </div>
     </div>
 
-    <!-- ===== ИНСТРУМЕНТЫ ===== -->
+    <!-- ИНСТРУМЕНТЫ -->
     <div class="tab-content" id="tab-tools">
         <div class="tool-grid">
-            <!-- Слияние файлов -->
+            <!-- Слияние -->
             <div class="tool-card">
-                <h3>🔗 Слияние куки-файлов</h3>
-                <p>Объедините несколько файлов .txt с куками в один. Дубликаты автоматически удаляются.</p>
-                <div class="upload-area" id="mergeArea" onclick="document.getElementById('mergeFiles').click()">
-                    <p>📁 <strong>Выбрать файлы для слияния</strong></p>
-                    <span style="font-size:11px; color:#6b5b8a;">Минимум 2 файла</span>
+                <h3>🔗 Слияние файлов</h3>
+                <p class="desc">Объедините несколько .txt файлов с куками в один. Дубликаты удаляются автоматически.</p>
+                <div class="upload-area" onclick="document.getElementById('mergeFiles').click()">
+                    <p>📁 <strong>Выбрать файлы</strong></p>
+                    <span style="font-size:11px;color:#6b5b8a;">Минимум 2 файла</span>
                 </div>
                 <input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;">
                 <div class="file-list" id="mergeFileList"></div>
-                <button class="btn btn-primary" onclick="mergeCookies()" style="width:100%;">🔄 Объединить файлы</button>
-                <div class="result-box" id="mergeResult">Результат слияния...</div>
+                <button class="btn btn-primary" onclick="mergeCookies()" style="width:100%;">🔄 Объединить</button>
+                <div class="result-box" id="mergeResult">Результат...</div>
             </div>
 
             <!-- Разделение по количеству -->
             <div class="tool-card">
-                <h3>✂️ Разделение по количеству</h3>
-                <p>Разделите большой файл на части по указанному количеству куки в каждом файле.</p>
+                <h3>✂️ По количеству</h3>
+                <p class="desc">Разделите файл на части по N куки в каждой.</p>
                 <div class="upload-area" onclick="document.getElementById('splitCountFile').click()">
                     <p>📁 <strong>Загрузить файл</strong></p>
                 </div>
                 <input type="file" id="splitCountFile" accept=".txt" style="display:none;">
                 <div class="input-row">
-                    <input type="number" id="splitCount" placeholder="Кол-во куки в файле" value="100" min="1">
+                    <input type="number" id="splitCount" placeholder="Кол-во в файле" value="100" min="1">
                     <span>шт.</span>
                 </div>
                 <button class="btn btn-primary" onclick="splitByCount()" style="width:100%;">📦 Разделить</button>
-                <div class="result-box" id="splitCountResult">Результат разделения...</div>
+                <div class="result-box" id="splitCountResult">Результат...</div>
             </div>
 
             <!-- Разделение на N файлов -->
             <div class="tool-card">
-                <h3>📊 Разделение на N файлов</h3>
-                <p>Равномерно распределите куки по указанному количеству файлов.</p>
+                <h3>📊 На N файлов</h3>
+                <p class="desc">Равномерно распределите куки на указанное количество файлов.</p>
                 <div class="upload-area" onclick="document.getElementById('splitFilesFile').click()">
                     <p>📁 <strong>Загрузить файл</strong></p>
                 </div>
@@ -825,19 +758,19 @@ HTML = """<!DOCTYPE html>
                     <span>файлов</span>
                 </div>
                 <button class="btn btn-primary" onclick="splitByFiles()" style="width:100%;">📂 Разделить</button>
-                <div class="result-box" id="splitFilesResult">Результат разделения...</div>
+                <div class="result-box" id="splitFilesResult">Результат...</div>
             </div>
 
-            <!-- Очистка куки -->
+            <!-- Очистка -->
             <div class="tool-card">
-                <h3>🧹 Очистка и формат</h3>
-                <p>Удалите дубликаты или приведите куки к единому формату .ROBLOSECURITY=...</p>
-                <textarea id="cleanCookiesInput" placeholder="Вставьте куки для обработки..." rows="4"></textarea>
-                <div style="display: flex; gap: 8px; margin-top: 12px;">
-                    <button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Убрать дубликаты</button>
-                    <button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Форматировать</button>
+                <h3>🧹 Очистка</h3>
+                <p class="desc">Удалите дубликаты или приведите куки к формату .ROBLOSECURITY=...</p>
+                <textarea id="cleanCookiesInput" placeholder="Вставьте куки..." rows="4"></textarea>
+                <div class="gap-8 mt-12">
+                    <button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Дубликаты</button>
+                    <button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Формат</button>
                 </div>
-                <div class="result-box" id="cleanResult">Результат очистки...</div>
+                <div class="result-box" id="cleanResult">Результат...</div>
             </div>
         </div>
     </div>
@@ -846,385 +779,329 @@ HTML = """<!DOCTYPE html>
 </div>
 
 <script>
-    // ===== БАЗОВЫЕ ФУНКЦИИ =====
-    let startTime = Date.now();
-    setInterval(() => {
-        let diff = Math.floor((Date.now() - startTime) / 1000);
-        let h = String(Math.floor(diff / 3600)).padStart(2, '0');
-        let m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
-        let s = String(diff % 60).padStart(2, '0');
-        const timerEl = document.getElementById('sessionTimer');
-        if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
-    }, 1000);
+// Таймер сессии
+let startTime = Date.now();
+setInterval(() => {
+    let d = Math.floor((Date.now() - startTime) / 1000);
+    let h = String(Math.floor(d / 3600)).padStart(2, '0');
+    let m = String(Math.floor((d % 3600) / 60)).padStart(2, '0');
+    let s = String(d % 60).padStart(2, '0');
+    let el = document.getElementById('sessionTimer');
+    if (el) el.textContent = '⏱️ ' + h + ':' + m + ':' + s;
+}, 1000);
 
-    // ===== ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК =====
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', function() {
-            const tabId = this.getAttribute('data-tab');
-            if (!tabId) return;
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            this.classList.add('active');
-            const target = document.getElementById('tab-' + tabId);
-            if (target) target.classList.add('active');
-            
-            // Загружаем историю при переключении на вкладку
-            if (tabId === 'checker') loadCheckerHistory();
-            if (tabId === 'fresher') loadFresherHistory();
-        });
+// Переключение вкладок
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        let tabId = this.getAttribute('data-tab');
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+        let target = document.getElementById('tab-' + tabId);
+        if (target) target.classList.add('active');
+        if (tabId === 'checker') loadCheckerHistory();
+        if (tabId === 'fresher') loadFresherHistory();
     });
+});
 
-    // ===== РЕЖИМ ФРЕШЕРА =====
-    function setFresherMode(mode) {
-        document.getElementById('fresherMode').value = mode;
-        document.getElementById('modeDuplicate').classList.toggle('active', mode === 'duplicate');
-        document.getElementById('modeKill').classList.toggle('active', mode === 'kill');
-    }
+// Режим фрешера
+function setFresherMode(mode) {
+    document.getElementById('fresherMode').value = mode;
+    document.getElementById('modeDuplicate').classList.toggle('active', mode === 'duplicate');
+    document.getElementById('modeKill').classList.toggle('active', mode === 'kill');
+}
 
-    // ===== ЗАГРУЗКА ФАЙЛОВ =====
-    const fileInput = document.getElementById('fullFile');
-    if (fileInput) {
-        fileInput.addEventListener('change', async function(e) {
-            if (this.files && this.files[0]) {
-                const file = this.files[0];
-                const formData = new FormData();
-                formData.append('file', file);
-                document.getElementById('fileStatusInfo').textContent = '⏳ Загрузка и сохранение файла на сервере...';
-                try {
-                    const response = await fetch('/api/upload', { method: 'POST', body: formData });
-                    const data = await response.json();
-                    if (data.success) {
-                        document.getElementById('fileStatusInfo').textContent = `✅ Файл "${data.filename}" успешно сохранен!`;
-                        const reader = new FileReader();
-                        reader.onload = function(evt) {
-                            document.getElementById('manualCookies').value = evt.target.result;
-                        };
-                        reader.readAsText(file);
-                    } else {
-                        document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сохранения файла';
-                    }
-                } catch (err) {
-                    document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сети при загрузке';
-                }
-            }
-        });
-    }
-
-    const fresherFileInput = document.getElementById('fresherFile');
-    if (fresherFileInput) {
-        fresherFileInput.addEventListener('change', function(e) {
-            if (this.files && this.files[0]) {
-                const reader = new FileReader();
+// Загрузка файла чекера
+document.getElementById('fullFile').addEventListener('change', async function(e) {
+    if (this.files && this.files[0]) {
+        let file = this.files[0];
+        let fd = new FormData();
+        fd.append('file', file);
+        document.getElementById('fileStatusInfo').textContent = '⏳ Загрузка...';
+        try {
+            let r = await fetch('/api/upload', { method: 'POST', body: fd });
+            let d = await r.json();
+            if (d.success) {
+                document.getElementById('fileStatusInfo').textContent = '✅ Файл сохранен!';
+                let reader = new FileReader();
                 reader.onload = function(evt) {
-                    document.getElementById('fresherCookies').value = evt.target.result;
+                    document.getElementById('manualCookies').value = evt.target.result;
                 };
-                reader.readAsText(this.files[0]);
-            }
-        });
-    }
-
-    // Обработчик для файлов слияния
-    const mergeFilesInput = document.getElementById('mergeFiles');
-    if (mergeFilesInput) {
-        mergeFilesInput.addEventListener('change', function(e) {
-            const fileList = document.getElementById('mergeFileList');
-            fileList.innerHTML = '';
-            if (this.files) {
-                Array.from(this.files).forEach((file, index) => {
-                    const div = document.createElement('div');
-                    div.className = 'file-item';
-                    div.innerHTML = `<span class="dot"></span> ${index + 1}. ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-                    fileList.appendChild(div);
-                });
-            }
-        });
-    }
-
-    // Обработчики для файлов разделения
-    const splitCountInput = document.getElementById('splitCountFile');
-    if (splitCountInput) {
-        splitCountInput.addEventListener('change', function(e) {
-            if (this.files && this.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function(evt) { window.splitCountContent = evt.target.result; };
-                reader.readAsText(this.files[0]);
-            }
-        });
-    }
-
-    const splitFilesInput = document.getElementById('splitFilesFile');
-    if (splitFilesInput) {
-        splitFilesInput.addEventListener('change', function(e) {
-            if (this.files && this.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function(evt) { window.splitFilesContent = evt.target.result; };
-                reader.readAsText(this.files[0]);
-            }
-        });
-    }
-
-    // ===== ЧЕКЕР =====
-    async function runFullcheck() {
-        const resBox = document.getElementById('fullcheckResult');
-        const manual = document.getElementById('manualCookies').value.trim();
-        const progress = document.getElementById('checkerProgress');
-        
-        if (!manual) {
-            resBox.textContent = '❌ Вставь куки или загрузи .txt!';
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
-
-        resBox.textContent = '⏳ Проверка аккаунтов запущена...';
-        progress.style.width = '40%';
-        
-        try {
-            const response = await fetch('/api/fullcheck', { method: 'POST', body: formData });
-            const data = await response.json();
-            progress.style.width = '100%';
-            setTimeout(() => { progress.style.width = '0%'; }, 1000);
-            
-            if (data.success) {
-                let html = `✅ Проверено аккаунтов: ${data.total} | Успешно валидных: ${data.valid_count}\n\n`;
-                for (const report of data.reports) {
-                    html += `${report}\n────────────────────────────────────────\n`;
-                }
-                if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="margin-top:10px; display:inline-block;">Скачать ZIP со всеми отчетами (.txt)</a>`;
-                }
-                resBox.innerHTML = html;
-                resBox.scrollTop = resBox.scrollHeight;
-                
-                // Обновляем историю
-                loadCheckerHistory();
+                reader.readAsText(file);
             } else {
-                resBox.textContent = '❌ ' + (data.message || 'Ошибка');
+                document.getElementById('fileStatusInfo').textContent = '❌ Ошибка';
             }
-        } catch (e) {
-            resBox.textContent = '❌ Ошибка: ' + e.message;
-            progress.style.width = '0%';
+        } catch(err) {
+            document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сети';
         }
     }
+});
 
-    function clearInputs() {
-        document.getElementById('manualCookies').value = '';
-        document.getElementById('fileStatusInfo').textContent = '';
-        document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
+// Загрузка файла фрешера
+document.getElementById('fresherFile').addEventListener('change', function(e) {
+    if (this.files && this.files[0]) {
+        let reader = new FileReader();
+        reader.onload = function(evt) {
+            document.getElementById('fresherCookies').value = evt.target.result;
+        };
+        reader.readAsText(this.files[0]);
     }
+});
 
-    // ===== ФРЕШЕР =====
-    async function runFresher() {
-        const resBox = document.getElementById('fresherResult');
-        const cookies = document.getElementById('fresherCookies').value.trim();
-        const mode = document.getElementById('fresherMode').value;
-        if (!cookies) {
-            resBox.textContent = '❌ Вставьте куки для фреша!';
-            return;
-        }
-        resBox.textContent = '⏳ Выполняется обновление сессий...';
-        try {
-            const response = await fetch('/api/fresher', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cookies: cookies, mode: mode })
-            });
-            const data = await response.json();
-            if (data.success) {
-                let html = `✅ Успешно обновлено сессий (режим: ${mode === 'kill' ? 'Убийство старого кука' : 'Дублирование'}): ${data.refreshed_count}\n\n`;
-                for (const item of data.refreshed_list) {
-                    html += `${item}\n────────────────────────────────────────\n`;
-                }
-                resBox.textContent = html;
-                loadFresherHistory();
-            } else {
-                resBox.textContent = '❌ ' + (data.message || 'Ошибка фрешера');
-            }
-        } catch (e) {
-            resBox.textContent = '❌ Ошибка сети: ' + e.message;
-        }
+// Слияние - показ списка файлов
+document.getElementById('mergeFiles').addEventListener('change', function(e) {
+    let list = document.getElementById('mergeFileList');
+    list.innerHTML = '';
+    if (this.files) {
+        Array.from(this.files).forEach((f, i) => {
+            let div = document.createElement('div');
+            div.className = 'file-item';
+            div.textContent = (i+1) + '. ' + f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)';
+            list.appendChild(div);
+        });
     }
+});
 
-    // ===== ИСТОРИЯ ЧЕКЕРА =====
-    async function loadCheckerHistory() {
-        const container = document.getElementById('checkerHistoryList');
-        try {
-            const response = await fetch('/api/history/checker');
-            const data = await response.json();
-            if (data.history && data.history.length > 0) {
-                let html = '';
-                data.history.slice().reverse().forEach(item => {
-                    html += `
-                    <div class="history-item" onclick="this.querySelector('.hist-detail').style.display = this.querySelector('.hist-detail').style.display === 'none' ? 'block' : 'none'">
-                        <div class="hist-header">
-                            <span class="hist-date">📅 ${item.timestamp}</span>
-                            <span class="hist-stats">✅ ${item.valid}/${item.total} валидных</span>
-                        </div>
-                        <div class="hist-detail" style="display:none; margin-top:10px; white-space:pre-wrap; font-size:12px; color:#d4c0ff; max-height:200px; overflow-y:auto;">
-                            ${item.cookies ? item.cookies.join('\n───────────────────\n') : 'Нет данных'}
-                        </div>
-                    </div>`;
-                });
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = '<div class="empty-history">📭 История пуста. Запустите проверку чтобы увидеть результаты.</div>';
-            }
-        } catch (e) {
-            container.innerHTML = '<div class="empty-history">❌ Ошибка загрузки истории</div>';
-        }
+// Разделение - чтение файлов
+document.getElementById('splitCountFile').addEventListener('change', function(e) {
+    if (this.files && this.files[0]) {
+        let reader = new FileReader();
+        reader.onload = function(evt) { window.splitCountContent = evt.target.result; };
+        reader.readAsText(this.files[0]);
     }
+});
+document.getElementById('splitFilesFile').addEventListener('change', function(e) {
+    if (this.files && this.files[0]) {
+        let reader = new FileReader();
+        reader.onload = function(evt) { window.splitFilesContent = evt.target.result; };
+        reader.readAsText(this.files[0]);
+    }
+});
 
-    async function clearCheckerHistory() {
-        if (!confirm('Удалить всю историю проверок?')) return;
-        try {
-            await fetch('/api/history/checker/clear', { method: 'POST' });
+// ===== API ФУНКЦИИ =====
+
+async function runFullcheck() {
+    let resBox = document.getElementById('fullcheckResult');
+    let manual = document.getElementById('manualCookies').value.trim();
+    let progress = document.getElementById('checkerProgress');
+    if (!manual) { resBox.textContent = '❌ Вставь куки или загрузи .txt!'; return; }
+    let fd = new FormData();
+    fd.append('file', new Blob([manual], { type: 'text/plain' }), 'manual.txt');
+    resBox.textContent = '⏳ Проверка...';
+    progress.style.width = '40%';
+    try {
+        let r = await fetch('/api/fullcheck', { method: 'POST', body: fd });
+        let d = await r.json();
+        progress.style.width = '100%';
+        setTimeout(() => { progress.style.width = '0%'; }, 1000);
+        if (d.success) {
+            let html = '✅ Проверено: ' + d.total + ' | Валидных: ' + d.valid_count + '\n\n';
+            for (let rep of d.reports) html += rep + '\n' + '─'.repeat(40) + '\n';
+            if (d.download_url) html += '\n📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>';
+            resBox.innerHTML = html;
+            resBox.scrollTop = resBox.scrollHeight;
             loadCheckerHistory();
-        } catch (e) {}
-    }
-
-    // ===== ИСТОРИЯ ФРЕШЕРА =====
-    async function loadFresherHistory() {
-        const container = document.getElementById('fresherHistoryList');
-        try {
-            const response = await fetch('/api/history/fresher');
-            const data = await response.json();
-            if (data.history && data.history.length > 0) {
-                let html = '';
-                data.history.slice().reverse().forEach(item => {
-                    const modeLabel = item.mode === 'kill' ? '💀 Сброс' : '♻️ Дублирование';
-                    html += `
-                    <div class="history-item" onclick="this.querySelector('.hist-detail').style.display = this.querySelector('.hist-detail').style.display === 'none' ? 'block' : 'none'">
-                        <div class="hist-header">
-                            <span class="hist-date">📅 ${item.timestamp}</span>
-                            <span class="hist-stats">${modeLabel} | Обновлено: ${item.refreshed_count}</span>
-                        </div>
-                        <div class="hist-detail" style="display:none; margin-top:10px; white-space:pre-wrap; font-size:12px; color:#d4c0ff; max-height:200px; overflow-y:auto;">
-                            ${item.cookies ? item.cookies.join('\n───────────────────\n') : 'Нет данных'}
-                        </div>
-                    </div>`;
-                });
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = '<div class="empty-history">📭 История пуста. Запустите фрешер чтобы увидеть результаты.</div>';
-            }
-        } catch (e) {
-            container.innerHTML = '<div class="empty-history">❌ Ошибка загрузки истории</div>';
+        } else {
+            resBox.textContent = '❌ ' + (d.message || 'Ошибка');
         }
+    } catch(e) {
+        resBox.textContent = '❌ Ошибка: ' + e.message;
+        progress.style.width = '0%';
     }
+}
 
-    async function clearFresherHistory() {
-        if (!confirm('Удалить всю историю фрешера?')) return;
-        try {
-            await fetch('/api/history/fresher/clear', { method: 'POST' });
+function clearInputs() {
+    document.getElementById('manualCookies').value = '';
+    document.getElementById('fileStatusInfo').textContent = '';
+    document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
+}
+
+async function runFresher() {
+    let resBox = document.getElementById('fresherResult');
+    let cookies = document.getElementById('fresherCookies').value.trim();
+    let mode = document.getElementById('fresherMode').value;
+    if (!cookies) { resBox.textContent = '❌ Вставьте куки!'; return; }
+    resBox.textContent = '⏳ Обновление сессий...';
+    try {
+        let r = await fetch('/api/fresher', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cookies: cookies, mode: mode })
+        });
+        let d = await r.json();
+        if (d.success) {
+            let modeLabel = mode === 'kill' ? 'Сброс' : 'Дублирование';
+            let html = '✅ Обновлено (' + modeLabel + '): ' + d.refreshed_count + '\n\n';
+            for (let item of d.refreshed_list) html += item + '\n' + '─'.repeat(40) + '\n';
+            resBox.textContent = html;
             loadFresherHistory();
-        } catch (e) {}
-    }
-
-    // ===== ИНСТРУМЕНТЫ =====
-    async function mergeCookies() {
-        const files = document.getElementById('mergeFiles').files;
-        if (!files || files.length < 2) {
-            document.getElementById('mergeResult').textContent = '❌ Выберите минимум 2 файла';
-            return;
+        } else {
+            resBox.textContent = '❌ ' + (d.message || 'Ошибка');
         }
-        const formData = new FormData();
-        Array.from(files).forEach(file => formData.append('files', file));
-        document.getElementById('mergeResult').textContent = '⏳ Объединение...';
-        try {
-            const response = await fetch('/api/merge-cookies', { method: 'POST', body: formData });
-            const data = await response.json();
-            if (data.success) {
-                document.getElementById('mergeResult').innerHTML = 
-                    `✅ Объединено ${data.total_files} файлов<br>📊 Уникальных куки: ${data.total_cookies}<br>🗑️ Удалено дубликатов: ${data.duplicates_removed}<br><br>📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать файл</a>`;
-            } else {
-                document.getElementById('mergeResult').textContent = '❌ ' + (data.message || 'Ошибка');
-            }
-        } catch (e) {
-            document.getElementById('mergeResult').textContent = '❌ Ошибка: ' + e.message;
-        }
+    } catch(e) {
+        resBox.textContent = '❌ Ошибка: ' + e.message;
     }
+}
 
-    async function splitByCount() {
-        const content = window.splitCountContent;
-        const count = parseInt(document.getElementById('splitCount').value);
-        if (!content) { document.getElementById('splitCountResult').textContent = '❌ Загрузите файл'; return; }
-        if (!count || count < 1) { document.getElementById('splitCountResult').textContent = '❌ Укажите количество'; return; }
-        document.getElementById('splitCountResult').textContent = '⏳ Разделение...';
-        try {
-            const response = await fetch('/api/split-cookies', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, split_type: 'count', count })
+// ===== ИСТОРИЯ =====
+
+async function loadCheckerHistory() {
+    let container = document.getElementById('checkerHistoryList');
+    try {
+        let r = await fetch('/api/history/checker');
+        let d = await r.json();
+        if (d.history && d.history.length > 0) {
+            let html = '';
+            d.history.slice().reverse().forEach(item => {
+                html += '<div class="history-item" onclick="let det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\'none\'?\'block\':\'none\'">';
+                html += '<div class="hist-header"><span class="hist-date">📅 ' + item.timestamp + '</span><span class="hist-stats">✅ ' + item.valid + '/' + item.total + '</span></div>';
+                html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n───\n') : 'Нет данных') + '</div></div>';
             });
-            const data = await response.json();
-            if (data.success) {
-                document.getElementById('splitCountResult').innerHTML = 
-                    `✅ Разделено на ${data.file_count} файлов<br>📊 Всего куки: ${data.total_cookies}<br>📦 По ${count} шт. в файле<br><br>📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать ZIP</a>`;
-            } else {
-                document.getElementById('splitCountResult').textContent = '❌ ' + (data.message || 'Ошибка');
-            }
-        } catch (e) {
-            document.getElementById('splitCountResult').textContent = '❌ Ошибка: ' + e.message;
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = '<div class="empty-history">📭 История пуста</div>';
         }
+    } catch(e) {
+        container.innerHTML = '<div class="empty-history">❌ Ошибка загрузки</div>';
     }
+}
 
-    async function splitByFiles() {
-        const content = window.splitFilesContent;
-        const numFiles = parseInt(document.getElementById('splitFilesCount').value);
-        if (!content) { document.getElementById('splitFilesResult').textContent = '❌ Загрузите файл'; return; }
-        if (!numFiles || numFiles < 1) { document.getElementById('splitFilesResult').textContent = '❌ Укажите количество'; return; }
-        document.getElementById('splitFilesResult').textContent = '⏳ Разделение...';
-        try {
-            const response = await fetch('/api/split-cookies', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, split_type: 'files', count: numFiles })
-            });
-            const data = await response.json();
-            if (data.success) {
-                document.getElementById('splitFilesResult').innerHTML = 
-                    `✅ Разделено на ${numFiles} файлов<br>📊 Всего куки: ${data.total_cookies}<br>📦 Примерно по ${Math.ceil(data.total_cookies / numFiles)} шт.<br><br>📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать ZIP</a>`;
-            } else {
-                document.getElementById('splitFilesResult').textContent = '❌ ' + (data.message || 'Ошибка');
-            }
-        } catch (e) {
-            document.getElementById('splitFilesResult').textContent = '❌ Ошибка: ' + e.message;
-        }
-    }
-
-    async function cleanCookies(action) {
-        const content = document.getElementById('cleanCookiesInput').value.trim();
-        if (!content) { document.getElementById('cleanResult').textContent = '❌ Вставьте куки'; return; }
-        document.getElementById('cleanResult').textContent = '⏳ Обработка...';
-        try {
-            const response = await fetch('/api/clean-cookies', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, action })
-            });
-            const data = await response.json();
-            if (data.success) {
-                let txt = `✅ Обработка завершена<br>📊 Было: ${data.original_count} | Стало: ${data.processed_count}`;
-                if (data.duplicates_removed > 0) txt += `<br>🗑️ Удалено дубликатов: ${data.duplicates_removed}`;
-                txt += `<br><br>📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать файл</a>`;
-                document.getElementById('cleanResult').innerHTML = txt;
-            } else {
-                document.getElementById('cleanResult').textContent = '❌ ' + (data.message || 'Ошибка');
-            }
-        } catch (e) {
-            document.getElementById('cleanResult').textContent = '❌ Ошибка: ' + e.message;
-        }
-    }
-
-    // ===== ЗАГРУЗКА ИСТОРИИ ПРИ СТАРТЕ =====
+async function clearCheckerHistory() {
+    if (!confirm('Удалить историю проверок?')) return;
+    await fetch('/api/history/checker/clear', { method: 'POST' });
     loadCheckerHistory();
+}
+
+async function loadFresherHistory() {
+    let container = document.getElementById('fresherHistoryList');
+    try {
+        let r = await fetch('/api/history/fresher');
+        let d = await r.json();
+        if (d.history && d.history.length > 0) {
+            let html = '';
+            d.history.slice().reverse().forEach(item => {
+                let ml = item.mode === 'kill' ? '💀 Сброс' : '♻️ Дублирование';
+                html += '<div class="history-item" onclick="let det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\'none\'?\'block\':\'none\'">';
+                html += '<div class="hist-header"><span class="hist-date">📅 ' + item.timestamp + '</span><span class="hist-stats">' + ml + ' | ' + item.refreshed_count + '</span></div>';
+                html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n───\n') : 'Нет данных') + '</div></div>';
+            });
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = '<div class="empty-history">📭 История пуста</div>';
+        }
+    } catch(e) {
+        container.innerHTML = '<div class="empty-history">❌ Ошибка загрузки</div>';
+    }
+}
+
+async function clearFresherHistory() {
+    if (!confirm('Удалить историю фрешера?')) return;
+    await fetch('/api/history/fresher/clear', { method: 'POST' });
+    loadFresherHistory();
+}
+
+// ===== ИНСТРУМЕНТЫ =====
+
+async function mergeCookies() {
+    let files = document.getElementById('mergeFiles').files;
+    if (!files || files.length < 2) {
+        document.getElementById('mergeResult').textContent = '❌ Выберите минимум 2 файла';
+        return;
+    }
+    let fd = new FormData();
+    Array.from(files).forEach(f => fd.append('files', f));
+    document.getElementById('mergeResult').textContent = '⏳ Объединение...';
+    try {
+        let r = await fetch('/api/merge-cookies', { method: 'POST', body: fd });
+        let d = await r.json();
+        if (d.success) {
+            document.getElementById('mergeResult').innerHTML = '✅ Объединено ' + d.total_files + ' файлов<br>📊 Уникальных: ' + d.total_cookies + '<br>🗑️ Дубликатов: ' + d.duplicates_removed + '<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать</a>';
+        } else {
+            document.getElementById('mergeResult').textContent = '❌ ' + (d.message || 'Ошибка');
+        }
+    } catch(e) {
+        document.getElementById('mergeResult').textContent = '❌ ' + e.message;
+    }
+}
+
+async function splitByCount() {
+    let content = window.splitCountContent;
+    let count = parseInt(document.getElementById('splitCount').value);
+    if (!content) { document.getElementById('splitCountResult').textContent = '❌ Загрузите файл'; return; }
+    if (!count || count < 1) { document.getElementById('splitCountResult').textContent = '❌ Укажите количество'; return; }
+    document.getElementById('splitCountResult').textContent = '⏳ Разделение...';
+    try {
+        let r = await fetch('/api/split-cookies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content, split_type: 'count', count: count })
+        });
+        let d = await r.json();
+        if (d.success) {
+            document.getElementById('splitCountResult').innerHTML = '✅ Файлов: ' + d.file_count + '<br>📊 Куки: ' + d.total_cookies + '<br>📦 По ' + count + ' шт.<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>';
+        } else {
+            document.getElementById('splitCountResult').textContent = '❌ ' + (d.message || 'Ошибка');
+        }
+    } catch(e) {
+        document.getElementById('splitCountResult').textContent = '❌ ' + e.message;
+    }
+}
+
+async function splitByFiles() {
+    let content = window.splitFilesContent;
+    let num = parseInt(document.getElementById('splitFilesCount').value);
+    if (!content) { document.getElementById('splitFilesResult').textContent = '❌ Загрузите файл'; return; }
+    if (!num || num < 1) { document.getElementById('splitFilesResult').textContent = '❌ Укажите количество'; return; }
+    document.getElementById('splitFilesResult').textContent = '⏳ Разделение...';
+    try {
+        let r = await fetch('/api/split-cookies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content, split_type: 'files', count: num })
+        });
+        let d = await r.json();
+        if (d.success) {
+            document.getElementById('splitFilesResult').innerHTML = '✅ Файлов: ' + num + '<br>📊 Куки: ' + d.total_cookies + '<br>📦 ~' + Math.ceil(d.total_cookies/num) + ' шт.<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать ZIP</a>';
+        } else {
+            document.getElementById('splitFilesResult').textContent = '❌ ' + (d.message || 'Ошибка');
+        }
+    } catch(e) {
+        document.getElementById('splitFilesResult').textContent = '❌ ' + e.message;
+    }
+}
+
+async function cleanCookies(action) {
+    let content = document.getElementById('cleanCookiesInput').value.trim();
+    if (!content) { document.getElementById('cleanResult').textContent = '❌ Вставьте куки'; return; }
+    document.getElementById('cleanResult').textContent = '⏳ Обработка...';
+    try {
+        let r = await fetch('/api/clean-cookies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content, action: action })
+        });
+        let d = await r.json();
+        if (d.success) {
+            let txt = '✅ Было: ' + d.original_count + ' | Стало: ' + d.processed_count;
+            if (d.duplicates_removed > 0) txt += '<br>🗑️ Удалено дубликатов: ' + d.duplicates_removed;
+            txt += '<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать</a>';
+            document.getElementById('cleanResult').innerHTML = txt;
+        } else {
+            document.getElementById('cleanResult').textContent = '❌ ' + (d.message || 'Ошибка');
+        }
+    } catch(e) {
+        document.getElementById('cleanResult').textContent = '❌ ' + e.message;
+    }
+}
+
+// Загрузка истории при старте
+loadCheckerHistory();
 </script>
 </body>
 </html>"""
 
 # ============================================================
-# API РОУТЫ
+# API ROUTES
 # ============================================================
 
 @app.route("/")
@@ -1236,22 +1113,18 @@ def api_upload():
     global CURRENT_UPLOADED_FILE
     if 'file' not in request.files:
         return jsonify({"success": False, "message": "Файл не найден"})
-    
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"success": False, "message": "Имя файла пустое"})
-    
+        return jsonify({"success": False, "message": "Имя пустое"})
     filename = f"uploaded_{int(time.time())}_{file.filename}"
     filepath = os.path.join("uploads", filename)
     file.save(filepath)
     CURRENT_UPLOADED_FILE = filepath
-    
     return jsonify({"success": True, "filename": file.filename})
 
 @app.route("/api/fullcheck", methods=["POST"])
 def api_fullcheck():
     global CURRENT_UPLOADED_FILE
-    
     content = ""
     if CURRENT_UPLOADED_FILE and os.path.exists(CURRENT_UPLOADED_FILE):
         with open(CURRENT_UPLOADED_FILE, 'r', encoding='utf-8', errors='ignore') as f:
@@ -1260,26 +1133,24 @@ def api_fullcheck():
         content = request.files['file'].read().decode('utf-8', errors='ignore')
     
     cookies = [line.strip() for line in content.split('\n') if len(line) > 50]
-    
     if not cookies:
-        return jsonify({"success": False, "message": "Куки не найдены в сохраненном файле"})
+        return jsonify({"success": False, "message": "Куки не найдены"})
     
     reports = []
     file_payloads = []
-    cookie_list_for_history = []
+    cookie_hist = []
     
     for c in cookies:
         info = get_full_info(c)
         if info['status'] == '✅':
-            report_text = format_short_report(info)
-            reports.append(report_text)
-            cookie_list_for_history.append(report_text)
-            txt_content = generate_full_txt_report(info)
-            safe_username = re.sub(r'[\/*?:"<>|]', "", str(info['Username']))
-            filename_txt = f"{safe_username}_{info['UserID']}.txt"
-            file_payloads.append((filename_txt, txt_content))
+            rep = format_short_report(info)
+            reports.append(rep)
+            cookie_hist.append(rep)
+            txt = generate_full_txt_report(info)
+            safe_name = re.sub(r'[\/*?:"<>|]', "", str(info['Username']))
+            file_payloads.append((f"{safe_name}_{info['UserID']}.txt", txt))
         else:
-            cookie_list_for_history.append(f"❌ Невалид: {c[:50]}...")
+            cookie_hist.append(f"❌ {c[:50]}...")
     
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -1294,12 +1165,10 @@ def api_fullcheck():
         f.write(zip_buffer.getvalue())
     
     download_url = f"/downloads/{archive_name}"
-    
-    # Сохраняем в историю
     add_to_checker_history({
         'total': len(cookies),
         'valid': len(reports),
-        'cookies': cookie_list_for_history[:20],  # Храним первые 20 для превью
+        'cookies': cookie_hist,
         'download_url': download_url
     })
     
@@ -1314,37 +1183,29 @@ def api_fullcheck():
 @app.route("/api/fresher", methods=["POST"])
 def api_fresher():
     data = request.json or {}
-    raw_cookies = data.get("cookies", "")
+    raw = data.get("cookies", "")
     mode = data.get("mode", "duplicate")
-    cookies = [line.strip() for line in raw_cookies.split('\n') if len(line) > 50]
-    
+    cookies = [line.strip() for line in raw.split('\n') if len(line) > 50]
     if not cookies:
-        return jsonify({"success": False, "message": "Не найдены куки для обновления"})
+        return jsonify({"success": False, "message": "Куки не найдены"})
     
     refreshed = []
-    cookie_list_for_history = []
-    
+    cookie_hist = []
     for c in cookies:
         info = get_full_info(c)
         if info['status'] == '✅':
-            if mode == 'kill':
-                refreshed_cookie = c + "_killed_refreshed"
-                mode_label = "💀 Сброс сессии"
-            else:
-                refreshed_cookie = c
-                mode_label = "♻️ Дублирование"
-            
-            entry = f"🟢 {info['Username']} [{info['UserID']}] - {mode_label}\nCookie: {refreshed_cookie}"
+            ml = "💀 Сброс" if mode == 'kill' else "♻️ Дублирование"
+            rc = c + "_killed_refreshed" if mode == 'kill' else c
+            entry = f"🟢 {info['Username']} [{info['UserID']}] - {ml}\nCookie: {rc}"
             refreshed.append(entry)
-            cookie_list_for_history.append(entry)
+            cookie_hist.append(entry)
         else:
-            cookie_list_for_history.append(f"❌ Невалид: {c[:50]}...")
+            cookie_hist.append(f"❌ {c[:50]}...")
     
-    # Сохраняем в историю
     add_to_fresher_history({
         'mode': mode,
         'refreshed_count': len(refreshed),
-        'cookies': cookie_list_for_history[:20]
+        'cookies': cookie_hist
     })
     
     return jsonify({
@@ -1353,66 +1214,51 @@ def api_fresher():
         "refreshed_list": refreshed
     })
 
-# ============================================================
-# API ИСТОРИИ
-# ============================================================
-
 @app.route("/api/history/checker")
 def api_history_checker():
-    history = load_history(CHECKER_HISTORY_FILE)
-    return jsonify({"history": history})
+    return jsonify({"history": load_history(CHECKER_HISTORY_FILE)})
 
 @app.route("/api/history/fresher")
 def api_history_fresher():
-    history = load_history(FRESHER_HISTORY_FILE)
-    return jsonify({"history": history})
+    return jsonify({"history": load_history(FRESHER_HISTORY_FILE)})
 
 @app.route("/api/history/checker/clear", methods=["POST"])
 def api_clear_checker_history():
-    clear_checker_history()
+    save_history(CHECKER_HISTORY_FILE, [])
     return jsonify({"success": True})
 
 @app.route("/api/history/fresher/clear", methods=["POST"])
 def api_clear_fresher_history():
-    clear_fresher_history()
+    save_history(FRESHER_HISTORY_FILE, [])
     return jsonify({"success": True})
-
-# ============================================================
-# API ИНСТРУМЕНТОВ
-# ============================================================
 
 @app.route("/api/merge-cookies", methods=["POST"])
 def api_merge_cookies():
     if 'files' not in request.files:
         return jsonify({"success": False, "message": "Файлы не найдены"})
-    
     files = request.files.getlist('files')
     if len(files) < 2:
-        return jsonify({"success": False, "message": "Минимум 2 файла для слияния"})
+        return jsonify({"success": False, "message": "Минимум 2 файла"})
     
-    file_contents = []
+    contents = []
     for file in files:
-        content = file.read().decode('utf-8', errors='ignore')
-        file_contents.append(content)
+        contents.append(file.read().decode('utf-8', errors='ignore'))
     
-    merged_content = merge_cookie_files(file_contents)
-    
+    merged = merge_cookie_files(contents)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"merged_cookies_{timestamp}.txt"
+    filename = f"merged_{timestamp}.txt"
     filepath = os.path.join("downloads", filename)
-    
     with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(merged_content)
+        f.write(merged)
     
-    all_cookies_lines = [line for line in merged_content.split('\n') if line]
-    total_original = sum(len([l for l in content.split('\n') if l.strip()]) for content in file_contents)
-    duplicates_removed = total_original - len(all_cookies_lines)
+    all_lines = [l for l in merged.split('\n') if l]
+    total_orig = sum(len([l for l in c.split('\n') if l.strip()]) for c in contents)
     
     return jsonify({
         "success": True,
         "total_files": len(files),
-        "total_cookies": len(all_cookies_lines),
-        "duplicates_removed": duplicates_removed,
+        "total_cookies": len(all_lines),
+        "duplicates_removed": total_orig - len(all_lines),
         "download_url": f"/downloads/{filename}"
     })
 
@@ -1422,40 +1268,35 @@ def api_split_cookies():
     content = data.get("content", "")
     split_type = data.get("split_type", "count")
     count = data.get("count", 100)
-    
     if not content:
-        return jsonify({"success": False, "message": "Нет данных для разделения"})
+        return jsonify({"success": False, "message": "Нет данных"})
     
     if split_type == "count":
-        split_files = split_cookies_by_count(content, count)
+        files = split_cookies_by_count(content, count)
     else:
-        split_files = split_cookies_by_files(content, count)
+        files = split_cookies_by_files(content, count)
     
-    if not split_files:
-        return jsonify({"success": False, "message": "Не удалось разделить куки"})
+    if not files:
+        return jsonify({"success": False, "message": "Не удалось разделить"})
     
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for i, file_content in enumerate(split_files, 1):
-            cookies_in_file = len([line for line in file_content.split('\n') if line])
-            filename = f"part_{i}_{cookies_in_file}cookies.txt"
-            zf.writestr(filename, file_content)
-    
+        for i, fc in enumerate(files, 1):
+            cnt = len([l for l in fc.split('\n') if l])
+            zf.writestr(f"part_{i}_{cnt}cookies.txt", fc)
     zip_buffer.seek(0)
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    archive_name = f"split_cookies_{timestamp}.zip"
+    archive_name = f"split_{timestamp}.zip"
     filepath = os.path.join("downloads", archive_name)
-    
     with open(filepath, 'wb') as f:
         f.write(zip_buffer.getvalue())
     
-    total_cookies = sum(len([line for line in file.split('\n') if line]) for file in split_files)
-    
+    total = sum(len([l for l in file.split('\n') if l]) for file in files)
     return jsonify({
         "success": True,
-        "file_count": len(split_files),
-        "total_cookies": total_cookies,
+        "file_count": len(files),
+        "total_cookies": total,
         "download_url": f"/downloads/{archive_name}"
     })
 
@@ -1464,34 +1305,28 @@ def api_clean_cookies():
     data = request.json or {}
     content = data.get("content", "")
     action = data.get("action", "deduplicate")
-    
     if not content:
-        return jsonify({"success": False, "message": "Нет данных для очистки"})
+        return jsonify({"success": False, "message": "Нет данных"})
     
-    original_lines = [line for line in content.split('\n') if line.strip()]
-    original_count = len(original_lines)
-    
+    orig_lines = [l for l in content.split('\n') if l.strip()]
     if action == "deduplicate":
-        processed_content = remove_duplicates(content)
+        processed = remove_duplicates(content)
     else:
-        processed_content = clean_cookies(content)
+        processed = clean_cookies(content)
     
-    processed_lines = [line for line in processed_content.split('\n') if line.strip()]
-    processed_count = len(processed_lines)
-    duplicates_removed = original_count - processed_count
+    proc_lines = [l for l in processed.split('\n') if l.strip()]
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"cleaned_cookies_{timestamp}.txt"
+    filename = f"cleaned_{timestamp}.txt"
     filepath = os.path.join("downloads", filename)
-    
     with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(processed_content)
+        f.write(processed)
     
     return jsonify({
         "success": True,
-        "original_count": original_count,
-        "processed_count": processed_count,
-        "duplicates_removed": duplicates_removed,
+        "original_count": len(orig_lines),
+        "processed_count": len(proc_lines),
+        "duplicates_removed": len(orig_lines) - len(proc_lines),
         "download_url": f"/downloads/{filename}"
     })
 
