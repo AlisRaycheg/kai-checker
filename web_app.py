@@ -14,7 +14,7 @@ from curl_cffi.requests import AsyncSession
 
 # ===== НАСТРОЙКИ =====
 os.makedirs("downloads", exist_ok=True)
-os.makedirs("uploads", exist_ok=True)  # Директория для сохраненных файлов
+os.makedirs("uploads", exist_ok=True)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -25,7 +25,6 @@ try:
 except ImportError:
     HAS_CFFI = False
 
-# Глобальная переменная для хранения последнего загруженного файла
 CURRENT_UPLOADED_FILE = None
 
 # ============================================================
@@ -248,7 +247,7 @@ HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MICES CHECKER</title>
+    <title>Kai Checker</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -368,9 +367,8 @@ HTML = """<!DOCTYPE html>
 
 <div class="kai-wrapper">
     <div class="header">
-        <div class="logo">MICES <span>CHECKER</span></div>
+        <div class="logo">KAI <span>CHECKER</span></div>
         <div style="display: flex; align-items: center; gap: 15px;">
-            <span style="color: #c084fc; font-weight: 700; font-size: 14px; background: rgba(168, 85, 247, 0.15); padding: 4px 12px; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 20px;">ПРОФФИ</span>
             <span id="sessionTimer" style="color: #00b894; font-family: 'Inter', monospace; font-weight: 600; font-size: 13px; background: rgba(0, 184, 148, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(0, 184, 148, 0.2);">⏱️ 00:00:00</span>
             <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
         </div>
@@ -425,10 +423,23 @@ HTML = """<!DOCTYPE html>
     <!-- ===== ФРЕШЕР ===== -->
     <div class="tab-content" id="tab-fresher">
         <div class="card">
-            <h2>🔄 Фрешер сессий (Обновление куков)</h2>
-            <p style="color: #9880c0; font-size: 14px; margin-bottom: 15px;">Обновление и продление жизненного цикла активных куков сессии.</p>
-            <textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="5"></textarea>
-            <button class="btn btn-primary" onclick="runFresher()" style="margin-top:14px;">⚡ Обновить сессии</button>
+            <h2>🔄 Фрешер сессий (Старый вид)</h2>
+            <div style="display:flex; flex-wrap:wrap; gap:18px;">
+                <div style="flex:2;">
+                    <textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="6"></textarea>
+                </div>
+                <div style="flex:1;">
+                    <div class="upload-area" onclick="document.getElementById('fresherFile').click()">
+                        <p>📁 <strong>Загрузить .txt</strong></p>
+                        <p style="font-size:12px; color:#9880c0;">Файл с куками</p>
+                    </div>
+                    <input type="file" id="fresherFile" accept=".txt" style="display:none;">
+                </div>
+            </div>
+            <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('fresherCookies').value=''; document.getElementById('fresherResult').textContent='Результаты фрешера появятся здесь...'; fresherHistory=[];">🧹 Очистить</button>
+            </div>
             <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
         </div>
     </div>
@@ -441,7 +452,7 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="footer">MICES CHECKER · PRO</div>
+    <div class="footer">KAI CHECKER · PRO</div>
 </div>
 
 <script>
@@ -485,6 +496,19 @@ HTML = """<!DOCTYPE html>
         });
     }
 
+    const fresherFileInput = document.getElementById('fresherFile');
+    if (fresherFileInput) {
+        fresherFileInput.addEventListener('change', function(e) {
+            if (this.files && this.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    document.getElementById('fresherCookies').value = evt.target.result;
+                };
+                reader.readAsText(this.files[0]);
+            }
+        });
+    }
+
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const tabId = this.getAttribute('data-tab');
@@ -498,6 +522,7 @@ HTML = """<!DOCTYPE html>
     });
 
     let checkerHistory = [];
+    let fresherHistory = [];
 
     async function runFullcheck() {
         const resBox = document.getElementById('fullcheckResult');
@@ -562,7 +587,16 @@ HTML = """<!DOCTYPE html>
             });
             const data = await response.json();
             if (data.success) {
-                resBox.textContent = `✅ Успешно обновлено сессий: ${data.refreshed_count}\n\n` + data.result_text;
+                if (data.refreshed_list && data.refreshed_list.length) {
+                    for (const item of data.refreshed_list) {
+                        fresherHistory.push(item);
+                    }
+                }
+                let html = `✅ Успешно обновлено сессий: ${data.refreshed_count}\n\n`;
+                for (const item of fresherHistory) {
+                    html += `${item}\n────────────────────────────────────────\n`;
+                }
+                resBox.textContent = html;
             } else {
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка фрешера');
             }
@@ -664,12 +698,12 @@ def api_fresher():
     for c in cookies:
         info = get_full_info(c)
         if info['status'] == '✅':
-            refreshed.append(c) # Актуальный кук успешно проверен и подтвержден
+            refreshed.append(f"🟢 Аккаунт: {info['Username']} [{info['UserID']}]\nCookie: {c}")
             
     return jsonify({
         "success": True,
         "refreshed_count": len(refreshed),
-        "result_text": "\n".join(refreshed)
+        "refreshed_list": refreshed
     })
 
 @app.route("/downloads/<filename>")
