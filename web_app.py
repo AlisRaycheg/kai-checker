@@ -171,7 +171,7 @@ def get_full_info(cookie: str) -> dict:
     return info
 
 # ============================================================
-# ФОРМАТИРОВАНИЕ ОТЧЁТОВ (МАЛЫЙ И ПОЛНЫЙ)
+# ФОРМАТИРОВАНИЕ ОТЧЁТОВ
 # ============================================================
 
 def format_short_report(info):
@@ -247,7 +247,7 @@ def generate_full_txt_report(info):
     return r
 
 # ============================================================
-# ФРЕШЕР (ИСПРАВЛЕННЫЙ: СОХРАНЕНИЕ СЕССИИ И НОВЫЙ КУК)
+# ФРЕШЕР (ИСПРАВЛЕННЫЙ: ПОЛУЧЕНИЕ НОВОГО КУКА БЕЗ ОШИБОК)
 # ============================================================
 
 async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple:
@@ -266,14 +266,6 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
     }
     
     async with AsyncSession(impersonate="chrome120") as session:
-        # Проверяем, валиден ли вообще старый кук перед началом фреша
-        try:
-            val_check = await session.get("https://users.roblox.com/v1/users/authenticated", headers=headers_base, timeout=10)
-            if val_check.status_code != 200:
-                return False, None, "❌ Старый кук невалиден"
-        except:
-            pass
-
         csrf_token = None
         for _ in range(3):
             try:
@@ -284,7 +276,6 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
             except:
                 pass
         
-        # Если CSRF не пришел через logout, пробуем получить его с главного сайта
         if not csrf_token:
             try:
                 r = await session.get("https://www.roblox.com/home", headers=headers_base, timeout=10)
@@ -330,7 +321,6 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
         if not new_cookie:
             return False, None, "❌ Новый кук не получен"
 
-        # Если kill_old выключен (или по выбору метода ticket), не логаутнем старый сразу жестко
         if kill_old:
             try:
                 await session.post("https://auth.roblox.com/v2/logout", headers=ticket_headers, timeout=5)
@@ -360,7 +350,7 @@ HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KAI CHECKER</title>
+    <title>MICE CHECKER</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -383,8 +373,8 @@ HTML = """<!DOCTYPE html>
             position: relative;
             z-index: 1;
         }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #1a1040; border-radius: 8px; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0d0722; border-radius: 8px; }
         ::-webkit-scrollbar-thumb { background: #a855f7; border-radius: 8px; }
 
         .header {
@@ -434,19 +424,19 @@ HTML = """<!DOCTYPE html>
         .btn {
             padding: 12px 28px; border: none; border-radius: 40px; font-size: 14px; font-weight: 700;
             cursor: pointer; transition: all 0.25s; display: inline-flex; align-items: center; gap: 10px;
-            position: relative; z-index: 10;
+            position: relative; z-index: 10; text-decoration: none;
         }
         .btn-primary {
             background: linear-gradient(135deg, #a855f7, #d946ef); color: #fff;
             box-shadow: 0 8px 24px rgba(168,85,247,0.25);
         }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(168,85,247,0.4); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(168,85,247,0.4); color: #fff; }
         .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid #2a1a50; color: #d4c0ff; }
         .btn-secondary:hover { background: rgba(255,255,255,0.1); }
 
         textarea, .upload-area {
             width: 100%; padding: 14px 16px; background: #0d0722; border: 1px solid #2a1a50;
-            border-radius: 14px; color: #e0d6ff; font-family: 'Inter', monospace; font-size: 14px;
+            border-radius: 14px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px;
             resize: vertical; transition: 0.2s; position: relative; z-index: 4;
         }
         textarea:focus, .upload-area:focus-within {
@@ -454,13 +444,15 @@ HTML = """<!DOCTYPE html>
         }
         .upload-area {
             min-height: 100px; display: flex; flex-direction: column; align-items: center;
-            justify-content: center; cursor: pointer; border-style: dashed; gap: 6px; text-align: center;
+            justify-content: center; cursor: pointer; border-style: dashed; gap: 6px; text-align: center; color: #ffffff;
         }
 
+        /* ИСПРАВЛЕНИЕ: Читаемый белый текст в окне результатов со скроллом вниз */
         .result-box {
             background: #0d0722; border: 1px solid #2a1a50; border-radius: 16px; padding: 18px;
-            margin-top: 20px; max-height: 450px; overflow-y: auto; font-family: 'Inter', monospace;
-            font-size: 13px; white-space: pre-wrap; word-break: break-word; position: relative; z-index: 5;
+            margin-top: 20px; max-height: 500px; overflow-y: auto; overflow-x: auto;
+            font-family: 'Inter', monospace; font-size: 13px; color: #ffffff; white-space: pre-wrap; word-break: break-word;
+            position: relative; z-index: 5;
         }
         .result-box.success { border-color: #4ade80; }
         .result-box.error { border-color: #f87171; }
@@ -492,7 +484,7 @@ HTML = """<!DOCTYPE html>
         }
         .fresh-textarea {
             width: 100%; min-height: 80px; padding: 14px 16px; background: #0a0a18; border: 1px solid #1a1a2e;
-            border-radius: 12px; color: #d0d0e0; font-family: 'Inter', monospace; font-size: 14px; resize: vertical; position: relative; z-index: 4;
+            border-radius: 12px; color: #ffffff; font-family: 'Inter', monospace; font-size: 14px; resize: vertical; position: relative; z-index: 4;
         }
         .fresh-controls {
             display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; position: relative; z-index: 10;
@@ -522,7 +514,7 @@ HTML = """<!DOCTYPE html>
         .cookie-output {
             background: #0a0a18; border: 1px solid #1a1a2e; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
         }
-        .cookie-output code { font-family: 'Inter', monospace; font-size: 12px; color: #d0d0e0; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        .cookie-output code { font-family: 'Inter', monospace; font-size: 12px; color: #ffffff; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
         .copy-btn {
             align-self: flex-start; background: #6c5ce7; color: #fff; border: none; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; z-index: 10;
         }
@@ -533,7 +525,7 @@ HTML = """<!DOCTYPE html>
 
 <div class="kai-wrapper">
     <div class="header">
-        <div class="logo">KAI <span>CHECKER</span>[cite: 3]</div>
+        <div class="logo">MICE <span>CHECKER</span>[cite: 3]</div>
         <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
     </div>
 
@@ -551,12 +543,12 @@ HTML = """<!DOCTYPE html>
             <div style="display:flex; flex-wrap:wrap; gap:18px;">
                 <div style="flex:2;">
                     <textarea id="manualCookies" placeholder="Вставь куки сюда (по одному или несколько) ..." rows="6"></textarea>
-                    <div style="margin-top:8px;color:#4a3a6a;font-size:13px;">или загрузи .txt файл</div>
+                    <div style="margin-top:8px;color:#9880c0;font-size:13px;">или загрузи .txt файл</div>
                 </div>
                 <div style="flex:1;">
                     <div class="upload-area" id="fullArea" onclick="document.getElementById('fullFile').click()">
                         <p>📁 <strong>Загрузить .txt</strong></p>
-                        <p style="font-size:12px;">.ROBLOSECURITY</p>
+                        <p style="font-size:12px; color:#9880c0;">.ROBLOSECURITY</p>
                     </div>
                     <input type="file" id="fullFile" accept=".txt" style="display:none;">
                 </div>
@@ -566,7 +558,7 @@ HTML = """<!DOCTYPE html>
                 <button class="btn btn-secondary" onclick="clearInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="fill" id="checkerProgress"></div></div>
-            <div class="result-box" id="fullcheckResult"></div>
+            <div class="result-box" id="fullcheckResult">Результаты появятся здесь...</div>
         </div>
     </div>
 
@@ -585,7 +577,7 @@ HTML = """<!DOCTYPE html>
                 <button class="btn-start" id="freshStartBtn" onclick="startFresh()">▶ Start</button>
                 <button class="btn-stop" id="freshStopBtn" disabled onclick="stopFresh()">■ Stop</button>
                 <button class="btn-download" onclick="downloadFreshResults()">📥 Download ZIP</button>
-                <span class="fresh-status" id="freshStatus">Ready</span>
+                <span class="fresh-status" id="freshStatus" style="color:#ffffff;">Ready</span>
             </div>
             <div class="fresh-progress"><div class="fill" id="freshProgressFill"></div></div>
             <div class="fresh-stats">
@@ -611,7 +603,7 @@ HTML = """<!DOCTYPE html>
             </div>
             <input type="file" id="validatorFile" accept=".txt" style="display:none;">
             <button class="btn btn-primary" onclick="runValidator()" style="margin-top:14px;">🧪 Запустить</button>
-            <div class="result-box" id="validatorResult"></div>
+            <div class="result-box" id="validatorResult">Здесь будет результат валидации...</div>
         </div>
     </div>
 
@@ -623,11 +615,10 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="footer">KAI CHECKER · PRO[cite: 3]</div>
+    <div class="footer">MICE CHECKER · PRO[cite: 3]</div>
 </div>
 
 <script>
-    // ===== ИСПРАВЛЕНИЕ ЗАГРУЗКИ .TXT ФАЙЛОВ =====
     function setupFileUpload(fileInputId, targetTextareaId) {
         const fileInput = document.getElementById(fileInputId);
         if (fileInput) {
@@ -644,7 +635,7 @@ HTML = """<!DOCTYPE html>
         }
     }
     setupFileUpload('fullFile', 'manualCookies');
-    setupFileUpload('validatorFile', 'manualCookies'); // Можно направить в общее поле или куда нужно
+    setupFileUpload('validatorFile', 'manualCookies');
 
     document.addEventListener('click', function(e) {
         if (e.target && e.target.id === 'freshCopyBtn') {
@@ -696,16 +687,17 @@ HTML = """<!DOCTYPE html>
             
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Проверено: ${data.total || 0}\\n\\n`;
+                let html = `✅ Проверено: ${data.total || 0}\n\n`;
                 if (data.reports && data.reports.length) {
                     for (const report of data.reports) {
-                        html += `${report}\\n────────────────────────────────────────\\n`;
+                        html += `${report}\n────────────────────────────────────────\n`;
                     }
                 }
                 if (data.download_url) {
-                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP с полными отчетами (.txt)</a>`;
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank">Скачать ZIP с полными отчетами (.txt)</a>`;
                 }
                 resBox.innerHTML = html;
+                resBox.scrollTop = resBox.scrollHeight;
             } else {
                 resBox.className = 'result-box error';
                 resBox.textContent = '❌ ' + (data.message || 'Ошибка');
@@ -744,7 +736,7 @@ HTML = """<!DOCTYPE html>
         const resultWrapper = document.getElementById('freshResultWrapper');
         const resultCode = document.getElementById('freshResultCode');
         
-        const cookies = input.value.trim().split('\\n').filter(c => c.trim().length > 50);
+        const cookies = input.value.trim().split('\n').filter(c => c.trim().length > 50);
         if (!cookies.length) { status.textContent = '❌ Нет куков'; return; }
         
         if (freshRunning) return;
@@ -792,7 +784,7 @@ HTML = """<!DOCTYPE html>
         status.textContent = '✅ Готово';
         
         if (newCookies.length) {
-            resultCode.textContent = newCookies.join('\\n');
+            resultCode.textContent = newCookies.join('\n');
             resultWrapper.style.display = 'block';
         }
     }
@@ -850,7 +842,8 @@ def api_fullcheck():
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"reports_{timestamp}.zip"
-    with open(f"downloads/{filename}", 'wb') as f:
+    filepath = os.path.join("downloads", filename)
+    with open(filepath, 'wb') as f:
         f.write(zip_buffer.getvalue())
     
     return jsonify({
