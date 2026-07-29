@@ -207,7 +207,7 @@ def generate_full_txt_report(info):
     r += f"║  📧 Почта: {'Да' if info['EmailSet'] else 'Нет'} | 🔐 2FA: {'Да' if info['TwoFactorEnabled'] else 'Нет'}      ║\n"
     r += f"║  ⭐ Premium: {'Да' if info['IsPremium'] else 'Нет'} | 💳 Карты: {info['CreditCardsCount']}          ║\n"
     r += "╠══════════════════════════════════════════════════════════╣\n"
-    r += "║  🔫 ГЕЙМПАССЫ ПО ИГРАХ                                   ║\n"
+    r += "║  🔫 ГЕЙМПАССЫ ПО ИГРАМ                                   ║\n"
     
     if gp:
         for game, passes in gp.items():
@@ -323,7 +323,6 @@ HTML = """<!DOCTYPE html>
         .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid #2a1a50; color: #d4c0ff; }
         .btn-secondary:hover { background: rgba(255,255,255,0.1); }
 
-        /* Стильный переключатель режима по клику */
         .toggle-group {
             display: flex;
             background: #0d0722;
@@ -446,7 +445,6 @@ HTML = """<!DOCTYPE html>
             <h2>🔄 Фрешер сессий</h2>
             <div style="margin-bottom: 8px;">
                 <label style="color: #d4c0ff; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">Режим обновления сессий:</label>
-                <!-- Переключатель кликом вместо старого селекта -->
                 <div class="toggle-group">
                     <button type="button" class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать кук (оставить старый рабочий)</button>
                     <button type="button" class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Убить старый кук (выход со всех устройств / сброс)</button>
@@ -467,7 +465,7 @@ HTML = """<!DOCTYPE html>
             </div>
             <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить сессии</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('fresherCookies').value=''; document.getElementById('fresherResult').textContent='Результаты фрешера появятся здесь...'; fresherHistory=[];">🧹 Очистить</button>
+                <button class="btn btn-secondary" onclick="clearFresher()">🧹 Очистить</button>
             </div>
             <div class="result-box" id="fresherResult">Результаты фрешера появятся здесь...</div>
         </div>
@@ -477,7 +475,61 @@ HTML = """<!DOCTYPE html>
     <div class="tab-content" id="tab-tools">
         <div class="card">
             <h2>📦 Инструменты обработки</h2>
-            <p style="color: #9880c0; font-size: 14px;">Все операции доступны через автоматическую генерацию архивов.</p>
+            <p style="color: #9880c0; font-size: 14px; margin-bottom: 16px;">Сортировка, разделение и слияние файлов с куками.</p>
+            
+            <!-- Сортер -->
+            <div style="margin-bottom:20px; padding:16px; background:rgba(13,7,34,0.5); border-radius:14px; border:1px solid #2a1a50;">
+                <h3 style="color:#d4c0ff; font-size:16px; margin-bottom:12px;">📂 Сортер (по одному в файл)</h3>
+                <div style="display:flex; flex-wrap:wrap; gap:18px;">
+                    <div style="flex:2;">
+                        <textarea id="sorterInput" placeholder="Вставьте куки для сортировки..." rows="4"></textarea>
+                    </div>
+                    <div style="flex:1;">
+                        <div class="upload-area" onclick="document.getElementById('sorterFile').click()">
+                            <p>📁 <strong>Загрузить .txt</strong></p>
+                        </div>
+                        <input type="file" id="sorterFile" accept=".txt" style="display:none;">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="runSorter()" style="margin-top:12px;">📦 Сортировать</button>
+                <div class="result-box" id="sorterResult">Результат сортировки...</div>
+            </div>
+            
+            <!-- Разделитель -->
+            <div style="margin-bottom:20px; padding:16px; background:rgba(13,7,34,0.5); border-radius:14px; border:1px solid #2a1a50;">
+                <h3 style="color:#d4c0ff; font-size:16px; margin-bottom:12px;">✂️ Разделитель (на 5 частей)</h3>
+                <div style="display:flex; flex-wrap:wrap; gap:18px;">
+                    <div style="flex:2;">
+                        <textarea id="splitInput" placeholder="Вставьте куки для разделения..." rows="4"></textarea>
+                    </div>
+                    <div style="flex:1;">
+                        <div class="upload-area" onclick="document.getElementById('splitFile').click()">
+                            <p>📁 <strong>Загрузить .txt</strong></p>
+                        </div>
+                        <input type="file" id="splitFile" accept=".txt" style="display:none;">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="runSplit()" style="margin-top:12px;">✂️ Разделить</button>
+                <div class="result-box" id="splitResult">Результат разделения...</div>
+            </div>
+            
+            <!-- Слияние -->
+            <div style="padding:16px; background:rgba(13,7,34,0.5); border-radius:14px; border:1px solid #2a1a50;">
+                <h3 style="color:#d4c0ff; font-size:16px; margin-bottom:12px;">🔗 Слияние (удаление дублей)</h3>
+                <div style="display:flex; flex-wrap:wrap; gap:18px;">
+                    <div style="flex:2;">
+                        <textarea id="mergeInput" placeholder="Вставьте куки для слияния..." rows="4"></textarea>
+                    </div>
+                    <div style="flex:1;">
+                        <div class="upload-area" onclick="document.getElementById('mergeFile').click()">
+                            <p>📁 <strong>Загрузить несколько .txt</strong></p>
+                        </div>
+                        <input type="file" id="mergeFile" accept=".txt" multiple style="display:none;">
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="runMerge()" style="margin-top:12px;">🔗 Слить</button>
+                <div class="result-box" id="mergeResult">Результат слияния...</div>
+            </div>
         </div>
     </div>
 
@@ -485,6 +537,7 @@ HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+    // ===== ТАЙМЕР =====
     let startTime = Date.now();
     setInterval(() => {
         let diff = Math.floor((Date.now() - startTime) / 1000);
@@ -495,7 +548,20 @@ HTML = """<!DOCTYPE html>
         if (timerEl) timerEl.textContent = `⏱️ ${h}:${m}:${s}`;
     }, 1000);
 
-    // Функция переключения режима кликом
+    // ===== ВКЛАДКИ =====
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const tabId = this.getAttribute('data-tab');
+            if (!tabId) return;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            const target = document.getElementById('tab-' + tabId);
+            if (target) target.classList.add('active');
+        });
+    });
+
+    // ===== РЕЖИМЫ ФРЕШЕРА =====
     function setFresherMode(mode) {
         document.getElementById('fresherMode').value = mode;
         const btnDup = document.getElementById('modeDuplicate');
@@ -509,63 +575,69 @@ HTML = """<!DOCTYPE html>
         }
     }
 
-    const fileInput = document.getElementById('fullFile');
-    if (fileInput) {
-        fileInput.addEventListener('change', async function(e) {
+    // ===== ЗАГРУЗКА ФАЙЛОВ =====
+    function setupFileInput(inputId, textareaId, isServerUpload) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        input.addEventListener('change', function() {
             if (this.files && this.files[0]) {
                 const file = this.files[0];
-                const formData = new FormData();
-                formData.append('file', file);
-
-                document.getElementById('fileStatusInfo').textContent = '⏳ Загрузка и сохранение файла на сервере...';
-
-                try {
-                    const response = await fetch('/api/upload', { method: 'POST', body: formData });
-                    const data = await response.json();
-                    if (data.success) {
-                        document.getElementById('fileStatusInfo').textContent = `✅ Файл "${data.filename}" успешно сохранен на сервере!`;
-                        const reader = new FileReader();
-                        reader.onload = function(evt) {
-                            document.getElementById('manualCookies').value = evt.target.result;
-                        };
-                        reader.readAsText(file);
-                    } else {
-                        document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сохранения файла';
-                    }
-                } catch (err) {
-                    document.getElementById('fileStatusInfo').textContent = '❌ Ошибка сети при загрузке';
+                if (isServerUpload) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    const statusEl = document.getElementById('fileStatusInfo');
+                    if (statusEl) statusEl.textContent = '⏳ Загрузка на сервер...';
+                    fetch('/api/upload', { method: 'POST', body: formData })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.success && statusEl) {
+                                statusEl.textContent = '✅ Файл "' + data.filename + '" загружен!';
+                            }
+                        })
+                        .catch(() => { if (statusEl) statusEl.textContent = '❌ Ошибка загрузки'; });
                 }
-            }
-        });
-    }
-
-    const fresherFileInput = document.getElementById('fresherFile');
-    if (fresherFileInput) {
-        fresherFileInput.addEventListener('change', function(e) {
-            if (this.files && this.files[0]) {
                 const reader = new FileReader();
                 reader.onload = function(evt) {
-                    document.getElementById('fresherCookies').value = evt.target.result;
+                    const textarea = document.getElementById(textareaId);
+                    if (textarea) textarea.value = evt.target.result;
                 };
-                reader.readAsText(this.files[0]);
+                reader.readAsText(file);
             }
         });
     }
 
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', function() {
-            const tabId = this.getAttribute('data-tab');
-            if (!tabId) return;
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            this.classList.add('active');
-            const target = document.getElementById('tab-' + tabId);
-            if (target) target.classList.add('active');
+    setupFileInput('fullFile', 'manualCookies', true);
+    setupFileInput('validatorFile', 'validatorCookies', false);
+    setupFileInput('fresherFile', 'fresherCookies', false);
+    setupFileInput('sorterFile', 'sorterInput', false);
+    setupFileInput('splitFile', 'splitInput', false);
+    
+    // Множественная загрузка для слияния
+    const mergeFileInput = document.getElementById('mergeFile');
+    if (mergeFileInput) {
+        mergeFileInput.addEventListener('change', function() {
+            if (this.files && this.files.length > 0) {
+                let combined = '';
+                let count = 0;
+                Array.from(this.files).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        combined += evt.target.result + '\n';
+                        count++;
+                        if (count === mergeFileInput.files.length) {
+                            document.getElementById('mergeInput').value = combined;
+                        }
+                    };
+                    reader.readAsText(file);
+                });
+            }
         });
-    });
+    }
 
+    // ============================================================
+    // ===== ЧЕКЕР ================================================
+    // ============================================================
     let checkerHistory = [];
-    let fresherHistory = [];
 
     async function runFullcheck() {
         const resBox = document.getElementById('fullcheckResult');
@@ -614,6 +686,49 @@ HTML = """<!DOCTYPE html>
         }
     }
 
+    function clearInputs() {
+        document.getElementById('manualCookies').value = '';
+        document.getElementById('fileStatusInfo').textContent = '';
+        checkerHistory = [];
+        document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
+    }
+
+    // ============================================================
+    // ===== ВАЛИДАТОР ============================================
+    // ============================================================
+    async function runValidator() {
+        const resBox = document.getElementById('validatorResult');
+        const cookies = document.getElementById('validatorCookies').value.trim();
+        if (!cookies) {
+            resBox.textContent = '❌ Вставьте куки для валидации!';
+            return;
+        }
+        resBox.textContent = '⏳ Выполняется быстрая валидация...';
+        try {
+            const response = await fetch('/api/validator', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: cookies })
+            });
+            const data = await response.json();
+            if (data.success) {
+                let html = `✅ Проверено: ${data.total} | Живых (Valid): ${data.valid_count} | Мертвых (Dead): ${data.dead_count}\n\n`;
+                html += `🟢 ЖИВЫЕ КУКИ:\n` + (data.valid_list.length ? data.valid_list.join('\n') : 'Нет живых') + `\n\n`;
+                html += `❌ МЕРТВЫЕ КУКИ:\n` + (data.dead_list.length ? data.dead_list.join('\n') : 'Нет мертвых');
+                resBox.textContent = html;
+            } else {
+                resBox.textContent = '❌ ' + (data.message || 'Ошибка валидации');
+            }
+        } catch (e) {
+            resBox.textContent = '❌ Ошибка сети: ' + e.message;
+        }
+    }
+
+    // ============================================================
+    // ===== ФРЕШЕР ===============================================
+    // ============================================================
+    let fresherHistory = [];
+
     async function runFresher() {
         const resBox = document.getElementById('fresherResult');
         const cookies = document.getElementById('fresherCookies').value.trim();
@@ -649,11 +764,104 @@ HTML = """<!DOCTYPE html>
         }
     }
 
-    function clearInputs() {
-        document.getElementById('manualCookies').value = '';
-        document.getElementById('fileStatusInfo').textContent = '';
-        checkerHistory = [];
-        document.getElementById('fullcheckResult').textContent = 'Результаты появятся здесь...';
+    function clearFresher() {
+        document.getElementById('fresherCookies').value = '';
+        document.getElementById('fresherResult').textContent = 'Результаты фрешера появятся здесь...';
+        fresherHistory = [];
+    }
+
+    // ============================================================
+    // ===== ИНСТРУМЕНТЫ ==========================================
+    // ============================================================
+    
+    // Сортер
+    async function runSorter() {
+        const resBox = document.getElementById('sorterResult');
+        const input = document.getElementById('sorterInput').value.trim();
+        if (!input) {
+            resBox.textContent = '❌ Вставьте куки для сортировки!';
+            return;
+        }
+        resBox.textContent = '⏳ Сортировка...';
+        try {
+            const response = await fetch('/api/sorter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: input })
+            });
+            const data = await response.json();
+            if (data.success) {
+                let html = `✅ Сортировка завершена!\n📦 Куков: ${data.total}\n`;
+                if (data.download_url) {
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                }
+                resBox.innerHTML = html;
+            } else {
+                resBox.textContent = '❌ ' + (data.message || 'Ошибка');
+            }
+        } catch (e) {
+            resBox.textContent = '❌ Ошибка: ' + e.message;
+        }
+    }
+
+    // Разделитель
+    async function runSplit() {
+        const resBox = document.getElementById('splitResult');
+        const input = document.getElementById('splitInput').value.trim();
+        if (!input) {
+            resBox.textContent = '❌ Вставьте куки для разделения!';
+            return;
+        }
+        resBox.textContent = '⏳ Разделение на 5 частей...';
+        try {
+            const response = await fetch('/api/split', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: input })
+            });
+            const data = await response.json();
+            if (data.success) {
+                let html = `✅ Разделение завершено!\n📦 Куков: ${data.total}\n`;
+                if (data.download_url) {
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                }
+                resBox.innerHTML = html;
+            } else {
+                resBox.textContent = '❌ ' + (data.message || 'Ошибка');
+            }
+        } catch (e) {
+            resBox.textContent = '❌ Ошибка: ' + e.message;
+        }
+    }
+
+    // Слияние
+    async function runMerge() {
+        const resBox = document.getElementById('mergeResult');
+        const input = document.getElementById('mergeInput').value.trim();
+        if (!input) {
+            resBox.textContent = '❌ Вставьте куки для слияния!';
+            return;
+        }
+        resBox.textContent = '⏳ Слияние и удаление дублей...';
+        try {
+            const response = await fetch('/api/merge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: input })
+            });
+            const data = await response.json();
+            if (data.success) {
+                let html = `✅ Слияние завершено!\n📦 Уникальных куков: ${data.total}\n🗑️ Дублей удалено: ${data.duplicates}\n`;
+                if (data.download_url) {
+                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
+                }
+                resBox.innerHTML = html;
+            } else {
+                resBox.textContent = '❌ ' + (data.message || 'Ошибка');
+            }
+        } catch (e) {
+            resBox.textContent = '❌ Ошибка: ' + e.message;
+        }
     }
 </script>
 </body>
@@ -721,7 +929,7 @@ def api_fullcheck():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     archive_name = f"reports_{timestamp}.zip"
     filepath = os.path.join("downloads", archive_name)
-    with open(filepath, 'wb' ) as f:
+    with open(filepath, 'wb') as f:
         f.write(zip_buffer.getvalue())
     
     return jsonify({
@@ -730,6 +938,34 @@ def api_fullcheck():
         "valid_count": len(reports),
         "reports": reports,
         "download_url": f"/downloads/{archive_name}"
+    })
+
+@app.route("/api/validator", methods=["POST"])
+def api_validator():
+    data = request.json or {}
+    raw_cookies = data.get("cookies", "")
+    cookies = [line.strip() for line in raw_cookies.split('\n') if len(line) > 50]
+    
+    if not cookies:
+        return jsonify({"success": False, "message": "Не найдены куки для валидации"})
+    
+    valid_list = []
+    dead_list = []
+    
+    for c in cookies:
+        info = get_full_info(c)
+        if info['status'] == '✅':
+            valid_list.append(c)
+        else:
+            dead_list.append(c)
+            
+    return jsonify({
+        "success": True,
+        "total": len(cookies),
+        "valid_count": len(valid_list),
+        "dead_count": len(dead_list),
+        "valid_list": valid_list,
+        "dead_list": dead_list
     })
 
 @app.route("/api/fresher", methods=["POST"])
@@ -759,6 +995,87 @@ def api_fresher():
         "success": True,
         "refreshed_count": len(refreshed),
         "refreshed_list": refreshed
+    })
+
+@app.route("/api/sorter", methods=["POST"])
+def api_sorter():
+    data = request.json or {}
+    raw_cookies = data.get("cookies", "")
+    cookies = [line.strip() for line in raw_cookies.split('\n') if len(line) > 50]
+    
+    if not cookies:
+        return jsonify({"success": False, "message": "Куки не найдены"})
+    
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for i, c in enumerate(cookies[:100]):
+            zf.writestr(f"cookie_{i+1}.txt", c)
+    zip_buffer.seek(0)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    archive_name = f"sorted_{timestamp}.zip"
+    filepath = os.path.join("downloads", archive_name)
+    with open(filepath, 'wb') as f:
+        f.write(zip_buffer.getvalue())
+    
+    return jsonify({
+        "success": True,
+        "total": len(cookies),
+        "download_url": f"/downloads/{archive_name}"
+    })
+
+@app.route("/api/split", methods=["POST"])
+def api_split():
+    data = request.json or {}
+    raw_cookies = data.get("cookies", "")
+    cookies = [line.strip() for line in raw_cookies.split('\n') if len(line) > 50]
+    
+    if not cookies:
+        return jsonify({"success": False, "message": "Куки не найдены"})
+    
+    chunk_size = max(1, len(cookies) // 5)
+    chunks = [cookies[i:i+chunk_size] for i in range(0, len(cookies), chunk_size)]
+    
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for i, chunk in enumerate(chunks[:5]):
+            zf.writestr(f"part_{i+1}.txt", '\n'.join(chunk))
+    zip_buffer.seek(0)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    archive_name = f"split_{timestamp}.zip"
+    filepath = os.path.join("downloads", archive_name)
+    with open(filepath, 'wb') as f:
+        f.write(zip_buffer.getvalue())
+    
+    return jsonify({
+        "success": True,
+        "total": len(cookies),
+        "download_url": f"/downloads/{archive_name}"
+    })
+
+@app.route("/api/merge", methods=["POST"])
+def api_merge():
+    data = request.json or {}
+    raw_cookies = data.get("cookies", "")
+    cookies = [line.strip() for line in raw_cookies.split('\n') if len(line) > 50]
+    
+    if not cookies:
+        return jsonify({"success": False, "message": "Куки не найдены"})
+    
+    unique = list(dict.fromkeys(cookies))
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"merged_{timestamp}.txt"
+    filepath = os.path.join("downloads", filename)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(unique))
+    
+    return jsonify({
+        "success": True,
+        "total": len(unique),
+        "duplicates": len(cookies) - len(unique),
+        "download_url": f"/downloads/{filename}"
     })
 
 @app.route("/downloads/<filename>")
