@@ -70,7 +70,6 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
     }
     
     async with AsyncSession(impersonate="chrome120") as session:
-        # CSRF
         csrf_token = None
         for _ in range(3):
             try:
@@ -83,7 +82,6 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
         if not csrf_token:
             return False, None, "❌ CSRF не получен"
 
-        # Ticket
         ticket_headers = headers_base.copy()
         ticket_headers.update({"x-csrf-token": csrf_token, "RBXAuthenticationNegotiation": "1"})
         ticket = None
@@ -98,7 +96,6 @@ async def refresh_roblox_cookie(old_cookie: str, kill_old: bool = True) -> tuple
         if not ticket:
             return False, None, "❌ Ticket не получен"
 
-        # Redeem
         new_cookie = None
         for _ in range(3):
             try:
@@ -141,12 +138,15 @@ def refresh_cookie_sync(cookie: str, kill_old: bool = True) -> tuple:
 
 app = Flask(__name__)
 
+# Метка времени запуска сервера для проверки обновления на хосте
+SERVER_START_TIME = datetime.now().strftime('%H:%M:%S')
+
 HTML = """<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MICE CHECKER</title>
+    <title>KAI CHECKER</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -156,7 +156,38 @@ HTML = """<!DOCTYPE html>
             padding: 24px;
             background: #0b081a;
             background-image: radial-gradient(circle at 10% 20%, #1a1040 0%, #0b081a 80%);
+            position: relative;
         }
+        
+        /* Индикатор теста и обновления в уголке */
+        .host-test-badge {
+            position: fixed;
+            bottom: 15px;
+            right: 15px;
+            background: rgba(168, 85, 247, 0.15);
+            border: 1px solid #c084fc;
+            padding: 8px 14px;
+            border-radius: 12px;
+            color: #c084fc;
+            font-size: 12px;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 700;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 20px rgba(168, 85, 247, 0.2);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .host-test-badge span {
+            width: 8px;
+            height: 8px;
+            background: #4ade80;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 8px #4ade80;
+        }
+
         .kai-wrapper {
             max-width: 1400px;
             margin: 0 auto;
@@ -291,9 +322,7 @@ HTML = """<!DOCTYPE html>
             gap: 6px;
             text-align: center;
         }
-        .upload-area * {
-            pointer-events: none;
-        }
+        .upload-area * { pointer-events: none; }
 
         .result-box {
             background: #0d0722;
@@ -311,9 +340,6 @@ HTML = """<!DOCTYPE html>
         }
         .result-box.success { border-color: #4ade80; }
         .result-box.error { border-color: #f87171; }
-        .result-box .valid { color: #4ade80; }
-        .result-box .invalid { color: #f87171; }
-        .result-box .info { color: #a78bfa; }
 
         .cookie-output {
             display: flex;
@@ -479,11 +505,7 @@ HTML = """<!DOCTYPE html>
             margin-left: auto;
         }
         .btn-download:hover { background: #1a1a3a; border-color: #6c5ce7; }
-        .fresh-status {
-            color: #6a6a8a;
-            font-size: 14px;
-            margin-left: 8px;
-        }
+        .fresh-status { color: #6a6a8a; font-size: 14px; margin-left: 8px; }
 
         .fresh-progress {
             margin-top: 16px;
@@ -500,11 +522,7 @@ HTML = """<!DOCTYPE html>
             transition: width 0.3s ease;
         }
         .fresh-stats {
-            display: flex;
-            gap: 24px;
-            margin-top: 10px;
-            font-size: 13px;
-            color: #6a6a8a;
+            display: flex; gap: 24px; margin-top: 10px; font-size: 13px; color: #6a6a8a;
         }
         .fresh-stats strong { color: #d0d0e0; }
         .fresh-stats .valid { color: #00b894; }
@@ -512,49 +530,27 @@ HTML = """<!DOCTYPE html>
         .fresh-stats .errors { color: #feca57; }
 
         .fresh-history {
-            margin-top: 20px;
-            border-top: 1px solid #1a1a2e;
-            padding-top: 16px;
+            margin-top: 20px; border-top: 1px solid #1a1a2e; padding-top: 16px;
         }
         .fresh-history h3 {
             font-family: 'Poppins', sans-serif;
-            font-weight: 700;
-            font-style: italic;
-            font-size: 16px;
-            color: #a78bfa;
-            margin-bottom: 12px;
+            font-weight: 700; font-style: italic; font-size: 16px; color: #a78bfa; margin-bottom: 12px;
         }
         .history-list {
-            max-height: 200px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
+            max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
         }
         .history-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 14px;
-            background: #0a0a18;
-            border-radius: 10px;
-            border-left: 3px solid #6c5ce7;
-            font-size: 13px;
-            color: #b0b0c8;
-            flex-wrap: wrap;
-            gap: 6px;
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 14px; background: #0a0a18; border-radius: 10px;
+            border-left: 3px solid #6c5ce7; font-size: 13px; color: #b0b0c8; flex-wrap: wrap; gap: 6px;
         }
         .history-item .time { color: #6a6a8a; font-size: 12px; }
         .history-item .ok { color: #00b894; }
         .history-item .fail { color: #ff6b6b; }
 
         .footer {
-            text-align: center;
-            padding: 30px 0 12px;
-            color: #4a3a6a;
-            font-size: 13px;
-            border-top: 1px solid #1a1040;
-            margin-top: 30px;
+            text-align: center; padding: 30px 0 12px; color: #4a3a6a; font-size: 13px;
+            border-top: 1px solid #1a1040; margin-top: 30px;
         }
         @media (max-width: 640px) {
             .card, .fresh-card { padding: 18px; }
@@ -564,10 +560,16 @@ HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body>
+
+<!-- Индикатор теста и времени обновления на хосте -->
+<div class="host-test-badge">
+    <span></span> тест 1 (запуск: <strong id="serverTime">{{ server_time }}</strong>)
+</div>
+
 <div class="kai-wrapper">
 
     <div class="header">
-        <div class="logo">MICE <span>CHECKER</span></div>
+        <div class="logo">KAI <span>CHECKER</span></div>
         <div style="color:#4a3a6a; font-size:14px;">⚡ PRO</div>
     </div>
 
@@ -693,10 +695,11 @@ HTML = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="footer">MICE CHECKER · PRO</div>
+    <div class="footer">KAI CHECKER · PRO</div>
 </div>
 
 <script>
+    // Исправление кликов по областям загрузки файлов
     document.querySelectorAll('.upload-area').forEach(area => {
         area.addEventListener('click', function(e) {
             const input = this.parentElement.querySelector('input[type="file"]');
@@ -723,21 +726,19 @@ HTML = """<!DOCTYPE html>
         });
     });
 
+    // Надежное переключение вкладок (исправление проблемы с некликабельными кнопками)
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', function() {
-            const tabId = this.dataset.tab;
-            if (!tabId) {
-                console.error('❌ Ошибка: у кнопки нет data-tab');
-                return;
-            }
+            const tabId = this.getAttribute('data-tab');
+            if (!tabId) return;
+            
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
             this.classList.add('active');
-            const content = document.getElementById('tab-' + tabId);
-            if (content) {
-                content.classList.add('active');
-            } else {
-                console.error('❌ Ошибка: контент с id tab-' + tabId + ' не найден');
+            const targetContent = document.getElementById('tab-' + tabId);
+            if (targetContent) {
+                targetContent.classList.add('active');
             }
         });
     });
@@ -775,15 +776,15 @@ HTML = """<!DOCTYPE html>
             
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Проверено: ${data.total || 0}\n📦 Геймпассов: ${data.total_gamepasses || 0}\n💎 RAP: ${data.total_rap || 0}\n\n`;
+                let html = `✅ Проверено: ${data.total || 0}\\n📦 Активных: ${data.total_gamepasses || 0}\\n💎 RAP: ${data.total_rap || 0}\\n\\n`;
                 if (data.reports && data.reports.length) {
-                    html += `<b>📋 ОТЧЁТЫ:</b>\n`;
+                    html += `<b>📋 ОТЧЁТЫ:</b>\\n`;
                     for (const report of data.reports) {
-                        html += `\n${report}\n─────────────────\n`;
+                        html += `\\n${report}\\n─────────────────\\n`;
                     }
                 }
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
                 saveCheckerHistory(data.total || 0, data.total_gamepasses || 0, data.total_rap || 0);
@@ -819,7 +820,7 @@ HTML = """<!DOCTYPE html>
         container.style.display = 'block';
         list.innerHTML = history.map(item => `
             <div style="display:flex; justify-content:space-between; padding:6px 12px; background:rgba(13,7,34,0.6); border-radius:8px; font-size:13px; color:#b0b0c8; border-left:3px solid #a855f7;">
-                <span>📊 ${item.total} куков | 🎮 ${item.gamepasses} гп | 💎 ${item.rap} RAP</span>
+                <span>📊 ${item.total} куков | 🎮 ${item.gamepasses} активов | 💎 ${item.rap} RAP</span>
                 <span style="color:#4a3a6a; font-size:12px;">${item.date}</span>
             </div>
         `).join('');
@@ -854,9 +855,9 @@ HTML = """<!DOCTYPE html>
         const resultWrapper = document.getElementById('freshResultWrapper');
         const resultCode = document.getElementById('freshResultCode');
         
-        const cookies = input.value.trim().split('\n').filter(c => c.trim().length > 50);
+        const cookies = input.value.trim().split('\\n').filter(c => c.trim().length > 50);
         if (!cookies.length) {
-            status.textContent = '❌ Нет куков для обновления';
+            status.textContent = '❌ Нет куков';
             return;
         }
         
@@ -916,10 +917,10 @@ HTML = """<!DOCTYPE html>
         progressText.textContent = '100%';
         
         if (newCookies.length) {
-            resultCode.textContent = newCookies.join('\n');
+            resultCode.textContent = newCookies.join('\\n');
             resultWrapper.style.display = 'flex';
             document.getElementById('freshCopyBtn').onclick = function() {
-                navigator.clipboard.writeText(newCookies.join('\n')).then(() => {
+                navigator.clipboard.writeText(newCookies.join('\\n')).then(() => {
                     this.textContent = '✅ Скопировано!';
                     setTimeout(() => { this.textContent = '📋 Копировать'; }, 2000);
                 });
@@ -988,9 +989,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Валидных: ${data.valid}\n❌ Невалидных: ${data.invalid}\n📊 Всего: ${data.total}`;
+                let html = `✅ Валидных: ${data.valid}\\n❌ Невалидных: ${data.invalid}\\n📊 Всего: ${data.total}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать валидные</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать валидные</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1016,9 +1017,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Сортировка завершена!\n📦 Куков: ${data.total}`;
+                let html = `✅ Сортировка завершена!\\n📦 Куков: ${data.total}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1044,9 +1045,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Разделение завершено!\n📦 Куков: ${data.total}`;
+                let html = `✅ Разделение завершено!\\n📦 Куков: ${data.total}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать ZIP</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1072,9 +1073,9 @@ HTML = """<!DOCTYPE html>
             const data = await r.json();
             if (data.success) {
                 resBox.className = 'result-box success';
-                let html = `✅ Слияние завершено!\n📦 Куков: ${data.total}\n🔄 Дублей удалено: ${data.duplicates}`;
+                let html = `✅ Слияние завершено!\\n📦 Куков: ${data.total}\\n🔄 Дублей удалено: ${data.duplicates}`;
                 if (data.download_url) {
-                    html += `\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
+                    html += `\\n📥 <a href="${data.download_url}" class="btn btn-primary" target="_blank" style="text-decoration:none;">Скачать</a>`;
                 }
                 resBox.innerHTML = html;
             } else {
@@ -1099,7 +1100,7 @@ HTML = """<!DOCTYPE html>
 
 @app.route("/")
 def index():
-    return render_template_string(HTML)
+    return render_template_string(HTML, server_time=SERVER_START_TIME)
 
 @app.route("/api/fullcheck", methods=["POST"])
 def api_fullcheck():
