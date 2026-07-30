@@ -22,7 +22,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 CHECKER_HISTORY_FILE = "history/checker_history.json"
 FRESHER_HISTORY_FILE = "history/fresher_history.json"
 
-# ===== ВСЕ ФУНКЦИИ ИЗ БЭКАПА (без изменений) =====
 def load_history(fp):
     if not os.path.exists(fp): return []
     try:
@@ -302,9 +301,7 @@ def clean_cookies(content):
         elif len(l)>50 and not l.startswith('#'): cookies.append(l)
     return '\n'.join(cookies)
 
-# ============================================================
-# HTML С НОВЫМИ ФИЧАМИ
-# ============================================================
+app = Flask(__name__)
 
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
@@ -323,9 +320,6 @@ HTML = r"""<!DOCTYPE html>
             --text: #fff;
             --text2: #9880c0;
             --accent: #a855f7;
-            --green: #10b981;
-            --red: #ef4444;
-            --header-bg: rgba(18,10,40,0.95);
         }
         [data-theme="light"] {
             --bg: #f0f0f5;
@@ -336,9 +330,6 @@ HTML = r"""<!DOCTYPE html>
             --text: #1a1a2e;
             --text2: #666;
             --accent: #7c3aed;
-            --green: #059669;
-            --red: #dc2626;
-            --header-bg: rgba(255,255,255,0.95);
         }
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Inter',sans-serif;min-height:100vh;padding:16px;background:var(--bg);transition:all 0.3s}
@@ -396,7 +387,6 @@ HTML = r"""<!DOCTYPE html>
         .checker-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
         @media(max-width:900px){.checker-grid{grid-template-columns:1fr}}
         .theme-btn{background:var(--input);border:1px solid var(--border);border-radius:20px;padding:6px 12px;cursor:pointer;font-size:16px;color:var(--text)}
-        .stat-box{display:inline-flex;align-items:center;gap:4px;background:var(--input);padding:4px 10px;border-radius:12px;font-size:11px;color:var(--text2);margin:2px}
         .filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
         .filter-chip{padding:4px 10px;border-radius:14px;font-size:11px;cursor:pointer;background:var(--input);border:1px solid var(--border);color:var(--text2);transition:all 0.2s;user-select:none}
         .filter-chip.active{background:rgba(168,85,247,0.3);border-color:var(--accent);color:var(--accent)}
@@ -421,7 +411,6 @@ HTML = r"""<!DOCTYPE html>
         <div class="tab" data-tab="tools">🧰 Инструменты</div>
     </div>
 
-    <!-- ===== ЧЕКЕР ===== -->
     <div class="tab-content active" id="tab-checker">
         <div class="checker-grid">
             <div class="card">
@@ -442,25 +431,20 @@ HTML = r"""<!DOCTYPE html>
                 <div class="mt-8"><button class="btn btn-success" onclick="runMassCheck()" style="width:100%;">🚀 Массовая проверка</button></div>
                 <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
                 <div id="massLog" style="max-height:80px;overflow-y:auto;margin-top:6px;"></div>
-                
-                <!-- ФИЛЬТРЫ -->
                 <div class="filter-bar mt-8" id="filterBar" style="display:none;">
                     <span style="font-size:11px;color:var(--text2);">🔍</span>
-                    <span class="filter-chip active" onclick="applyFilter('all')">Все</span>
-                    <span class="filter-chip" onclick="applyFilter('premium')">💠 Premium</span>
-                    <span class="filter-chip" onclick="applyFilter('rich')">💰 Robux>1000</span>
-                    <span class="filter-chip" onclick="applyFilter('secure')">🔐 2FA</span>
-                    <span class="filter-chip" onclick="applyFilter('old')">👴 Старые (>3 лет)</span>
+                    <span class="filter-chip active" onclick="applyFilter('all', this)">Все</span>
+                    <span class="filter-chip" onclick="applyFilter('premium', this)">💠 Premium</span>
+                    <span class="filter-chip" onclick="applyFilter('rich', this)">💰 Robux>1000</span>
+                    <span class="filter-chip" onclick="applyFilter('secure', this)">🔐 2FA</span>
+                    <span class="filter-chip" onclick="applyFilter('old', this)">👴 Старые (>3 лет)</span>
                 </div>
-                
                 <div class="result-box" id="massResult">Результаты здесь...</div>
                 <div class="gap-8 mt-8" id="massActions" style="display:none;">
                     <button class="btn btn-primary btn-sm" onclick="copyValidCookies()">📋 Копировать валидные</button>
                     <button class="btn btn-secondary btn-sm" onclick="downloadValidOnly()">📥 Только валидные</button>
                     <button class="btn btn-secondary btn-sm" onclick="downloadInvalidOnly()">📥 Только невалидные</button>
                 </div>
-                
-                <!-- КАЛЬКУЛЯТОР -->
                 <div id="robuxCalc" style="display:none;margin-top:10px;padding:10px;background:var(--input);border-radius:10px;font-size:12px;color:var(--text);"></div>
             </div>
         </div>
@@ -470,7 +454,6 @@ HTML = r"""<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- ===== ФРЕШЕР ===== -->
     <div class="tab-content" id="tab-fresher">
         <div class="card">
             <h2>🔄 Фрешер сессий</h2>
@@ -497,7 +480,6 @@ HTML = r"""<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- ===== ИНСТРУМЕНТЫ ===== -->
     <div class="tab-content" id="tab-tools">
         <div class="tool-grid">
             <div class="tool-card"><h3>🔗 Слияние</h3><p class="desc">Объедините .txt файлы</p><div class="upload-area" id="mergeDropArea" onclick="document.getElementById('mergeFiles').click()"><p>📁 Перетащите файлы</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;"><button class="btn btn-primary mt-8" onclick="mergeCookies()" style="width:100%;">🔄 Объединить</button><div class="result-box" id="mergeResult" style="max-height:80px;">Результат...</div></div>
@@ -511,7 +493,15 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <script>
-// ===== ТЕМА =====
+var startTime = Date.now();
+setInterval(function() {
+    var d = Math.floor((Date.now() - startTime) / 1000);
+    var h = String(Math.floor(d / 3600)).padStart(2, '0');
+    var m = String(Math.floor((d % 3600) / 60)).padStart(2, '0');
+    var s = String(d % 60).padStart(2, '0');
+    document.getElementById('sessionTimer').textContent = '⏱️ ' + h + ':' + m + ':' + s;
+}, 1000);
+
 function toggleTheme() {
     var html = document.documentElement;
     var current = html.getAttribute('data-theme');
@@ -524,17 +514,6 @@ function toggleTheme() {
     if (saved) document.documentElement.setAttribute('data-theme', saved);
 })();
 
-// ===== ТАЙМЕР =====
-var startTime = Date.now();
-setInterval(function() {
-    var d = Math.floor((Date.now() - startTime) / 1000);
-    var h = String(Math.floor(d / 3600)).padStart(2, '0');
-    var m = String(Math.floor((d % 3600) / 60)).padStart(2, '0');
-    var s = String(d % 60).padStart(2, '0');
-    document.getElementById('sessionTimer').textContent = '⏱️ ' + h + ':' + m + ':' + s;
-}, 1000);
-
-// ===== ВКЛАДКИ =====
 document.querySelectorAll('.tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
         var tabId = this.getAttribute('data-tab');
@@ -553,8 +532,7 @@ function setFresherMode(mode) {
     document.getElementById('modeKill').classList.toggle('active', mode === 'kill');
 }
 
-// ===== DRAG & DROP =====
-function setupDragDrop(areaId, fileInputId, callback) {
+function setupDragDrop(areaId, fileInputId) {
     var area = document.getElementById(areaId);
     if (!area) return;
     ['dragenter', 'dragover'].forEach(function(evt) {
@@ -571,7 +549,6 @@ function setupDragDrop(areaId, fileInputId, callback) {
             for (var i = 0; i < files.length; i++) dt.items.add(files[i]);
             input.files = dt.files;
             input.dispatchEvent(new Event('change'));
-            if (callback) callback(files);
         }
     });
 }
@@ -582,7 +559,6 @@ setupDragDrop('mergeDropArea', 'mergeFiles');
 setupDragDrop('splitCountDropArea', 'splitCountFile');
 setupDragDrop('splitFilesDropArea', 'splitFilesFile');
 
-// ===== ЗАГРУЗКА ФАЙЛОВ =====
 document.getElementById('fresherFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
         var reader = new FileReader();
@@ -638,11 +614,9 @@ document.getElementById('splitFilesFile').addEventListener('change', function(e)
     }
 });
 
-// ===== ПЕРЕМЕННЫЕ =====
 window.massResultsData = [];
 window.currentFilter = 'all';
 
-// ===== ЧЕКЕР =====
 async function runSingleCheck() {
     var resBox = document.getElementById('singleResult');
     var cookie = document.getElementById('singleCookie').value.trim();
@@ -686,14 +660,13 @@ async function runMassCheck() {
             document.getElementById('filterBar').style.display = 'flex';
             document.getElementById('massActions').style.display = 'flex';
             
-            // Калькулятор Robux
             var usdRate = 0.0035;
             var totalRobux = d.total_robux || 0;
             var usdValue = (totalRobux * usdRate).toFixed(2);
             document.getElementById('robuxCalc').style.display = 'block';
             document.getElementById('robuxCalc').innerHTML = '💰 Всего Robux: ⏣ <b>' + totalRobux.toLocaleString() + '</b> | 💵 ~$' + usdValue + ' (по курсу 0.0035$/R$)';
             
-            applyFilter('all');
+            applyFilter('all', document.querySelector('#filterBar .filter-chip'));
             loadCheckerHistory();
         } else { resBox.textContent = '❌ ' + (d.message || 'Ошибка'); }
     } catch(e) {
@@ -702,11 +675,10 @@ async function runMassCheck() {
     }
 }
 
-// ===== ФИЛЬТРЫ =====
-function applyFilter(type) {
+function applyFilter(type, element) {
     window.currentFilter = type;
     document.querySelectorAll('#filterBar .filter-chip').forEach(function(c) { c.classList.remove('active'); });
-    event.target.classList.add('active');
+    if (element) element.classList.add('active');
     
     var data = window.massResultsData;
     var filtered;
@@ -729,7 +701,6 @@ function applyFilter(type) {
     document.getElementById('massResult').textContent = html || 'Нет результатов';
 }
 
-// ===== БЫСТРЫЙ ЭКСПОРТ =====
 function copyValidCookies() {
     var valid = window.massResultsData.filter(function(r) { return r.status === '✅'; });
     var text = valid.map(function(r) { return r.cookie; }).join('\n');
@@ -758,7 +729,6 @@ function downloadBlob(content, filename) {
     a.click();
 }
 
-// ===== ФРЕШЕР =====
 async function runFresher() {
     var resBox = document.getElementById('fresherResult');
     var cookies = document.getElementById('fresherCookies').value.trim();
@@ -792,7 +762,6 @@ function clearFresherInputs() {
     document.getElementById('fresherStats').textContent = '';
 }
 
-// ===== ИСТОРИЯ =====
 async function loadCheckerHistory() {
     var container = document.getElementById('checkerHistoryList');
     try {
@@ -839,7 +808,6 @@ async function clearFresherHistory() {
     loadFresherHistory();
 }
 
-// ===== ИНСТРУМЕНТЫ =====
 async function mergeCookies() {
     var files = document.getElementById('mergeFiles').files;
     if (!files || files.length < 2) { document.getElementById('mergeResult').textContent = '❌ Минимум 2 файла'; return; }
@@ -891,10 +859,6 @@ loadCheckerHistory();
 </body>
 </html>"""
 
-# ============================================================
-# API ROUTES
-# ============================================================
-
 @app.route("/")
 def index():
     return render_template_string(HTML)
@@ -932,7 +896,6 @@ def api_mass_check():
     premium_count = sum(1 for r in valid if r.get('is_premium'))
     total_robux = sum(r.get('robux',0) for r in valid)
     
-    # Сохраняем
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"mass_check_{timestamp}.txt"
     filepath = os.path.join("downloads", filename)
@@ -950,7 +913,6 @@ def api_mass_check():
     
     download_url = f"/downloads/{filename}"
     
-    # Полные данные для фильтров
     full_data = []
     for r in valid:
         full_data.append({
@@ -982,7 +944,12 @@ def api_fresher():
     for c in cookies_list:
         result = refresh_roblox_cookie(c, kill_old=(mode=='kill'))
         if result['success'] and result['new_cookie']:
-            cookie_hist.append(f"🟢 {result.get('username','?')} - {'НОВАЯ' if result['new_cookie'] != c.strip().split('.ROBLOSECURITY=')[-1].split(';')[0] if '.ROBLOSECURITY=' in c else True else 'БЕЗ ИЗМЕНЕНИЙ'}")
+            is_new = True
+            if '.ROBLOSECURITY=' in c:
+                old_val = c.strip().split('.ROBLOSECURITY=')[-1].split(';')[0]
+                is_new = result['new_cookie'] != old_val
+            status_text = "НОВАЯ" if is_new else "БЕЗ ИЗМЕНЕНИЙ"
+            cookie_hist.append(f"🟢 {result.get('username','?')} - {status_text}")
             only_cookies.append(result['new_cookie'])
             success_count += 1
         else:
