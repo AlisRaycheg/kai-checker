@@ -6,6 +6,7 @@ import urllib3
 import json
 import requests
 import zipfile
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
@@ -19,31 +20,112 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-CHECKER_HISTORY_FILE = "history/checker_history.json"
-FRESHER_HISTORY_FILE = "history/fresher_history.json"
+DB_PATH = "history/swill.db"
 
-def load_history(fp):
-    if not os.path.exists(fp): return []
-    try:
-        with open(fp, 'r', encoding='utf-8') as f: return json.load(f)
-    except: return []
-
-def save_history(fp, data):
-    try:
-        with open(fp, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False, indent=2)
-    except: pass
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS checker_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            type TEXT,
+            total INTEGER,
+            valid INTEGER,
+            cookies TEXT,
+            full_data TEXT,
+            download_url TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fresher_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            mode TEXT,
+            refreshed_count INTEGER,
+            success_count INTEGER,
+            fail_count INTEGER,
+            cookies TEXT,
+            old_cookies TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+    print("✅ База данных SQLite создана")
 
 def add_checker_history(entry):
-    h = load_history(CHECKER_HISTORY_FILE)
-    h.append({'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'), 'type': entry.get('type','single'), 'total': entry.get('total',1), 'valid': entry.get('valid',0), 'cookies': entry.get('cookies',[])[:30], 'download_url': entry.get('download_url',''), 'full_data': entry.get('full_data', [])[:50]})
-    if len(h) > 50: h = h[-50:]
-    save_history(CHECKER_HISTORY_FILE, h)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO checker_history (timestamp, type, total, valid, cookies, full_data, download_url) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+            entry.get('type', 'single'),
+            entry.get('total', 1),
+            entry.get('valid', 0),
+            json.dumps(entry.get('cookies', [])[:30]),
+            json.dumps(entry.get('full_data', [])[:50]),
+            entry.get('download_url', '')
+        )
+    )
+    conn.commit()
+    conn.close()
 
 def add_fresher_history(entry):
-    h = load_history(FRESHER_HISTORY_FILE)
-    h.append({'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'), 'mode': entry.get('mode','duplicate'), 'refreshed_count': entry.get('refreshed_count',0), 'success_count': entry.get('success_count',0), 'fail_count': entry.get('fail_count',0), 'cookies': entry.get('cookies',[])[:20]})
-    if len(h) > 50: h = h[-50:]
-    save_history(FRESHER_HISTORY_FILE, h)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO fresher_history (timestamp, mode, refreshed_count, success_count, fail_count, cookies, old_cookies) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+            entry.get('mode', 'duplicate'),
+            entry.get('refreshed_count', 0),
+            entry.get('success_count', 0),
+            entry.get('fail_count', 0),
+            json.dumps(entry.get('cookies', [])[:20]),
+            json.dumps(entry.get('old_cookies', [])[:20])
+        )
+    )
+    conn.commit()
+    conn.close()
+
+def load_history(table_name):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 50")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    history = []
+    for row in rows:
+        if table_name == "checker_history":
+            history.append({
+                'timestamp': row[1],
+                'type': row[2],
+                'total': row[3],
+                'valid': row[4],
+                'cookies': json.loads(row[5]) if row[5] else [],
+                'full_data': json.loads(row[6]) if row[6] else [],
+                'download_url': row[7] or ''
+            })
+        else:
+            history.append({
+                'timestamp': row[1],
+                'mode': row[2],
+                'refreshed_count': row[3],
+                'success_count': row[4],
+                'fail_count': row[5],
+                'cookies': json.loads(row[6]) if row[6] else [],
+                'old_cookies': json.loads(row[7]) if row[7] else []
+            })
+    return history
+
+def clear_history(table_name):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(f"DELETE FROM {table_name}")
+    conn.commit()
+    conn.close()
 
 def extract_cookies_from_text(text):
     cookies = []
@@ -272,13 +354,18 @@ def merge_cookie_files(contents):
 
 def split_cookies_by_count(content, count):
     cookies = [l.strip() for l in content.split('\n') if len(l)>20]
+    if not cookies or count <= 0:
+        return []
     files = []
     for i in range(0, len(cookies), count): files.append('\n'.join(cookies[i:i+count]))
     return files
 
 def split_cookies_by_files(content, num):
     cookies = [l.strip() for l in content.split('\n') if len(l)>20]
-    if num<=0: return []
+    if not cookies or num <= 0:
+        return []
+    if num > len(cookies):
+        num = len(cookies)
     per = len(cookies)//num; rem = len(cookies)%num
     files = []; idx = 0
     for i in range(num):
@@ -303,7 +390,6 @@ def clean_cookies(content):
 
 app = Flask(__name__)
 
-# ===== HTML (полный, рабочий, проверенный) =====
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
@@ -939,6 +1025,7 @@ def api_fresher():
     
     only_cookies = []
     cookie_hist = []
+    old_cookies = []
     success_count = 0
     fail_count = 0
     
@@ -952,31 +1039,32 @@ def api_fresher():
             status_text = "НОВАЯ" if is_new else "БЕЗ ИЗМЕНЕНИЙ"
             cookie_hist.append(f"🟢 {result.get('username','?')} - {status_text}")
             only_cookies.append(result['new_cookie'])
+            old_cookies.append(c)
             success_count += 1
         else:
             cookie_hist.append(f"❌ {result.get('error', 'Ошибка')[:40]}")
             fail_count += 1
     
-    add_fresher_history({'mode': mode, 'refreshed_count': len(only_cookies), 'success_count': success_count, 'fail_count': fail_count, 'cookies': cookie_hist})
+    add_fresher_history({'mode': mode, 'refreshed_count': len(only_cookies), 'success_count': success_count, 'fail_count': fail_count, 'cookies': cookie_hist, 'old_cookies': old_cookies})
     
     return jsonify({"success": True, "refreshed_count": len(only_cookies), "success_count": success_count, "fail_count": fail_count, "only_cookies": '\n'.join(only_cookies) if only_cookies else ''})
 
 @app.route("/api/history/checker")
 def api_history_checker():
-    return jsonify({"history": load_history(CHECKER_HISTORY_FILE)})
+    return jsonify({"history": load_history("checker_history")})
 
 @app.route("/api/history/fresher")
 def api_history_fresher():
-    return jsonify({"history": load_history(FRESHER_HISTORY_FILE)})
+    return jsonify({"history": load_history("fresher_history")})
 
 @app.route("/api/history/checker/clear", methods=["POST"])
 def api_clear_checker_history():
-    save_history(CHECKER_HISTORY_FILE, [])
+    clear_history("checker_history")
     return jsonify({"success": True})
 
 @app.route("/api/history/fresher/clear", methods=["POST"])
 def api_clear_fresher_history():
-    save_history(FRESHER_HISTORY_FILE, [])
+    clear_history("fresher_history")
     return jsonify({"success": True})
 
 @app.route("/api/merge-cookies", methods=["POST"])
@@ -1054,4 +1142,5 @@ def download_file(filename):
     return send_from_directory("downloads", filename, as_attachment=True)
 
 if __name__ == "__main__":
+    init_db()
     app.run(debug=True, port=5000)
