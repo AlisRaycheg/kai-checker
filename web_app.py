@@ -23,53 +23,61 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 DB_PATH = "history/swill.db"
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS checker_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            type TEXT,
-            total INTEGER,
-            valid INTEGER,
-            cookies TEXT,
-            full_data TEXT,
-            download_url TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS fresher_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            mode TEXT,
-            refreshed_count INTEGER,
-            success_count INTEGER,
-            fail_count INTEGER,
-            cookies TEXT,
-            old_cookies TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-    print("✅ База данных SQLite создана")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS checker_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                type TEXT,
+                total INTEGER,
+                valid INTEGER,
+                cookies TEXT,
+                full_data TEXT,
+                download_url TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fresher_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                mode TEXT,
+                refreshed_count INTEGER,
+                success_count INTEGER,
+                fail_count INTEGER,
+                cookies TEXT,
+                old_cookies TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+        print("✅ База данных SQLite создана")
+        return True
+    except Exception as e:
+        print(f"❌ Ошибка БД: {e}")
+        return False
 
 def add_checker_history(entry):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO checker_history (timestamp, type, total, valid, cookies, full_data, download_url) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (
-            datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-            entry.get('type', 'single'),
-            entry.get('total', 1),
-            entry.get('valid', 0),
-            json.dumps(entry.get('cookies', [])[:30]),
-            json.dumps(entry.get('full_data', [])[:50]),
-            entry.get('download_url', '')
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO checker_history (timestamp, type, total, valid, cookies, full_data, download_url) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+                entry.get('type', 'single'),
+                entry.get('total', 1),
+                entry.get('valid', 0),
+                json.dumps(entry.get('cookies', [])[:30]),
+                json.dumps(entry.get('full_data', [])[:50]),
+                entry.get('download_url', '')
+            )
         )
-    )
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"add_checker_history error: {e}")
 
 def add_fresher_history(entry):
     try:
@@ -93,59 +101,69 @@ def add_fresher_history(entry):
         logger.error(f"add_fresher_history error: {e}")
 
 def load_history(table_name):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 50")
-    rows = cursor.fetchall()
-    conn.close()
-    
-    history = []
-    for row in rows:
-        if table_name == "checker_history":
-            history.append({
-                'timestamp': row[1],
-                'type': row[2],
-                'total': row[3],
-                'valid': row[4],
-                'cookies': json.loads(row[5]) if row[5] else [],
-                'full_data': json.loads(row[6]) if row[6] else [],
-                'download_url': row[7] or ''
-            })
-        else:
-            history.append({
-                'timestamp': row[1],
-                'mode': row[2],
-                'refreshed_count': row[3],
-                'success_count': row[4],
-                'fail_count': row[5],
-                'cookies': json.loads(row[6]) if row[6] else [],
-                'old_cookies': json.loads(row[7]) if row[7] else []
-            })
-    return history
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT 50")
+        rows = cursor.fetchall()
+        conn.close()
+        
+        history = []
+        for row in rows:
+            if table_name == "checker_history":
+                history.append({
+                    'timestamp': row[1],
+                    'type': row[2],
+                    'total': row[3],
+                    'valid': row[4],
+                    'cookies': json.loads(row[5]) if row[5] else [],
+                    'full_data': json.loads(row[6]) if row[6] else [],
+                    'download_url': row[7] or ''
+                })
+            else:
+                history.append({
+                    'timestamp': row[1],
+                    'mode': row[2],
+                    'refreshed_count': row[3],
+                    'success_count': row[4],
+                    'fail_count': row[5],
+                    'cookies': json.loads(row[6]) if row[6] else [],
+                    'old_cookies': json.loads(row[7]) if row[7] else []
+                })
+        return history
+    except Exception as e:
+        logger.error(f"load_history error: {e}")
+        return []
 
 def clear_history(table_name):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(f"DELETE FROM {table_name}")
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(f"DELETE FROM {table_name}")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"clear_history error: {e}")
 
 def extract_cookies_from_text(text):
     cookies = []
-    pattern = r'_\|WARNING:-DO-NOT-SHARE-THIS[^\s]*'
-    for match in re.findall(pattern, text):
-        cookie = match.strip('",;\'\\')
-        if cookie.startswith('.ROBLOSECURITY='): cookie = cookie[15:]
-        if len(cookie) > 50: cookies.append(cookie)
-    pattern2 = r'\.ROBLOSECURITY=(_\|WARNING[^\s;]+)'
-    for match in re.findall(pattern2, text):
-        cookie = match.strip('",;\'\\')
-        if len(cookie) > 50 and cookie not in cookies: cookies.append(cookie)
-    seen = set()
-    unique = []
-    for c in cookies:
-        if c not in seen: seen.add(c); unique.append(c)
-    return unique
+    try:
+        pattern = r'_\|WARNING:-DO-NOT-SHARE-THIS[^\s]*'
+        for match in re.findall(pattern, text):
+            cookie = match.strip('",;\'\\')
+            if cookie.startswith('.ROBLOSECURITY='): cookie = cookie[15:]
+            if len(cookie) > 50: cookies.append(cookie)
+        pattern2 = r'\.ROBLOSECURITY=(_\|WARNING[^\s;]+)'
+        for match in re.findall(pattern2, text):
+            cookie = match.strip('",;\'\\')
+            if len(cookie) > 50 and cookie not in cookies: cookies.append(cookie)
+        seen = set()
+        unique = []
+        for c in cookies:
+            if c not in seen: seen.add(c); unique.append(c)
+        return unique
+    except:
+        return []
 
 def get_full_info(cookie):
     info = {
@@ -335,20 +353,27 @@ def quick_validate(cookie):
                     result['security_status'] = '🔐 СРЕДНИЙ'
                 else:
                     result['security_status'] = '⚠️ НИЗКИЙ'
-    except: pass
+    except Exception as e:
+        logger.error(f"quick_validate error: {e}")
     return result
 
 def mass_check(cookies_list):
     results = []
-    # УВЕЛИЧИЛИ ПОТОКИ С 10 ДО 20
-    with ThreadPoolExecutor(max_workers=20) as ex:
-        futures = {ex.submit(quick_validate, c): c for c in cookies_list}
-        for f in as_completed(futures):
-            try: results.append(f.result())
-            except: results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','robux':0,'created':'?','is_premium':False,'has_email':False,'has_2fa':False})
-    valid = [r for r in results if r['status']=='✅']; invalid = [r for r in results if r['status']=='❌']
-    valid.sort(key=lambda x: x['score'], reverse=True)
-    return valid + invalid
+    try:
+        with ThreadPoolExecutor(max_workers=20) as ex:
+            futures = {ex.submit(quick_validate, c): c for c in cookies_list}
+            for f in as_completed(futures):
+                try: 
+                    results.append(f.result())
+                except: 
+                    results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','robux':0,'created':'?','is_premium':False,'has_email':False,'has_2fa':False})
+        valid = [r for r in results if r['status']=='✅']
+        invalid = [r for r in results if r['status']=='❌']
+        valid.sort(key=lambda x: x['score'], reverse=True)
+        return valid + invalid
+    except Exception as e:
+        logger.error(f"mass_check error: {e}")
+        return []
 
 def refresh_roblox_cookie(cookie, kill_old=False):
     result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
@@ -473,193 +498,174 @@ def clean_cookies(content):
 
 app = Flask(__name__)
 
-HTML = r"""<!DOCTYPE html>
+# ===== HTML (сокращенный для читаемости, но полный) =====
+HTML = """<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kai Checker PRO</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #0b081a;
-            --bg2: rgba(18,10,40,0.95);
-            --card: rgba(18,10,40,0.9);
-            --input: #0d0722;
-            --border: #2a1a50;
-            --text: #fff;
-            --text2: #9880c0;
-            --accent: #a855f7;
-        }
-        [data-theme="light"] {
-            --bg: #f0f0f5;
-            --bg2: rgba(255,255,255,0.95);
-            --card: rgba(255,255,255,0.9);
-            --input: #e8e8ee;
-            --border: #d0d0dd;
-            --text: #1a1a2e;
-            --text2: #666;
-            --accent: #7c3aed;
-        }
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Inter',sans-serif;min-height:100vh;padding:16px;background:var(--bg);transition:all 0.3s}
-        .wrapper{max-width:1500px;margin:0 auto;padding:24px;background:var(--bg2);border:2px solid var(--accent);border-radius:28px}
-        ::-webkit-scrollbar{width:5px}
-        ::-webkit-scrollbar-track{background:var(--input);border-radius:8px}
-        ::-webkit-scrollbar-thumb{background:var(--accent);border-radius:8px}
-        .header{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid var(--border);margin-bottom:24px;flex-wrap:wrap;gap:12px}
-        .logo{font-size:30px;font-weight:900;font-style:italic;background:linear-gradient(135deg,#c084fc,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-        .header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-        .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
-        .tab{padding:8px 18px;background:var(--card);border:1px solid var(--border);border-radius:30px;color:var(--text2);cursor:pointer;font-size:13px;font-weight:600;transition:all 0.2s}
-        .tab:hover{border-color:var(--accent);color:var(--text)}
-        .tab.active{border-color:#c084fc;background:rgba(168,85,247,0.3);color:#c084fc}
-        .tab-content{display:none}
-        .tab-content.active{display:block}
-        .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px 24px;margin-bottom:20px;color:var(--text)}
-        .card h2{font-size:18px;color:var(--text);margin-bottom:14px;font-weight:700}
-        .btn{padding:10px 22px;border:none;border-radius:30px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:6px;text-decoration:none;transition:all 0.2s}
-        .btn-primary{background:linear-gradient(135deg,#a855f7,#d946ef)}
-        .btn-success{background:linear-gradient(135deg,#10b981,#059669)}
-        .btn-secondary{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text2)}
-        .btn-danger{background:rgba(220,38,38,0.2);border:1px solid rgba(220,38,38,0.3);color:#fca5a5}
-        .btn-sm{padding:6px 14px;font-size:11px}
-        .btn-xs{padding:4px 10px;font-size:10px}
-        .toggle-group{display:flex;background:var(--input);border:1px solid var(--border);border-radius:12px;padding:3px;gap:3px;margin-bottom:14px}
-        .toggle-btn{flex:1;padding:10px 14px;background:transparent;border:none;border-radius:10px;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;text-align:center}
-        .toggle-btn.active{background:linear-gradient(135deg,rgba(168,85,247,0.3),rgba(217,70,239,0.3));color:#c084fc}
-        textarea,.upload-area{width:100%;padding:12px 14px;background:var(--input);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:monospace;font-size:13px;resize:vertical}
-        textarea:focus{border-color:var(--accent);outline:none}
-        .upload-area{min-height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border-style:dashed;gap:4px;text-align:center;transition:all 0.2s}
-        .upload-area.drag-over{background:rgba(168,85,247,0.15);border-color:var(--accent)}
-        .result-box{background:var(--input);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:16px;max-height:450px;overflow-y:auto;font-family:monospace;font-size:12px;color:var(--text);white-space:pre-wrap;word-break:break-all}
-        .progress-bar{margin-top:10px;background:var(--input);border-radius:20px;height:5px;overflow:hidden}
-        .progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#a855f7,#ec4899);transition:width 0.3s}
-        .footer{text-align:center;padding:24px 0 8px;color:var(--text2);font-size:12px;border-top:1px solid var(--border);margin-top:24px}
-        .tool-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:16px}
-        .tool-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px}
-        .tool-card h3{font-size:15px;color:var(--accent);margin-bottom:6px}
-        .tool-card .desc{color:var(--text2);font-size:12px;margin-bottom:12px}
-        .input-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
-        .input-row input{flex:1;padding:10px 12px;background:var(--input);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px}
-        .history-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:all 0.2s}
-        .history-item:hover{border-color:var(--accent)}
-        .hist-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-        .hist-detail{display:none;margin-top:8px;white-space:pre-wrap;font-size:11px;color:var(--text);max-height:250px;overflow-y:auto}
-        .empty-history{text-align:center;padding:24px;color:var(--text2)}
-        .flex-row{display:flex;flex-wrap:wrap;gap:14px}
-        .flex-2{flex:2;min-width:200px}
-        .flex-1{flex:1;min-width:150px}
-        .mt-8{margin-top:8px}
-        .mt-12{margin-top:12px}
-        .gap-8{display:flex;gap:8px;flex-wrap:wrap}
-        .gap-12{display:flex;gap:12px;flex-wrap:wrap}
-        .checker-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-        @media(max-width:900px){.checker-grid{grid-template-columns:1fr}}
-        .theme-btn{background:var(--input);border:1px solid var(--border);border-radius:20px;padding:6px 12px;cursor:pointer;font-size:16px;color:var(--text)}
-        .filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-        .filter-chip{padding:4px 10px;border-radius:14px;font-size:11px;cursor:pointer;background:var(--input);border:1px solid var(--border);color:var(--text2);transition:all 0.2s;user-select:none}
-        .filter-chip.active{background:rgba(168,85,247,0.3);border-color:var(--accent);color:var(--accent)}
-        .log-line{color:var(--text2);font-size:11px;padding:2px 0}
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWILL CHECKER V2</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b081a;--bg2:rgba(18,10,40,0.95);--card:rgba(18,10,40,0.9);--input:#0d0722;--border:#2a1a50;--text:#fff;--text2:#9880c0;--accent:#a855f7}
+[data-theme="light"]{--bg:#f0f0f5;--bg2:rgba(255,255,255,0.95);--card:rgba(255,255,255,0.9);--input:#e8e8ee;--border:#d0d0dd;--text:#1a1a2e;--text2:#666;--accent:#7c3aed}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;min-height:100vh;padding:16px;background:var(--bg);transition:all 0.3s}
+.wrapper{max-width:1500px;margin:0 auto;padding:24px;background:var(--bg2);border:2px solid var(--accent);border-radius:28px}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--input);border-radius:8px}
+::-webkit-scrollbar-thumb{background:var(--accent);border-radius:8px}
+.header{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid var(--border);margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.logo{font-size:30px;font-weight:900;font-style:italic;background:linear-gradient(135deg,#c084fc,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
+.tab{padding:8px 18px;background:var(--card);border:1px solid var(--border);border-radius:30px;color:var(--text2);cursor:pointer;font-size:13px;font-weight:600;transition:all 0.2s}
+.tab:hover{border-color:var(--accent);color:var(--text)}
+.tab.active{border-color:#c084fc;background:rgba(168,85,247,0.3);color:#c084fc}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px 24px;margin-bottom:20px;color:var(--text)}
+.card h2{font-size:18px;color:var(--text);margin-bottom:14px;font-weight:700}
+.btn{padding:10px 22px;border:none;border-radius:30px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:6px;text-decoration:none;transition:all 0.2s}
+.btn-primary{background:linear-gradient(135deg,#a855f7,#d946ef)}
+.btn-success{background:linear-gradient(135deg,#10b981,#059669)}
+.btn-secondary{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text2)}
+.btn-danger{background:rgba(220,38,38,0.2);border:1px solid rgba(220,38,38,0.3);color:#fca5a5}
+.btn-sm{padding:6px 14px;font-size:11px}
+.btn-xs{padding:4px 10px;font-size:10px}
+.toggle-group{display:flex;background:var(--input);border:1px solid var(--border);border-radius:12px;padding:3px;gap:3px;margin-bottom:14px}
+.toggle-btn{flex:1;padding:10px 14px;background:transparent;border:none;border-radius:10px;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;text-align:center}
+.toggle-btn.active{background:linear-gradient(135deg,rgba(168,85,247,0.3),rgba(217,70,239,0.3));color:#c084fc}
+textarea,.upload-area{width:100%;padding:12px 14px;background:var(--input);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:monospace;font-size:13px;resize:vertical}
+textarea:focus{border-color:var(--accent);outline:none}
+.upload-area{min-height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border-style:dashed;gap:4px;text-align:center;transition:all 0.2s}
+.upload-area.drag-over{background:rgba(168,85,247,0.15);border-color:var(--accent)}
+.result-box{background:var(--input);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:16px;max-height:450px;overflow-y:auto;font-family:monospace;font-size:12px;color:var(--text);white-space:pre-wrap;word-break:break-all}
+.progress-bar{margin-top:10px;background:var(--input);border-radius:20px;height:5px;overflow:hidden}
+.progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#a855f7,#ec4899);transition:width 0.3s}
+.footer{text-align:center;padding:24px 0 8px;color:var(--text2);font-size:12px;border-top:1px solid var(--border);margin-top:24px}
+.tool-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:16px}
+.tool-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px}
+.tool-card h3{font-size:15px;color:var(--accent);margin-bottom:6px}
+.tool-card .desc{color:var(--text2);font-size:12px;margin-bottom:12px}
+.input-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.input-row input{flex:1;padding:10px 12px;background:var(--input);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px}
+.history-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:all 0.2s}
+.history-item:hover{border-color:var(--accent)}
+.hist-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.hist-detail{display:none;margin-top:8px;white-space:pre-wrap;font-size:11px;color:var(--text);max-height:250px;overflow-y:auto}
+.empty-history{text-align:center;padding:24px;color:var(--text2)}
+.flex-row{display:flex;flex-wrap:wrap;gap:14px}
+.flex-2{flex:2;min-width:200px}
+.flex-1{flex:1;min-width:150px}
+.mt-8{margin-top:8px}
+.mt-12{margin-top:12px}
+.gap-8{display:flex;gap:8px;flex-wrap:wrap}
+.gap-12{display:flex;gap:12px;flex-wrap:wrap}
+.checker-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:900px){.checker-grid{grid-template-columns:1fr}}
+.theme-btn{background:var(--input);border:1px solid var(--border);border-radius:20px;padding:6px 12px;cursor:pointer;font-size:16px;color:var(--text)}
+.filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.filter-chip{padding:4px 10px;border-radius:14px;font-size:11px;cursor:pointer;background:var(--input);border:1px solid var(--border);color:var(--text2);transition:all 0.2s;user-select:none}
+.filter-chip.active{background:rgba(168,85,247,0.3);border-color:var(--accent);color:var(--accent)}
+.log-line{color:var(--text2);font-size:11px;padding:2px 0}
+</style>
 </head>
 <body>
 <div class="wrapper">
-    <div class="header">
-        <div class="logo">KAI CHECKER</div>
-        <div class="header-right">
-            <span id="logStats" style="color:var(--text2);font-size:11px;"></span>
-            <span id="sessionTimer" style="color:#00b894;font-family:monospace;font-size:12px;">⏱️ 00:00:00</span>
-            <button class="theme-btn" onclick="toggleTheme()" title="Сменить тему">🌓</button>
-            <span style="color:var(--text2);font-size:12px;">⚡ PRO</span>
-        </div>
-    </div>
+<div class="header"><div class="logo">SWILL CHECKER V2</div>
+<div class="header-right">
+<span id="logStats" style="color:var(--text2);font-size:11px;"></span>
+<span id="sessionTimer" style="color:#00b894;font-family:monospace;font-size:12px;">⏱️ 00:00:00</span>
+<button class="theme-btn" onclick="toggleTheme()">🌓</button>
+<span style="color:var(--text2);font-size:12px;">⚡ PRO</span>
+</div></div>
 
-    <div class="tabs">
-        <div class="tab active" data-tab="checker">🔍 Чекер</div>
-        <div class="tab" data-tab="fresher">🔄 Фрешер</div>
-        <div class="tab" data-tab="tools">🧰 Инструменты</div>
-    </div>
+<div class="tabs">
+<div class="tab active" data-tab="checker">🔍 Чекер</div>
+<div class="tab" data-tab="fresher">🔄 Фрешер</div>
+<div class="tab" data-tab="tools">🧰 Инструменты</div>
+</div>
 
-    <div class="tab-content active" id="tab-checker">
-        <div class="checker-grid">
-            <div class="card">
-                <h2>🔍 Одиночная проверка</h2>
-                <textarea id="singleCookie" placeholder="Вставьте ОДИН кук..." rows="3"></textarea>
-                <div class="mt-12"><button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">🔍 Проверить</button></div>
-                <div class="result-box" id="singleResult">Результат здесь...</div>
-            </div>
-            <div class="card">
-                <h2>📦 Массовая проверка</h2>
-                <div class="upload-area" id="massDropArea" onclick="document.getElementById('massFile').click()">
-                    <p>📁 <strong>Перетащите TXT файл сюда</strong></p>
-                    <p style="font-size:11px;color:var(--text2)">или кликните для выбора</p>
-                </div>
-                <input type="file" id="massFile" accept=".txt" style="display:none;">
-                <div id="massFileInfo" style="font-size:12px;color:#10b981;margin-top:6px;"></div>
-                <div id="extractInfo" style="font-size:12px;color:#10b981;margin-top:4px;display:none;"></div>
-                <div class="mt-8"><button class="btn btn-success" onclick="runMassCheck()" style="width:100%;">🚀 Массовая проверка</button></div>
-                <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
-                <div id="massLog" style="max-height:80px;overflow-y:auto;margin-top:6px;"></div>
-                <div class="filter-bar mt-8" id="filterBar" style="display:none;">
-                    <span style="font-size:11px;color:var(--text2);">🔍</span>
-                    <span class="filter-chip active" onclick="applyFilter('all', this)">Все</span>
-                    <span class="filter-chip" onclick="applyFilter('premium', this)">💠 Premium</span>
-                    <span class="filter-chip" onclick="applyFilter('rich', this)">💰 Robux>1000</span>
-                    <span class="filter-chip" onclick="applyFilter('secure', this)">🔐 2FA</span>
-                    <span class="filter-chip" onclick="applyFilter('old', this)">👴 Старые (>3 лет)</span>
-                </div>
-                <div class="result-box" id="massResult">Результаты здесь...</div>
-                <div class="gap-8 mt-8" id="massActions" style="display:none;">
-                    <button class="btn btn-primary btn-sm" onclick="copyValidCookies()">📋 Копировать валидные</button>
-                    <button class="btn btn-secondary btn-sm" onclick="downloadValidOnly()">📥 Только валидные</button>
-                    <button class="btn btn-secondary btn-sm" onclick="downloadInvalidOnly()">📥 Только невалидные</button>
-                </div>
-                <div id="robuxCalc" style="display:none;margin-top:10px;padding:10px;background:var(--input);border-radius:10px;font-size:12px;color:var(--text);"></div>
-            </div>
-        </div>
-        <div class="card">
-            <h3>📋 История проверок <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()">🗑️</button></h3>
-            <div id="checkerHistoryList"><div class="empty-history">Загрузка...</div></div>
-        </div>
-    </div>
+<div class="tab-content active" id="tab-checker">
+<div class="checker-grid">
+<div class="card">
+<h2>🔍 Одиночная проверка</h2>
+<textarea id="singleCookie" placeholder="Вставьте ОДИН кук..." rows="3"></textarea>
+<div class="mt-12"><button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">🔍 Проверить</button></div>
+<div class="result-box" id="singleResult">Результат здесь...</div>
+</div>
+<div class="card">
+<h2>📦 Массовая проверка (20 потоков)</h2>
+<div class="upload-area" id="massDropArea" onclick="document.getElementById('massFile').click()">
+<p>📁 <strong>Перетащите TXT файл сюда</strong></p>
+<p style="font-size:11px;color:var(--text2)">или кликните для выбора</p>
+</div>
+<input type="file" id="massFile" accept=".txt" style="display:none;">
+<div id="massFileInfo" style="font-size:12px;color:#10b981;margin-top:6px;"></div>
+<div id="extractInfo" style="font-size:12px;color:#10b981;margin-top:4px;display:none;"></div>
+<div class="mt-8"><button class="btn btn-success" onclick="runMassCheck()" style="width:100%;">🚀 Массовая проверка</button></div>
+<div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
+<div id="massLog" style="max-height:80px;overflow-y:auto;margin-top:6px;"></div>
+<div class="filter-bar mt-8" id="filterBar" style="display:none;">
+<span style="font-size:11px;color:var(--text2);">🔍</span>
+<span class="filter-chip active" onclick="applyFilter('all', this)">Все</span>
+<span class="filter-chip" onclick="applyFilter('premium', this)">💠 Premium</span>
+<span class="filter-chip" onclick="applyFilter('rich', this)">💰 Robux>1000</span>
+<span class="filter-chip" onclick="applyFilter('secure', this)">🔐 2FA</span>
+<span class="filter-chip" onclick="applyFilter('old', this)">👴 Старые (>3 лет)</span>
+</div>
+<div class="result-box" id="massResult">Результаты здесь...</div>
+<div class="gap-8 mt-8" id="massActions" style="display:none;">
+<button class="btn btn-primary btn-sm" onclick="copyValidCookies()">📋 Копировать валидные</button>
+<button class="btn btn-secondary btn-sm" onclick="downloadValidOnly()">📥 Только валидные</button>
+<button class="btn btn-secondary btn-sm" onclick="downloadInvalidOnly()">📥 Только невалидные</button>
+</div>
+<div id="robuxCalc" style="display:none;margin-top:10px;padding:10px;background:var(--input);border-radius:10px;font-size:12px;color:var(--text);"></div>
+</div>
+</div>
+<div class="card">
+<h3>📋 История проверок <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()">🗑️</button></h3>
+<div id="checkerHistoryList"><div class="empty-history">Загрузка...</div></div>
+</div>
+</div>
 
-    <div class="tab-content" id="tab-fresher">
-        <div class="card">
-            <h2>🔄 Фрешер сессий</h2>
-            <div class="toggle-group">
-                <button class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
-                <button class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Сбросить</button>
-            </div>
-            <input type="hidden" id="fresherMode" value="duplicate">
-            <div class="flex-row">
-                <div class="flex-2"><textarea id="fresherCookies" placeholder="Вставьте куки..." rows="6"></textarea></div>
-                <div class="flex-1"><div class="upload-area" id="fresherDropArea" onclick="document.getElementById('fresherFile').click()"><p>📁 <strong>Перетащите .txt</strong></p></div><input type="file" id="fresherFile" accept=".txt" style="display:none;"></div>
-            </div>
-            <div class="mt-12 gap-8">
-                <button class="btn btn-success" onclick="runFresher()">⚡ Обновить</button>
-                <button class="btn btn-secondary" onclick="clearFresherInputs()">🧹 Очистить</button>
-            </div>
-            <div class="progress-bar"><div class="progress-fill" id="fresherProgress"></div></div>
-            <div id="fresherStats" style="font-size:12px;color:var(--text2);margin-top:6px;"></div>
-            <div class="result-box" id="fresherResult">Новые куки здесь...</div>
-        </div>
-        <div class="card">
-            <h3>📋 История обновлений <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()">🗑️</button></h3>
-            <div id="fresherHistoryList"><div class="empty-history">Загрузка...</div></div>
-        </div>
-    </div>
+<div class="tab-content" id="tab-fresher">
+<div class="card">
+<h2>🔄 Фрешер сессий</h2>
+<div class="toggle-group">
+<button class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
+<button class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Сбросить</button>
+</div>
+<input type="hidden" id="fresherMode" value="duplicate">
+<div class="flex-row">
+<div class="flex-2"><textarea id="fresherCookies" placeholder="Вставьте куки..." rows="6"></textarea></div>
+<div class="flex-1"><div class="upload-area" id="fresherDropArea" onclick="document.getElementById('fresherFile').click()"><p>📁 <strong>Перетащите .txt</strong></p></div><input type="file" id="fresherFile" accept=".txt" style="display:none;"></div>
+</div>
+<div class="mt-12 gap-8">
+<button class="btn btn-success" onclick="runFresher()">⚡ Обновить</button>
+<button class="btn btn-secondary" onclick="clearFresherInputs()">🧹 Очистить</button>
+</div>
+<div class="progress-bar"><div class="progress-fill" id="fresherProgress"></div></div>
+<div id="fresherStats" style="font-size:12px;color:var(--text2);margin-top:6px;"></div>
+<div class="result-box" id="fresherResult">Новые куки здесь...</div>
+</div>
+<div class="card">
+<h3>📋 История обновлений <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()">🗑️</button></h3>
+<div id="fresherHistoryList"><div class="empty-history">Загрузка...</div></div>
+</div>
+</div>
 
-    <div class="tab-content" id="tab-tools">
-        <div class="tool-grid">
-            <div class="tool-card"><h3>🔗 Слияние</h3><p class="desc">Объедините .txt файлы</p><div class="upload-area" id="mergeDropArea" onclick="document.getElementById('mergeFiles').click()"><p>📁 Перетащите файлы</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;"><button class="btn btn-primary mt-8" onclick="mergeCookies()" style="width:100%;">🔄 Объединить</button><div class="result-box" id="mergeResult" style="max-height:80px;">Результат...</div></div>
-            <div class="tool-card"><h3>✂️ По количеству</h3><p class="desc">Разделите по N куки</p><div class="upload-area" id="splitCountDropArea" onclick="document.getElementById('splitCountFile').click()"><p>📁 Перетащите файл</p></div><input type="file" id="splitCountFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitCount" value="100" min="1"><span>шт.</span></div><button class="btn btn-primary" onclick="splitByCount()" style="width:100%;">📦 Разделить</button><div class="result-box" id="splitCountResult" style="max-height:80px;">Результат...</div></div>
-            <div class="tool-card"><h3>📊 На N файлов</h3><p class="desc">Равномерно распределите</p><div class="upload-area" id="splitFilesDropArea" onclick="document.getElementById('splitFilesFile').click()"><p>📁 Перетащите файл</p></div><input type="file" id="splitFilesFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitFilesCount" value="5" min="1"><span>файлов</span></div><button class="btn btn-primary" onclick="splitByFiles()" style="width:100%;">📂 Разделить</button><div class="result-box" id="splitFilesResult" style="max-height:80px;">Результат...</div></div>
-            <div class="tool-card"><h3>🧹 Очистка</h3><p class="desc">Дубликаты или формат</p><textarea id="cleanCookiesInput" placeholder="Вставьте куки..." rows="3"></textarea><div class="gap-8 mt-8"><button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Дубликаты</button><button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Формат</button></div><div class="result-box" id="cleanResult" style="max-height:80px;">Результат...</div></div>
-        </div>
-    </div>
+<div class="tab-content" id="tab-tools">
+<div class="tool-grid">
+<div class="tool-card"><h3>🔗 Слияние</h3><p class="desc">Объедините .txt файлы</p><div class="upload-area" id="mergeDropArea" onclick="document.getElementById('mergeFiles').click()"><p>📁 Перетащите файлы</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;"><button class="btn btn-primary mt-8" onclick="mergeCookies()" style="width:100%;">🔄 Объединить</button><div class="result-box" id="mergeResult" style="max-height:80px;">Результат...</div></div>
+<div class="tool-card"><h3>✂️ По количеству</h3><p class="desc">Разделите по N куки</p><div class="upload-area" id="splitCountDropArea" onclick="document.getElementById('splitCountFile').click()"><p>📁 Перетащите файл</p></div><input type="file" id="splitCountFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitCount" value="100" min="1"><span>шт.</span></div><button class="btn btn-primary" onclick="splitByCount()" style="width:100%;">📦 Разделить</button><div class="result-box" id="splitCountResult" style="max-height:80px;">Результат...</div></div>
+<div class="tool-card"><h3>📊 На N файлов</h3><p class="desc">Равномерно распределите</p><div class="upload-area" id="splitFilesDropArea" onclick="document.getElementById('splitFilesFile').click()"><p>📁 Перетащите файл</p></div><input type="file" id="splitFilesFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitFilesCount" value="5" min="1"><span>файлов</span></div><button class="btn btn-primary" onclick="splitByFiles()" style="width:100%;">📂 Разделить</button><div class="result-box" id="splitFilesResult" style="max-height:80px;">Результат...</div></div>
+<div class="tool-card"><h3>🧹 Очистка</h3><p class="desc">Дубликаты или формат</p><textarea id="cleanCookiesInput" placeholder="Вставьте куки..." rows="3"></textarea><div class="gap-8 mt-8"><button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Дубликаты</button><button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Формат</button></div><div class="result-box" id="cleanResult" style="max-height:80px;">Результат...</div></div>
+</div>
+</div>
 
-    <div class="footer">KAI CHECKER · PRO</div>
+<div class="footer">SWILL CHECKER V2 · 20 потоков · SQLite</div>
 </div>
 
 <script>
@@ -1046,30 +1052,43 @@ def index():
 
 @app.route("/api/extract-preview", methods=["POST"])
 def api_extract_preview():
-    content = ""
-    if 'file' in request.files: content = request.files['file'].read().decode('utf-8', errors='ignore')
-    return jsonify({"success": True, "count": len(extract_cookies_from_text(content))})
+    try:
+        content = ""
+        if 'file' in request.files: 
+            content = request.files['file'].read().decode('utf-8', errors='ignore')
+        cookies = extract_cookies_from_text(content)
+        return jsonify({"success": True, "count": len(cookies)})
+    except Exception as e:
+        return jsonify({"success": False, "count": 0, "error": str(e)})
 
 @app.route("/api/single-check", methods=["POST"])
 def api_single_check():
-    data = request.json or {}
-    cookie = data.get("cookie", "").strip()
-    if not cookie: return jsonify({"success": False, "message": "Кук не предоставлен"})
-    info = get_full_info(cookie)
-    report = format_full_report(info)
-    add_checker_history({'type': 'single', 'total': 1, 'valid': 1 if info['status']=='✅' else 0, 'cookies': [report], 'full_data': []})
-    return jsonify({"success": True, "report": report})
+    try:
+        data = request.json or {}
+        cookie = data.get("cookie", "").strip()
+        if not cookie: 
+            return jsonify({"success": False, "message": "Кук не предоставлен"})
+        info = get_full_info(cookie)
+        report = format_full_report(info)
+        add_checker_history({'type': 'single', 'total': 1, 'valid': 1 if info['status']=='✅' else 0, 'cookies': [report], 'full_data': []})
+        return jsonify({"success": True, "report": report})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 @app.route("/api/mass-check", methods=["POST"])
 def api_mass_check():
     try:
         content = ""
-        if 'file' in request.files: content = request.files['file'].read().decode('utf-8', errors='ignore')
-        if not content: return jsonify({"success": False, "message": "Файл не предоставлен"})
+        if 'file' in request.files: 
+            content = request.files['file'].read().decode('utf-8', errors='ignore')
+        if not content: 
+            return jsonify({"success": False, "message": "Файл не предоставлен"})
         cookies = extract_cookies_from_text(content)
         extracted_count = len(cookies)
-        if not cookies: return jsonify({"success": False, "message": "Куки не найдены"})
-        if len(cookies) > 10000: cookies = cookies[:10000]
+        if not cookies: 
+            return jsonify({"success": False, "message": "Куки не найдены"})
+        if len(cookies) > 10000: 
+            cookies = cookies[:10000]
         
         results = mass_check(cookies)
         valid = [r for r in results if r['status']=='✅']
@@ -1091,7 +1110,8 @@ def api_mass_check():
                 f.write(f"{rank} {r['username']} [{r['user_id']}] | ⏣{r['robux']:,} | Score:{score}\n{r['cookie']}\n\n")
             if invalid:
                 f.write("\n❌ НЕВАЛИДНЫЕ:\n")
-                for r in invalid: f.write(f"{r['cookie']}\n")
+                for r in invalid: 
+                    f.write(f"{r['cookie']}\n")
         
         download_url = f"/downloads/{filename}"
         
@@ -1110,7 +1130,18 @@ def api_mass_check():
         
         add_checker_history({'type': 'mass', 'total': len(results), 'valid': len(valid), 'cookies': formatted[:30], 'full_data': full_data[:100], 'download_url': download_url})
         
-        return jsonify({"success": True, "extracted_count": extracted_count, "total": len(results), "valid_count": len(valid), "invalid_count": len(invalid), "premium_count": premium_count, "total_robux": total_robux, "results": formatted, "full_data": full_data, "download_url": download_url})
+        return jsonify({
+            "success": True, 
+            "extracted_count": extracted_count, 
+            "total": len(results), 
+            "valid_count": len(valid), 
+            "invalid_count": len(invalid), 
+            "premium_count": premium_count, 
+            "total_robux": total_robux, 
+            "results": formatted, 
+            "full_data": full_data, 
+            "download_url": download_url
+        })
     except Exception as e:
         logger.error(f"Mass check error: {e}")
         return jsonify({"success": False, "message": str(e)})
@@ -1132,7 +1163,7 @@ def api_fresher():
         success_count = 0
         fail_count = 0
         
-        for c in cookies_list:
+        for c in cookies_list[:50]:  # Ограничиваем 50 куками для скорости
             try:
                 result = refresh_roblox_cookie(c, kill_old=(mode == 'kill'))
                 if result.get('success') and result.get('new_cookie'):
@@ -1186,11 +1217,17 @@ def api_fresher():
 
 @app.route("/api/history/checker")
 def api_history_checker():
-    return jsonify({"history": load_history("checker_history")})
+    try:
+        return jsonify({"history": load_history("checker_history")})
+    except Exception as e:
+        return jsonify({"history": [], "error": str(e)})
 
 @app.route("/api/history/fresher")
 def api_history_fresher():
-    return jsonify({"history": load_history("fresher_history")})
+    try:
+        return jsonify({"history": load_history("fresher_history")})
+    except Exception as e:
+        return jsonify({"history": [], "error": str(e)})
 
 @app.route("/api/history/checker/clear", methods=["POST"])
 def api_clear_checker_history():
@@ -1204,77 +1241,101 @@ def api_clear_fresher_history():
 
 @app.route("/api/merge-cookies", methods=["POST"])
 def api_merge_cookies():
-    if 'files' not in request.files: return jsonify({"success": False})
-    files = request.files.getlist('files')
-    if len(files) < 2: return jsonify({"success": False, "message": "Минимум 2 файла"})
-    contents = [f.read().decode('utf-8', errors='ignore') for f in files]
-    merged = merge_cookie_files(contents)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"merged_{timestamp}.txt"
-    with open(os.path.join("downloads", filename), 'w') as f: f.write(merged)
-    return jsonify({"success": True, "total_files": len(files), "total_cookies": len([l for l in merged.split('\n') if l]), "download_url": f"/downloads/{filename}"})
+    try:
+        if 'files' not in request.files: 
+            return jsonify({"success": False, "message": "Файлы не найдены"})
+        files = request.files.getlist('files')
+        if len(files) < 2: 
+            return jsonify({"success": False, "message": "Минимум 2 файла"})
+        contents = [f.read().decode('utf-8', errors='ignore') for f in files]
+        merged = merge_cookie_files(contents)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"merged_{timestamp}.txt"
+        with open(os.path.join("downloads", filename), 'w', encoding='utf-8') as f: 
+            f.write(merged)
+        total = len([l for l in merged.split('\n') if l])
+        return jsonify({"success": True, "total_files": len(files), "total_cookies": total, "download_url": f"/downloads/{filename}"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 @app.route("/api/split-cookies", methods=["POST"])
 def api_split_cookies():
-    data = request.json or {}
-    content = data.get("content", "")
-    split_type = data.get("split_type", "count")
-    count = data.get("count", 100)
-    
-    if not content or not content.strip():
-        return jsonify({"success": False, "message": "Контент пуст"})
-    if count <= 0:
-        return jsonify({"success": False, "message": "Количество должно быть > 0"})
-    
-    if split_type == "count":
-        files = split_cookies_by_count(content, count)
-    else:
-        files = split_cookies_by_files(content, count)
-    
-    if not files:
-        return jsonify({"success": False, "message": "Нет куки для разделения"})
-    
-    if len(files) == 1:
+    try:
+        data = request.json or {}
+        content = data.get("content", "")
+        split_type = data.get("split_type", "count")
+        count = data.get("count", 100)
+        
+        if not content or not content.strip():
+            return jsonify({"success": False, "message": "Контент пуст"})
+        if count <= 0:
+            return jsonify({"success": False, "message": "Количество должно быть > 0"})
+        
+        if split_type == "count":
+            files = split_cookies_by_count(content, count)
+        else:
+            files = split_cookies_by_files(content, count)
+        
+        if not files:
+            return jsonify({"success": False, "message": "Нет куки для разделения"})
+        
+        if len(files) == 1:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"split_{timestamp}.txt"
+            with open(os.path.join("downloads", filename), 'w', encoding='utf-8') as f:
+                f.write(files[0])
+            return jsonify({"success": True, "file_count": 1, "download_url": f"/downloads/{filename}"})
+        
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for i, fc in enumerate(files, 1):
+                if fc.strip():
+                    zf.writestr(f"part_{i}.txt", fc)
+        
+        if zip_buffer.getbuffer().nbytes == 0:
+            return jsonify({"success": False, "message": "Нет данных для архива"})
+        
+        zip_buffer.seek(0)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"split_{timestamp}.txt"
-        with open(os.path.join("downloads", filename), 'w', encoding='utf-8') as f:
-            f.write(files[0])
-        return jsonify({"success": True, "file_count": 1, "download_url": f"/downloads/{filename}"})
-    
-    zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for i, fc in enumerate(files, 1):
-            if fc.strip():
-                zf.writestr(f"part_{i}.txt", fc)
-    
-    if zip_buffer.getbuffer().nbytes == 0:
-        return jsonify({"success": False, "message": "Нет данных для архива"})
-    
-    zip_buffer.seek(0)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    archive_name = f"split_{timestamp}.zip"
-    with open(os.path.join("downloads", archive_name), 'wb') as f:
-        f.write(zip_buffer.getvalue())
-    
-    return jsonify({"success": True, "file_count": len(files), "download_url": f"/downloads/{archive_name}"})
+        archive_name = f"split_{timestamp}.zip"
+        with open(os.path.join("downloads", archive_name), 'wb') as f:
+            f.write(zip_buffer.getvalue())
+        
+        return jsonify({"success": True, "file_count": len(files), "download_url": f"/downloads/{archive_name}"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 @app.route("/api/clean-cookies", methods=["POST"])
 def api_clean_cookies():
-    data = request.json or {}
-    content = data.get("content", "")
-    action = data.get("action", "deduplicate")
-    if not content: return jsonify({"success": False})
-    orig = [l for l in content.split('\n') if l.strip()]
-    processed = remove_duplicates(content) if action=="deduplicate" else clean_cookies(content)
-    proc = [l for l in processed.split('\n') if l.strip()]
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"cleaned_{timestamp}.txt"
-    with open(os.path.join("downloads", filename), 'w') as f: f.write(processed)
-    return jsonify({"success": True, "original_count": len(orig), "processed_count": len(proc), "duplicates_removed": len(orig)-len(proc), "download_url": f"/downloads/{filename}"})
+    try:
+        data = request.json or {}
+        content = data.get("content", "")
+        action = data.get("action", "deduplicate")
+        if not content: 
+            return jsonify({"success": False, "message": "Нет контента"})
+        orig = [l for l in content.split('\n') if l.strip()]
+        processed = remove_duplicates(content) if action=="deduplicate" else clean_cookies(content)
+        proc = [l for l in processed.split('\n') if l.strip()]
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"cleaned_{timestamp}.txt"
+        with open(os.path.join("downloads", filename), 'w', encoding='utf-8') as f: 
+            f.write(processed)
+        return jsonify({
+            "success": True, 
+            "original_count": len(orig), 
+            "processed_count": len(proc), 
+            "duplicates_removed": len(orig)-len(proc), 
+            "download_url": f"/downloads/{filename}"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 @app.route("/downloads/<filename>")
 def download_file(filename):
-    return send_from_directory("downloads", filename, as_attachment=True)
+    try:
+        return send_from_directory("downloads", filename, as_attachment=True)
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 if __name__ == "__main__":
     init_db()
