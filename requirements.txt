@@ -2,3 +2,6 @@ flask
 requests
 curl-cffi
 gunicorn
+aiohttp
+aiosqlite
+cryptography
