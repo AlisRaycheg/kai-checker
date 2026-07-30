@@ -460,4 +460,598 @@ HTML = r"""<!DOCTYPE html>
             <h2>🔄 Фрешер сессий</h2>
             <div class="toggle-group">
                 <button class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
-                <button class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Сбро
+                <button class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Сбросить</button>
+            </div>
+            <input type="hidden" id="fresherMode" value="duplicate">
+            <div class="flex-row">
+                <div class="flex-2"><textarea id="fresherCookies" placeholder="Вставьте куки..." rows="6"></textarea></div>
+                <div class="flex-1"><div class="upload-area" id="fresherDropArea" onclick="document.getElementById('fresherFile').click()"><p>📁 <strong>Перетащите .txt</strong></p></div><input type="file" id="fresherFile" accept=".txt" style="display:none;"></div>
+            </div>
+            <div class="mt-12 gap-8">
+                <button class="btn btn-success" onclick="runFresher()">⚡ Обновить</button>
+                <button class="btn btn-secondary" onclick="clearFresherInputs()">🧹 Очистить</button>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="fresherProgress"></div></div>
+            <div id="fresherStats" style="font-size:12px;color:var(--text2);margin-top:6px;"></div>
+            <div class="result-box" id="fresherResult">Новые куки здесь...</div>
+        </div>
+        <div class="card">
+            <h3>📋 История обновлений <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()">🗑️</button></h3>
+            <div id="fresherHistoryList"><div class="empty-history">Загрузка...</div></div>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tab-tools">
+        <div class="tool-grid">
+            <div class="tool-card"><h3>🔗 Слияние</h3><p class="desc">Объедините .txt файлы</p><div class="upload-area" id="mergeDropArea" onclick="document.getElementById('mergeFiles').click()"><p>📁 Перетащите файлы</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;"><button class="btn btn-primary mt-8" onclick="mergeCookies()" style="width:100%;">🔄 Объединить</button><div class="result-box" id="mergeResult" style="max-height:80px;">Результат...</div></div>
+            <div class="tool-card"><h3>✂️ По количеству</h3><p class="desc">Разделите по N куки</p><div class="upload-area" id="splitCountDropArea" onclick="document.getElementById('splitCountFile').click()"><p>📁 Перетащите файл</p></div><input type="file" id="splitCountFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitCount" value="100" min="1"><span>шт.</span></div><button class="btn btn-primary" onclick="splitByCount()" style="width:100%;">📦 Разделить</button><div class="result-box" id="splitCountResult" style="max-height:80px;">Результат...</div></div>
+            <div class="tool-card"><h3>📊 На N файлов</h3><p class="desc">Равномерно распределите</p><div class="upload-area" id="splitFilesDropArea" onclick="document.getElementById('splitFilesFile').click()"><p>📁 Перетащите файл</p></div><input type="file" id="splitFilesFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitFilesCount" value="5" min="1"><span>файлов</span></div><button class="btn btn-primary" onclick="splitByFiles()" style="width:100%;">📂 Разделить</button><div class="result-box" id="splitFilesResult" style="max-height:80px;">Результат...</div></div>
+            <div class="tool-card"><h3>🧹 Очистка</h3><p class="desc">Дубликаты или формат</p><textarea id="cleanCookiesInput" placeholder="Вставьте куки..." rows="3"></textarea><div class="gap-8 mt-8"><button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Дубликаты</button><button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Формат</button></div><div class="result-box" id="cleanResult" style="max-height:80px;">Результат...</div></div>
+        </div>
+    </div>
+
+    <div class="footer">KAI CHECKER · PRO</div>
+</div>
+
+<script>
+var startTime = Date.now();
+setInterval(function() {
+    var d = Math.floor((Date.now() - startTime) / 1000);
+    var h = String(Math.floor(d / 3600)).padStart(2, '0');
+    var m = String(Math.floor((d % 3600) / 60)).padStart(2, '0');
+    var s = String(d % 60).padStart(2, '0');
+    document.getElementById('sessionTimer').textContent = '⏱️ ' + h + ':' + m + ':' + s;
+}, 1000);
+
+function toggleTheme() {
+    var html = document.documentElement;
+    var current = html.getAttribute('data-theme');
+    var next = current === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+}
+(function() {
+    var saved = localStorage.getItem('theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+})();
+
+document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+        var tabId = this.getAttribute('data-tab');
+        document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+        this.classList.add('active');
+        document.getElementById('tab-' + tabId).classList.add('active');
+        if (tabId === 'checker') loadCheckerHistory();
+        if (tabId === 'fresher') loadFresherHistory();
+    });
+});
+
+function setFresherMode(mode) {
+    document.getElementById('fresherMode').value = mode;
+    document.getElementById('modeDuplicate').classList.toggle('active', mode === 'duplicate');
+    document.getElementById('modeKill').classList.toggle('active', mode === 'kill');
+}
+
+function setupDragDrop(areaId, fileInputId) {
+    var area = document.getElementById(areaId);
+    if (!area) return;
+    ['dragenter', 'dragover'].forEach(function(evt) {
+        area.addEventListener(evt, function(e) { e.preventDefault(); area.classList.add('drag-over'); });
+    });
+    ['dragleave', 'drop'].forEach(function(evt) {
+        area.addEventListener(evt, function(e) { e.preventDefault(); area.classList.remove('drag-over'); });
+    });
+    area.addEventListener('drop', function(e) {
+        var files = e.dataTransfer.files;
+        if (files.length > 0) {
+            var input = document.getElementById(fileInputId);
+            var dt = new DataTransfer();
+            for (var i = 0; i < files.length; i++) dt.items.add(files[i]);
+            input.files = dt.files;
+            input.dispatchEvent(new Event('change'));
+        }
+    });
+}
+
+setupDragDrop('massDropArea', 'massFile');
+setupDragDrop('fresherDropArea', 'fresherFile');
+setupDragDrop('mergeDropArea', 'mergeFiles');
+setupDragDrop('splitCountDropArea', 'splitCountFile');
+setupDragDrop('splitFilesDropArea', 'splitFilesFile');
+
+document.getElementById('fresherFile').addEventListener('change', function(e) {
+    if (this.files && this.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(evt) { document.getElementById('fresherCookies').value = evt.target.result; };
+        reader.readAsText(this.files[0]);
+    }
+});
+
+document.getElementById('massFile').addEventListener('change', function(e) {
+    if (this.files && this.files[0]) {
+        var file = this.files[0];
+        document.getElementById('massFileInfo').textContent = '✅ ' + file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+        var reader = new FileReader();
+        reader.onload = function(evt) {
+            window.massFileContent = evt.target.result;
+            var fd = new FormData(); fd.append('file', new Blob([window.massFileContent]));
+            fetch('/api/extract-preview', { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (d.success) {
+                        document.getElementById('extractInfo').style.display = 'block';
+                        document.getElementById('extractInfo').textContent = '🔍 Найдено куков: ' + d.count;
+                    }
+                });
+        };
+        reader.readAsText(file);
+    }
+});
+
+document.getElementById('mergeFiles').addEventListener('change', function(e) {
+    var list = document.getElementById('mergeFileList'); list.innerHTML = '';
+    if (this.files) {
+        Array.from(this.files).forEach(function(f, i) {
+            var div = document.createElement('div'); div.className = 'file-item';
+            div.textContent = (i+1) + '. ' + f.name; list.appendChild(div);
+        });
+    }
+});
+
+document.getElementById('splitCountFile').addEventListener('change', function(e) {
+    if (this.files && this.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(evt) { window.splitCountContent = evt.target.result; };
+        reader.readAsText(this.files[0]);
+    }
+});
+
+document.getElementById('splitFilesFile').addEventListener('change', function(e) {
+    if (this.files && this.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(evt) { window.splitFilesContent = evt.target.result; };
+        reader.readAsText(this.files[0]);
+    }
+});
+
+window.massResultsData = [];
+window.currentFilter = 'all';
+
+async function runSingleCheck() {
+    var resBox = document.getElementById('singleResult');
+    var cookie = document.getElementById('singleCookie').value.trim();
+    if (!cookie) { resBox.textContent = '❌ Вставьте кук!'; return; }
+    resBox.textContent = '⏳ Проверка...';
+    try {
+        var r = await fetch('/api/single-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookie: cookie }) });
+        var d = await r.json();
+        resBox.textContent = d.success ? d.report : '❌ ' + (d.message || 'Ошибка');
+        loadCheckerHistory();
+    } catch(e) { resBox.textContent = '❌ ' + e.message; }
+}
+
+async function runMassCheck() {
+    if (!window.massFileContent) { document.getElementById('massResult').textContent = '❌ Загрузите TXT файл!'; return; }
+    var logBox = document.getElementById('massLog');
+    var resBox = document.getElementById('massResult');
+    var progress = document.getElementById('massProgress');
+    var startCheck = Date.now();
+    
+    resBox.textContent = '⏳ Извлечение и проверка...';
+    progress.style.width = '10%';
+    logBox.innerHTML = '<div class="log-line">🔄 Запуск многопоточной проверки (10 потоков)...</div>';
+    
+    try {
+        var fd = new FormData(); fd.append('file', new Blob([window.massFileContent]));
+        var r = await fetch('/api/mass-check', { method: 'POST', body: fd });
+        var d = await r.json();
+        progress.style.width = '100%';
+        setTimeout(function() { progress.style.width = '0%'; }, 500);
+        
+        var elapsed = ((Date.now() - startCheck) / 1000).toFixed(1);
+        var speed = d.total > 0 ? (d.total / elapsed).toFixed(1) : 0;
+        
+        logBox.innerHTML += '<div class="log-line">✅ Завершено за ' + elapsed + 'с (' + speed + ' куков/сек)</div>';
+        document.getElementById('logStats').textContent = '📊 ' + speed + ' к/с';
+        
+        if (d.success) {
+            window.massResultsData = d.full_data || [];
+            
+            document.getElementById('filterBar').style.display = 'flex';
+            document.getElementById('massActions').style.display = 'flex';
+            
+            var usdRate = 0.0035;
+            var totalRobux = d.total_robux || 0;
+            var usdValue = (totalRobux * usdRate).toFixed(2);
+            document.getElementById('robuxCalc').style.display = 'block';
+            document.getElementById('robuxCalc').innerHTML = '💰 Всего Robux: ⏣ <b>' + totalRobux.toLocaleString() + '</b> | 💵 ~$' + usdValue + ' (по курсу 0.0035$/R$)';
+            
+            applyFilter('all', document.querySelector('#filterBar .filter-chip'));
+            loadCheckerHistory();
+        } else { resBox.textContent = '❌ ' + (d.message || 'Ошибка'); }
+    } catch(e) {
+        resBox.textContent = '❌ ' + e.message;
+        progress.style.width = '0%';
+    }
+}
+
+function applyFilter(type, element) {
+    window.currentFilter = type;
+    document.querySelectorAll('#filterBar .filter-chip').forEach(function(c) { c.classList.remove('active'); });
+    if (element) element.classList.add('active');
+    
+    var data = window.massResultsData;
+    var filtered;
+    
+    switch(type) {
+        case 'premium': filtered = data.filter(function(r) { return r.is_premium; }); break;
+        case 'rich': filtered = data.filter(function(r) { return r.robux > 1000; }); break;
+        case 'secure': filtered = data.filter(function(r) { return r.has_2fa; }); break;
+        case 'old': filtered = data.filter(function(r) { return r.score >= 100; }); break;
+        default: filtered = data;
+    }
+    
+    var html = '🔍 Найдено: ' + filtered.length + '\n\n';
+    filtered.forEach(function(r) {
+        var score = r.score || 0;
+        var rank = score>=150 ? "👑" : (score>=100 ? "💎" : (score>=60 ? "⭐" : (score>=30 ? "🟢" : "🔹")));
+        html += rank + ' ' + r.username + ' [' + r.user_id + '] | ⏣' + (r.robux||0).toLocaleString() + ' | ' + (r.created||'?') + '\n';
+    });
+    
+    document.getElementById('massResult').textContent = html || 'Нет результатов';
+}
+
+function copyValidCookies() {
+    var valid = window.massResultsData.filter(function(r) { return r.status === '✅'; });
+    var text = valid.map(function(r) { return r.cookie; }).join('\n');
+    navigator.clipboard.writeText(text).then(function() {
+        alert('✅ Скопировано ' + valid.length + ' валидных куки!');
+    });
+}
+
+function downloadValidOnly() {
+    var valid = window.massResultsData.filter(function(r) { return r.status === '✅'; });
+    var text = valid.map(function(r) { return r.cookie; }).join('\n');
+    downloadBlob(text, 'valid_cookies.txt');
+}
+
+function downloadInvalidOnly() {
+    var invalid = window.massResultsData.filter(function(r) { return r.status === '❌'; });
+    var text = invalid.map(function(r) { return r.cookie; }).join('\n');
+    downloadBlob(text, 'invalid_cookies.txt');
+}
+
+function downloadBlob(content, filename) {
+    var blob = new Blob([content], { type: 'text/plain' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+}
+
+async function runFresher() {
+    var resBox = document.getElementById('fresherResult');
+    var cookies = document.getElementById('fresherCookies').value.trim();
+    var mode = document.getElementById('fresherMode').value;
+    var statsBox = document.getElementById('fresherStats');
+    
+    if (!cookies) { resBox.textContent = '❌ Вставьте куки!'; return; }
+    resBox.textContent = '⏳ Обновление...';
+    statsBox.textContent = '';
+    
+    var startF = Date.now();
+    try {
+        var r = await fetch('/api/fresher', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookies: cookies, mode: mode }) });
+        var d = await r.json();
+        var elapsed = ((Date.now() - startF) / 1000).toFixed(1);
+        
+        if (d.success && d.only_cookies) {
+            resBox.textContent = d.only_cookies;
+            statsBox.innerHTML = '✅ Успешно: <b>' + d.refreshed_count + '</b> | ❌ Ошибок: <b>' + (d.fail_count || 0) + '</b> | ⏱️ ' + elapsed + 'с';
+            loadFresherHistory();
+        } else {
+            resBox.textContent = '❌ ' + (d.message || 'Не удалось');
+            statsBox.innerHTML = '❌ Ошибок: <b>' + (d.fail_count || 'все') + '</b>';
+        }
+    } catch(e) { resBox.textContent = '❌ ' + e.message; }
+}
+
+function clearFresherInputs() {
+    document.getElementById('fresherCookies').value = '';
+    document.getElementById('fresherResult').textContent = 'Новые куки здесь...';
+    document.getElementById('fresherStats').textContent = '';
+}
+
+async function loadCheckerHistory() {
+    var container = document.getElementById('checkerHistoryList');
+    try {
+        var r = await fetch('/api/history/checker'); var d = await r.json();
+        if (d.history && d.history.length > 0) {
+            var html = '';
+            d.history.slice().reverse().forEach(function(item) {
+                var typeLabel = item.type === 'mass' ? '📦 Массовая' : '🔍 Одиночная';
+                html += '<div class="history-item" onclick="var x=this.querySelector(\'.hist-detail\');if(x.style.display==\'none\'){x.style.display=\'block\'}else{x.style.display=\'none\'}">';
+                html += '<div class="hist-header"><span>📅 ' + item.timestamp + '</span><span style="color:var(--text2);font-size:11px;">' + typeLabel + ' | ✅ ' + item.valid + '/' + item.total + '</span></div>';
+                html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n---\n') : 'Нет данных') + '</div></div>';
+            });
+            container.innerHTML = html;
+        } else { container.innerHTML = '<div class="empty-history">📭 История пуста</div>'; }
+    } catch(e) { container.innerHTML = '<div class="empty-history">❌ Ошибка</div>'; }
+}
+
+async function clearCheckerHistory() {
+    if (!confirm('Удалить историю?')) return;
+    await fetch('/api/history/checker/clear', { method: 'POST' });
+    loadCheckerHistory();
+}
+
+async function loadFresherHistory() {
+    var container = document.getElementById('fresherHistoryList');
+    try {
+        var r = await fetch('/api/history/fresher'); var d = await r.json();
+        if (d.history && d.history.length > 0) {
+            var html = '';
+            d.history.slice().reverse().forEach(function(item) {
+                var ml = item.mode === 'kill' ? '💀 Сброс' : '♻️ Дублирование';
+                html += '<div class="history-item" onclick="var x=this.querySelector(\'.hist-detail\');if(x.style.display==\'none\'){x.style.display=\'block\'}else{x.style.display=\'none\'}">';
+                html += '<div class="hist-header"><span>📅 ' + item.timestamp + '</span><span style="color:var(--text2);font-size:11px;">' + ml + ' | ' + item.refreshed_count + ' шт.</span></div>';
+                html += '<div class="hist-detail">' + (item.cookies ? item.cookies.join('\n') : 'Нет данных') + '</div></div>';
+            });
+            container.innerHTML = html;
+        } else { container.innerHTML = '<div class="empty-history">📭 История пуста</div>'; }
+    } catch(e) { container.innerHTML = '<div class="empty-history">❌ Ошибка</div>'; }
+}
+
+async function clearFresherHistory() {
+    if (!confirm('Удалить историю?')) return;
+    await fetch('/api/history/fresher/clear', { method: 'POST' });
+    loadFresherHistory();
+}
+
+async function mergeCookies() {
+    var files = document.getElementById('mergeFiles').files;
+    if (!files || files.length < 2) { document.getElementById('mergeResult').textContent = '❌ Минимум 2 файла'; return; }
+    var fd = new FormData(); Array.from(files).forEach(function(f) { fd.append('files', f); });
+    document.getElementById('mergeResult').textContent = '⏳...';
+    try {
+        var r = await fetch('/api/merge-cookies', { method: 'POST', body: fd }); var d = await r.json();
+        document.getElementById('mergeResult').innerHTML = d.success ? '✅ ' + d.total_files + ' файлов | 📊 ' + d.total_cookies + ' куки<br>📥 <a href="' + d.download_url + '" class="btn btn-primary btn-xs" target="_blank">Скачать</a>' : '❌ Ошибка';
+    } catch(e) { document.getElementById('mergeResult').textContent = '❌ ' + e.message; }
+}
+
+async function splitByCount() {
+    var content = window.splitCountContent; var count = parseInt(document.getElementById('splitCount').value);
+    if (!content) { document.getElementById('splitCountResult').textContent = '❌ Загрузите файл'; return; }
+    document.getElementById('splitCountResult').textContent = '⏳...';
+    try {
+        var r = await fetch('/api/split-cookies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: content, split_type: 'count', count: count }) });
+        var d = await r.json();
+        document.getElementById('splitCountResult').innerHTML = d.success ? '✅ ' + d.file_count + ' файлов<br>📥 <a href="' + d.download_url + '" class="btn btn-primary btn-xs" target="_blank">Скачать ZIP</a>' : '❌ Ошибка';
+    } catch(e) { document.getElementById('splitCountResult').textContent = '❌ ' + e.message; }
+}
+
+async function splitByFiles() {
+    var content = window.splitFilesContent; var num = parseInt(document.getElementById('splitFilesCount').value);
+    if (!content) { document.getElementById('splitFilesResult').textContent = '❌ Загрузите файл'; return; }
+    document.getElementById('splitFilesResult').textContent = '⏳...';
+    try {
+        var r = await fetch('/api/split-cookies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: content, split_type: 'files', count: num }) });
+        var d = await r.json();
+        document.getElementById('splitFilesResult').innerHTML = d.success ? '✅ ' + num + ' файлов<br>📥 <a href="' + d.download_url + '" class="btn btn-primary btn-xs" target="_blank">Скачать ZIP</a>' : '❌ Ошибка';
+    } catch(e) { document.getElementById('splitFilesResult').textContent = '❌ ' + e.message; }
+}
+
+async function cleanCookies(action) {
+    var content = document.getElementById('cleanCookiesInput').value.trim();
+    if (!content) { document.getElementById('cleanResult').textContent = '❌ Вставьте куки'; return; }
+    document.getElementById('cleanResult').textContent = '⏳...';
+    try {
+        var r = await fetch('/api/clean-cookies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: content, action: action }) });
+        var d = await r.json();
+        if (d.success) {
+            document.getElementById('cleanResult').innerHTML = '✅ ' + d.original_count + ' → ' + d.processed_count + (d.duplicates_removed > 0 ? ' (-' + d.duplicates_removed + ')' : '') + '<br>📥 <a href="' + d.download_url + '" class="btn btn-primary btn-xs" target="_blank">Скачать</a>';
+        } else { document.getElementById('cleanResult').textContent = '❌ Ошибка'; }
+    } catch(e) { document.getElementById('cleanResult').textContent = '❌ ' + e.message; }
+}
+
+loadCheckerHistory();
+</script>
+</body>
+</html>"""
+
+@app.route("/")
+def index():
+    return render_template_string(HTML)
+
+@app.route("/api/extract-preview", methods=["POST"])
+def api_extract_preview():
+    content = ""
+    if 'file' in request.files: content = request.files['file'].read().decode('utf-8', errors='ignore')
+    return jsonify({"success": True, "count": len(extract_cookies_from_text(content))})
+
+@app.route("/api/single-check", methods=["POST"])
+def api_single_check():
+    data = request.json or {}
+    cookie = data.get("cookie", "").strip()
+    if not cookie: return jsonify({"success": False, "message": "Кук не предоставлен"})
+    info = get_full_info(cookie)
+    report = format_full_report(info)
+    add_checker_history({'type': 'single', 'total': 1, 'valid': 1 if info['status']=='✅' else 0, 'cookies': [report], 'full_data': []})
+    return jsonify({"success": True, "report": report})
+
+@app.route("/api/mass-check", methods=["POST"])
+def api_mass_check():
+    content = ""
+    if 'file' in request.files: content = request.files['file'].read().decode('utf-8', errors='ignore')
+    if not content: return jsonify({"success": False, "message": "Файл не предоставлен"})
+    cookies = extract_cookies_from_text(content)
+    extracted_count = len(cookies)
+    if not cookies: return jsonify({"success": False, "message": "Куки не найдены"})
+    if len(cookies) > 10000: cookies = cookies[:10000]
+    
+    results = mass_check(cookies)
+    valid = [r for r in results if r['status']=='✅']
+    invalid = [r for r in results if r['status']=='❌']
+    formatted = [format_quick_report(r) for r in results]
+    premium_count = sum(1 for r in valid if r.get('is_premium'))
+    total_robux = sum(r.get('robux',0) for r in valid)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"mass_check_{timestamp}.txt"
+    filepath = os.path.join("downloads", filename)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(f"📊 РЕЗУЛЬТАТЫ | {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n")
+        f.write(f"Извлечено: {extracted_count} | Проверено: {len(results)} | ✅{len(valid)} | ❌{len(invalid)}\n")
+        f.write(f"Premium: {premium_count} | Robux: {total_robux:,}\n\n")
+        for r in valid:
+            score = r.get('score',0)
+            rank = "👑" if score>=150 else ("💎" if score>=100 else ("⭐" if score>=60 else "🟢"))
+            f.write(f"{rank} {r['username']} [{r['user_id']}] | ⏣{r['robux']:,} | Score:{score}\n{r['cookie']}\n\n")
+        if invalid:
+            f.write("\n❌ НЕВАЛИДНЫЕ:\n")
+            for r in invalid: f.write(f"{r['cookie']}\n")
+    
+    download_url = f"/downloads/{filename}"
+    
+    full_data = []
+    for r in valid:
+        full_data.append({
+            'status': '✅', 'username': r['username'], 'user_id': r['user_id'],
+            'robux': r['robux'], 'created': r['created'], 'score': r['score'],
+            'is_premium': r.get('is_premium', False), 'has_2fa': r.get('has_2fa', False),
+            'has_email': r.get('has_email', False), 'cookie': r['cookie']
+        })
+    for r in invalid:
+        full_data.append({'status': '❌', 'cookie': r['cookie'], 'score': -1})
+    
+    add_checker_history({'type': 'mass', 'total': len(results), 'valid': len(valid), 'cookies': formatted[:30], 'full_data': full_data[:100], 'download_url': download_url})
+    
+    return jsonify({"success": True, "extracted_count": extracted_count, "total": len(results), "valid_count": len(valid), "invalid_count": len(invalid), "premium_count": premium_count, "total_robux": total_robux, "results": formatted, "full_data": full_data, "download_url": download_url})
+
+@app.route("/api/fresher", methods=["POST"])
+def api_fresher():
+    data = request.json or {}
+    raw = data.get("cookies", "")
+    mode = data.get("mode", "duplicate")
+    cookies_list = extract_cookies_from_text(raw)
+    if not cookies_list: return jsonify({"success": False, "message": "Куки не найдены"})
+    
+    only_cookies = []
+    cookie_hist = []
+    success_count = 0
+    fail_count = 0
+    
+    for c in cookies_list:
+        result = refresh_roblox_cookie(c, kill_old=(mode=='kill'))
+        if result['success'] and result['new_cookie']:
+            is_new = True
+            if '.ROBLOSECURITY=' in c:
+                old_val = c.strip().split('.ROBLOSECURITY=')[-1].split(';')[0]
+                is_new = result['new_cookie'] != old_val
+            status_text = "НОВАЯ" if is_new else "БЕЗ ИЗМЕНЕНИЙ"
+            cookie_hist.append(f"🟢 {result.get('username','?')} - {status_text}")
+            only_cookies.append(result['new_cookie'])
+            success_count += 1
+        else:
+            cookie_hist.append(f"❌ {result.get('error', 'Ошибка')[:40]}")
+            fail_count += 1
+    
+    add_fresher_history({'mode': mode, 'refreshed_count': len(only_cookies), 'success_count': success_count, 'fail_count': fail_count, 'cookies': cookie_hist})
+    
+    return jsonify({"success": True, "refreshed_count": len(only_cookies), "success_count": success_count, "fail_count": fail_count, "only_cookies": '\n'.join(only_cookies) if only_cookies else ''})
+
+@app.route("/api/history/checker")
+def api_history_checker():
+    return jsonify({"history": load_history(CHECKER_HISTORY_FILE)})
+
+@app.route("/api/history/fresher")
+def api_history_fresher():
+    return jsonify({"history": load_history(FRESHER_HISTORY_FILE)})
+
+@app.route("/api/history/checker/clear", methods=["POST"])
+def api_clear_checker_history():
+    save_history(CHECKER_HISTORY_FILE, [])
+    return jsonify({"success": True})
+
+@app.route("/api/history/fresher/clear", methods=["POST"])
+def api_clear_fresher_history():
+    save_history(FRESHER_HISTORY_FILE, [])
+    return jsonify({"success": True})
+
+@app.route("/api/merge-cookies", methods=["POST"])
+def api_merge_cookies():
+    if 'files' not in request.files: return jsonify({"success": False})
+    files = request.files.getlist('files')
+    if len(files) < 2: return jsonify({"success": False, "message": "Минимум 2 файла"})
+    contents = [f.read().decode('utf-8', errors='ignore') for f in files]
+    merged = merge_cookie_files(contents)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"merged_{timestamp}.txt"
+    with open(os.path.join("downloads", filename), 'w') as f: f.write(merged)
+    return jsonify({"success": True, "total_files": len(files), "total_cookies": len([l for l in merged.split('\n') if l]), "download_url": f"/downloads/{filename}"})
+
+@app.route("/api/split-cookies", methods=["POST"])
+def api_split_cookies():
+    data = request.json or {}
+    content = data.get("content", "")
+    split_type = data.get("split_type", "count")
+    count = data.get("count", 100)
+    
+    if not content or not content.strip():
+        return jsonify({"success": False, "message": "Контент пуст"})
+    if count <= 0:
+        return jsonify({"success": False, "message": "Количество должно быть > 0"})
+    
+    if split_type == "count":
+        files = split_cookies_by_count(content, count)
+    else:
+        files = split_cookies_by_files(content, count)
+    
+    if not files:
+        return jsonify({"success": False, "message": "Нет куки для разделения"})
+    
+    if len(files) == 1:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"split_{timestamp}.txt"
+        with open(os.path.join("downloads", filename), 'w', encoding='utf-8') as f:
+            f.write(files[0])
+        return jsonify({"success": True, "file_count": 1, "download_url": f"/downloads/{filename}"})
+    
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for i, fc in enumerate(files, 1):
+            if fc.strip():
+                zf.writestr(f"part_{i}.txt", fc)
+    
+    if zip_buffer.getbuffer().nbytes == 0:
+        return jsonify({"success": False, "message": "Нет данных для архива"})
+    
+    zip_buffer.seek(0)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    archive_name = f"split_{timestamp}.zip"
+    with open(os.path.join("downloads", archive_name), 'wb') as f:
+        f.write(zip_buffer.getvalue())
+    
+    return jsonify({"success": True, "file_count": len(files), "download_url": f"/downloads/{archive_name}"})
+
+@app.route("/api/clean-cookies", methods=["POST"])
+def api_clean_cookies():
+    data = request.json or {}
+    content = data.get("content", "")
+    action = data.get("action", "deduplicate")
+    if not content: return jsonify({"success": False})
+    orig = [l for l in content.split('\n') if l.strip()]
+    processed = remove_duplicates(content) if action=="deduplicate" else clean_cookies(content)
+    proc = [l for l in processed.split('\n') if l.strip()]
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"cleaned_{timestamp}.txt"
+    with open(os.path.join("downloads", filename), 'w') as f: f.write(processed)
+    return jsonify({"success": True, "original_count": len(orig), "processed_count": len(proc), "duplicates_removed": len(orig)-len(proc), "download_url": f"/downloads/{filename}"})
+
+@app.route("/downloads/<filename>")
+def download_file(filename):
+    return send_from_directory("downloads", filename, as_attachment=True)
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
