@@ -178,6 +178,8 @@ def quick_validate(cookie):
     return result
 
 def mass_check(cookies_list):
+    if not cookies_list:
+        return []
     results = []
     with ThreadPoolExecutor(max_workers=10) as ex:
         futures = {ex.submit(quick_validate, c): c for c in cookies_list}
@@ -271,24 +273,28 @@ def merge_cookie_files(contents):
     return '\n'.join(sorted(all_cookies))
 
 def split_cookies_by_count(content, count):
-    cookies = [l.strip() for l in content.split('\n') if len(l)>20]
+    cookies = [l.strip() for l in content.split('\n') if len(l) > 20]
     if not cookies or count <= 0:
         return []
     files = []
-    for i in range(0, len(cookies), count): files.append('\n'.join(cookies[i:i+count]))
+    for i in range(0, len(cookies), count):
+        files.append('\n'.join(cookies[i:i+count]))
     return files
 
 def split_cookies_by_files(content, num):
-    cookies = [l.strip() for l in content.split('\n') if len(l)>20]
+    cookies = [l.strip() for l in content.split('\n') if len(l) > 20]
     if not cookies or num <= 0:
         return []
     if num > len(cookies):
         num = len(cookies)
-    per = len(cookies)//num; rem = len(cookies)%num
-    files = []; idx = 0
+    per = len(cookies) // num
+    rem = len(cookies) % num
+    files = []
+    idx = 0
     for i in range(num):
-        end = idx+per+(1 if i<rem else 0)
-        files.append('\n'.join(cookies[idx:end])); idx=end
+        end = idx + per + (1 if i < rem else 0)
+        files.append('\n'.join(cookies[idx:end]))
+        idx = end
     return files
 
 def remove_duplicates(content):
@@ -1004,6 +1010,7 @@ def api_split_cookies():
     
     if not content or not content.strip():
         return jsonify({"success": False, "message": "Контент пуст"})
+    
     if count <= 0:
         return jsonify({"success": False, "message": "Количество должно быть > 0"})
     
