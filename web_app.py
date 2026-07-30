@@ -178,6 +178,8 @@ def quick_validate(cookie):
     return result
 
 def mass_check(cookies_list):
+    if not cookies_list:
+        return []
     results = []
     with ThreadPoolExecutor(max_workers=10) as ex:
         futures = {ex.submit(quick_validate, c): c for c in cookies_list}
@@ -271,19 +273,28 @@ def merge_cookie_files(contents):
     return '\n'.join(sorted(all_cookies))
 
 def split_cookies_by_count(content, count):
-    cookies = [l.strip() for l in content.split('\n') if len(l)>20]
+    cookies = [l.strip() for l in content.split('\n') if len(l) > 20]
+    if not cookies or count <= 0:
+        return []
     files = []
-    for i in range(0, len(cookies), count): files.append('\n'.join(cookies[i:i+count]))
+    for i in range(0, len(cookies), count):
+        files.append('\n'.join(cookies[i:i+count]))
     return files
 
 def split_cookies_by_files(content, num):
-    cookies = [l.strip() for l in content.split('\n') if len(l)>20]
-    if num<=0: return []
-    per = len(cookies)//num; rem = len(cookies)%num
-    files = []; idx = 0
+    cookies = [l.strip() for l in content.split('\n') if len(l) > 20]
+    if not cookies or num <= 0:
+        return []
+    if num > len(cookies):
+        num = len(cookies)
+    per = len(cookies) // num
+    rem = len(cookies) % num
+    files = []
+    idx = 0
     for i in range(num):
-        end = idx+per+(1 if i<rem else 0)
-        files.append('\n'.join(cookies[idx:end])); idx=end
+        end = idx + per + (1 if i < rem else 0)
+        files.append('\n'.join(cookies[idx:end]))
+        idx = end
     return files
 
 def remove_duplicates(content):
@@ -993,23 +1004,53 @@ def api_merge_cookies():
 @app.route("/api/split-cookies", methods=["POST"])
 def api_split_cookies():
     data = request.json or {}
-    content = data.get("content", ""); split_type = data.get("split_type", "count"); count = data.get("count", 100)
-    if not content: return jsonify({"success": False})
-    files = split_cookies_by_count(content, count) if split_type=="count" else split_cookies_by_files(content, count)
-    if not files: return jsonify({"success": False})
+    content = data.get("content", "")
+    split_type = data.get("split_type", "count")
+    count = data.get("count", 100)
+    
+    if not content or not content.strip():
+        return jsonify({"success": False, "message": "Контент пуст"})
+    
+    if count <= 0:
+        return jsonify({"success": False, "message": "Количество должно быть > 0"})
+    
+    if split_type == "count":
+        files = split_cookies_by_count(content, count)
+    else:
+        files = split_cookies_by_files(content, count)
+    
+    if not files:
+        return jsonify({"success": False, "message": "Нет куки для разделения"})
+    
+    if len(files) == 1:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"split_{timestamp}.txt"
+        with open(os.path.join("downloads", filename), 'w', encoding='utf-8') as f:
+            f.write(files[0])
+        return jsonify({"success": True, "file_count": 1, "download_url": f"/downloads/{filename}"})
+    
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for i, fc in enumerate(files, 1): zf.writestr(f"part_{i}.txt", fc)
+        for i, fc in enumerate(files, 1):
+            if fc.strip():
+                zf.writestr(f"part_{i}.txt", fc)
+    
+    if zip_buffer.getbuffer().nbytes == 0:
+        return jsonify({"success": False, "message": "Нет данных для архива"})
+    
     zip_buffer.seek(0)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     archive_name = f"split_{timestamp}.zip"
-    with open(os.path.join("downloads", archive_name), 'wb') as f: f.write(zip_buffer.getvalue())
+    with open(os.path.join("downloads", archive_name), 'wb') as f:
+        f.write(zip_buffer.getvalue())
+    
     return jsonify({"success": True, "file_count": len(files), "download_url": f"/downloads/{archive_name}"})
 
 @app.route("/api/clean-cookies", methods=["POST"])
 def api_clean_cookies():
     data = request.json or {}
-    content = data.get("content", ""); action = data.get("action", "deduplicate")
+    content = data.get("content", "")
+    action = data.get("action", "deduplicate")
     if not content: return jsonify({"success": False})
     orig = [l for l in content.split('\n') if l.strip()]
     processed = remove_duplicates(content) if action=="deduplicate" else clean_cookies(content)
