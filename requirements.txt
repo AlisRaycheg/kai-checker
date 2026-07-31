@@ -5,3 +5,4 @@ gunicorn
 aiohttp
 aiosqlite
 cryptography
+urllib3
