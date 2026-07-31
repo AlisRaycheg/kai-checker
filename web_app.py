@@ -25,9 +25,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 CHECKER_HISTORY_FILE = "history/checker_history.json"
 FRESHER_HISTORY_FILE = "history/fresher_history.json"
 
-# Ссылка на картинку персонажа (для Render.com)
-GIRL_IMAGE_URL = "https://i.postimg.cc/m2vP3Q9k/girl.jpg"
-
 # ==========================================
 # БЛОК: ИСТОРИЯ
 # ==========================================
@@ -350,20 +347,21 @@ def remove_duplicates(content):
 # ==========================================
 app = Flask(__name__)
 
-HTML = f"""<!DOCTYPE html>
+HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kai Checker PRO</title>
+    <!-- НАДУВНОЙ И ПРОФЕССИОНАЛЬНЫЕ ШРИФТЫ -->
     <link href="https://fonts.googleapis.com/css2?family=Rubik+Puddles&family=Paytone+One&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        :root {{
+        :root {
             --bg: #07030d;
-            --bg-card: rgba(23, 10, 38, 0.55);
+            --bg-card: rgba(23, 10, 38, 0.65);
             --border-card: rgba(168, 85, 247, 0.25);
             --border-hover: rgba(217, 70, 239, 0.6);
-            --input-bg: rgba(12, 5, 20, 0.75);
+            --input-bg: rgba(12, 5, 20, 0.8);
             --text-main: #f3e8ff;
             --text-muted: #a78bfa;
             --accent-purple: #a855f7;
@@ -372,13 +370,13 @@ HTML = f"""<!DOCTYPE html>
             --gradient-primary: linear-gradient(135deg, #a855f7 0%, #d946ef 50%, #6366f1 100%);
             --gradient-btn: linear-gradient(135deg, #9333ea 0%, #c026d3 100%);
             --gradient-btn-hover: linear-gradient(135deg, #a855f7 0%, #e879f9 100%);
-        }}
-        [data-theme="light"] {{
+        }
+        [data-theme="light"] {
             --bg: #f5f0ff;
-            --bg-card: rgba(255, 255, 255, 0.75);
+            --bg-card: rgba(255, 255, 255, 0.82);
             --border-card: rgba(168, 85, 247, 0.2);
             --border-hover: rgba(168, 85, 247, 0.5);
-            --input-bg: rgba(243, 232, 255, 0.6);
+            --input-bg: rgba(243, 232, 255, 0.7);
             --text-main: #2e1065;
             --text-muted: #7e22ce;
             --accent-purple: #7e22ce;
@@ -387,10 +385,10 @@ HTML = f"""<!DOCTYPE html>
             --gradient-primary: linear-gradient(135deg, #7e22ce 0%, #c026d3 100%);
             --gradient-btn: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
             --gradient-btn-hover: linear-gradient(135deg, #6b21a8 0%, #9333ea 100%);
-        }}
+        }
 
-        * {{ margin: 0; padding: 0; box-sizing: border-box; outline: none; }}
-        body {{
+        * { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
+        body {
             font-family: 'Plus Jakarta Sans', sans-serif;
             min-height: 100vh;
             background: var(--bg);
@@ -398,16 +396,35 @@ HTML = f"""<!DOCTYPE html>
             position: relative;
             overflow-x: hidden;
             padding: 24px 16px;
-        }}
+        }
 
-        #particles-canvas {{
+        /* ПОЛНОЭКРАННЫЙ ЗАДНИЙ ФОН ИЗ ФОТОГРАФИИ */
+        .bg-custom-image {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background-image: url('anime_girl.jpg'), url('https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1920&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            opacity: 0.25;
+            filter: blur(4px);
+            z-index: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        [data-theme="light"] .bg-custom-image {
+            opacity: 0.15;
+        }
+
+        #particles-canvas {
             position: fixed;
             top: 0; left: 0;
             width: 100vw; height: 100vh;
             z-index: 0;
             pointer-events: none;
-        }}
-        .bg-glow {{
+        }
+        .bg-glow {
             position: fixed;
             width: 500px; height: 500px;
             background: radial-gradient(circle, rgba(168, 85, 247, 0.18) 0%, rgba(0,0,0,0) 70%);
@@ -416,67 +433,27 @@ HTML = f"""<!DOCTYPE html>
             z-index: 0;
             pointer-events: none;
             animation: pulseGlow 8s infinite alternate ease-in-out;
-        }}
-        @keyframes pulseGlow {{
-            0% {{ transform: translateX(-50%) scale(1); opacity: 0.7; }}
-            100% {{ transform: translateX(-50%) scale(1.3); opacity: 1; }}
-        }}
+        }
+        @keyframes pulseGlow {
+            0% { transform: translateX(-50%) scale(1); opacity: 0.7; }
+            100% { transform: translateX(-50%) scale(1.3); opacity: 1; }
+        }
 
-        /* Основной Layout с боковой панелью */
-        .layout-container {{
-            display: flex;
-            max-width: 1450px;
+        .wrapper {
+            max-width: 1350px;
             margin: 0 auto;
-            gap: 24px;
             position: relative;
             z-index: 1;
-        }}
-
-        .wrapper {{
-            flex: 1;
             background: var(--bg-card);
             border: 1px solid var(--border-card);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
             border-radius: 28px;
             padding: 32px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
-        }}
+        }
 
-        /* Боковая панель с девочкой */
-        .character-sidebar {{
-            width: 320px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-card);
-            backdrop-filter: blur(20px);
-            border-radius: 28px;
-            display: flex;
-            align-items: flex-end;
-            justify-content: center;
-            overflow: hidden;
-            position: relative;
-            padding: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
-        }}
-
-        .character-img {{
-            width: 100%;
-            max-height: 800px;
-            object-fit: contain;
-            filter: drop-shadow(0px 0px 20px rgba(168, 85, 247, 0.4));
-            transition: transform 0.3s ease;
-        }}
-
-        .character-img:hover {{
-            transform: scale(1.02);
-        }}
-
-        @media(max-width: 1024px) {{
-            .layout-container {{ flex-direction: column; }}
-            .character-sidebar {{ width: 100%; height: 400px; }}
-        }}
-
-        .header {{
+        .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -485,19 +462,11 @@ HTML = f"""<!DOCTYPE html>
             margin-bottom: 28px;
             flex-wrap: wrap;
             gap: 16px;
-        }}
-        .logo-wrap {{ display: flex; align-items: center; gap: 14px; }}
-        
-        .header-logo-img {{
-            width: 52px;
-            height: 52px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 2px solid var(--accent-pink);
-            box-shadow: 0 0 15px var(--accent-glow);
-        }}
+        }
+        .logo-wrap { display: flex; align-items: center; gap: 14px; }
 
-        .logo-text {{
+        /* НАДУВНОЙ ШРИФТ ДЛЯ LOGO */
+        .logo-text {
             font-family: 'Paytone One', 'Rubik Puddles', cursive, sans-serif;
             font-size: 38px;
             font-weight: 900;
@@ -508,59 +477,59 @@ HTML = f"""<!DOCTYPE html>
             text-shadow: 0 0 25px rgba(217, 70, 239, 0.6);
             transform: skew(-4deg);
             display: inline-block;
-        }}
-        .badge-pro {{
+        }
+        .badge-pro {
             font-size: 11px; font-weight: 800;
             background: rgba(168, 85, 247, 0.15);
             color: var(--accent-pink);
             padding: 4px 12px; border-radius: 20px;
             border: 1px solid var(--border-card);
             letter-spacing: 1.5px;
-        }}
+        }
 
-        .stats-bar {{ display: flex; gap: 12px; flex-wrap: wrap; }}
-        .stat-card {{
+        .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; }
+        .stat-card {
             background: var(--input-bg);
             border: 1px solid var(--border-card);
             padding: 8px 16px; border-radius: 16px;
             display: flex; flex-direction: column; align-items: center; min-width: 90px;
-        }}
-        .stat-val {{ font-size: 16px; font-weight: 800; color: var(--accent-pink); text-shadow: 0 0 10px var(--accent-glow); }}
-        .stat-lbl {{ font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }}
+        }
+        .stat-val { font-size: 16px; font-weight: 800; color: var(--accent-pink); text-shadow: 0 0 10px var(--accent-glow); }
+        .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
 
-        .tabs {{
+        .tabs {
             display: flex; gap: 12px; margin-bottom: 32px;
             background: var(--input-bg);
             padding: 8px; border-radius: 22px;
             border: 1px solid var(--border-card);
             width: fit-content; flex-wrap: wrap;
             box-shadow: 0 8px 30px rgba(0,0,0,0.25);
-        }}
-        .tab {{
+        }
+        .tab {
             padding: 14px 32px; border-radius: 16px;
             color: var(--text-muted); cursor: pointer;
             font-size: 15px; font-weight: 700;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             border: 1px solid transparent; background: transparent;
             display: flex; align-items: center; gap: 8px;
-        }}
-        .tab:hover {{
+        }
+        .tab:hover {
             color: var(--text-main);
             background: rgba(168, 85, 247, 0.1);
             border-color: rgba(168, 85, 247, 0.2);
             transform: translateY(-1px);
-        }}
-        .tab.active {{
+        }
+        .tab.active {
             background: var(--gradient-btn);
             color: #fff;
             border-color: rgba(255, 255, 255, 0.2);
             box-shadow: 0 6px 25px var(--accent-glow), 0 0 15px rgba(217, 70, 239, 0.4);
             transform: translateY(-1px);
-        }}
-        .tab-content {{ display: none; }}
-        .tab-content.active {{ display: block; }}
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
 
-        .card {{
+        .card {
             background: var(--bg-card);
             border: 1px solid var(--border-card);
             border-radius: 20px; padding: 24px;
@@ -568,84 +537,85 @@ HTML = f"""<!DOCTYPE html>
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
-        }}
-        .card:hover {{
+            backdrop-filter: blur(10px);
+        }
+        .card:hover {
             border-color: var(--border-hover);
             box-shadow: 0 10px 30px var(--accent-glow);
-        }}
-        .card h2, .card h3 {{
+        }
+        .card h2, .card h3 {
             font-size: 16px; font-weight: 800; margin-bottom: 16px;
             color: var(--text-main); display: flex; align-items: center; gap: 8px;
-        }}
+        }
 
-        .btn {{
+        .btn {
             position: relative; overflow: hidden;
             padding: 12px 24px; border: none; border-radius: 14px;
             font-size: 13px; font-weight: 700; cursor: pointer;
             color: #fff; display: inline-flex; align-items: center;
             justify-content: center; gap: 8px; text-decoration: none;
             transition: all 0.25s; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }}
-        .btn-primary {{ background: var(--gradient-btn); }}
-        .btn-primary:hover {{ background: var(--gradient-btn-hover); box-shadow: 0 6px 25px var(--accent-glow); transform: translateY(-1px); }}
-        .btn-secondary {{ background: var(--input-bg); border: 1px solid var(--border-card); color: var(--text-muted); }}
-        .btn-secondary:hover {{ color: var(--text-main); border-color: var(--accent-purple); }}
-        .btn-danger {{ background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }}
-        .btn-danger:hover {{ background: rgba(239, 68, 68, 0.3); }}
-        .btn-sm {{ padding: 6px 14px; font-size: 11px; border-radius: 10px; }}
+        }
+        .btn-primary { background: var(--gradient-btn); }
+        .btn-primary:hover { background: var(--gradient-btn-hover); box-shadow: 0 6px 25px var(--accent-glow); transform: translateY(-1px); }
+        .btn-secondary { background: var(--input-bg); border: 1px solid var(--border-card); color: var(--text-muted); }
+        .btn-secondary:hover { color: var(--text-main); border-color: var(--accent-purple); }
+        .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
+        .btn-sm { padding: 6px 14px; font-size: 11px; border-radius: 10px; }
 
-        .fresher-mode-btn.active-mode {{
+        .fresher-mode-btn.active-mode {
             background: var(--gradient-btn) !important;
             color: #fff !important;
             border-color: var(--accent-pink) !important;
             box-shadow: 0 0 20px var(--accent-glow), 0 0 10px var(--accent-pink);
             transform: scale(1.03);
-        }}
+        }
 
-        textarea, input[type="number"], input[type="text"] {{
+        textarea, input[type="number"], input[type="text"] {
             width: 100%; padding: 14px;
             background: var(--input-bg);
             border: 1px solid var(--border-card);
             border-radius: 14px; color: var(--text-main);
             font-family: monospace; font-size: 12px;
             transition: border-color 0.2s;
-        }}
-        textarea:focus, input:focus {{ border-color: var(--accent-pink); box-shadow: 0 0 10px var(--accent-glow); }}
+        }
+        textarea:focus, input:focus { border-color: var(--accent-pink); box-shadow: 0 0 10px var(--accent-glow); }
 
-        .upload-area {{
+        .upload-area {
             min-height: 110px; border: 2px dashed var(--border-card);
             border-radius: 16px; background: var(--input-bg);
             display: flex; flex-direction: column; align-items: center;
             justify-content: center; cursor: pointer; transition: all 0.25s; text-align: center;
-        }}
-        .upload-area:hover, .upload-area.drag-over {{
+        }
+        .upload-area:hover, .upload-area.drag-over {
             border-color: var(--accent-pink); background: rgba(168, 85, 247, 0.08);
             box-shadow: 0 0 15px var(--accent-glow);
-        }}
+        }
 
-        .result-container {{
+        .result-container {
             margin-top: 16px;
             position: relative;
-        }}
-        .result-header {{
+        }
+        .result-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 6px;
-        }}
-        .result-title {{
+        }
+        .result-title {
             font-size: 12px;
             font-weight: 700;
             color: var(--text-muted);
-        }}
+        }
 
-        .action-btn-group {{
+        .action-btn-group {
             display: flex;
             gap: 6px;
             align-items: center;
-        }}
+        }
 
-        .btn-toggle-box {{
+        .btn-toggle-box {
             background: rgba(168, 85, 247, 0.15);
             border: 1px solid var(--border-card);
             color: var(--text-main);
@@ -655,13 +625,13 @@ HTML = f"""<!DOCTYPE html>
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-        }}
-        .btn-toggle-box:hover {{
+        }
+        .btn-toggle-box:hover {
             background: rgba(168, 85, 247, 0.3);
             border-color: var(--accent-pink);
-        }}
+        }
 
-        .btn-download-txt, .btn-download-zip {{
+        .btn-download-txt, .btn-download-zip {
             background: rgba(217, 70, 239, 0.15);
             border: 1px solid rgba(217, 70, 239, 0.3);
             color: var(--accent-pink);
@@ -671,208 +641,202 @@ HTML = f"""<!DOCTYPE html>
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-        }}
-        .btn-download-txt:hover, .btn-download-zip:hover {{
+        }
+        .btn-download-txt:hover, .btn-download-zip:hover {
             background: rgba(217, 70, 239, 0.3);
             box-shadow: 0 0 10px var(--accent-glow);
-        }}
+        }
 
-        .result-box {{
+        .result-box {
             background: var(--input-bg); border: 1px solid var(--border-card);
             border-radius: 14px; padding: 14px;
             max-height: 400px; overflow-y: auto; font-family: monospace;
             font-size: 12px; color: var(--text-main); white-space: pre-wrap; word-break: break-all;
             margin-top: 6px;
-        }}
+        }
 
-        .progress-bar {{
+        .progress-bar {
             margin-top: 12px; background: var(--input-bg);
             border-radius: 20px; height: 8px; overflow: hidden; border: 1px solid var(--border-card);
-        }}
-        .progress-fill {{ height: 100%; width: 0%; background: var(--gradient-btn); transition: width 0.3s ease; }}
+        }
+        .progress-fill { height: 100%; width: 0%; background: var(--gradient-btn); transition: width 0.3s ease; }
 
-        .checker-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
-        @media(max-width:900px){{ .checker-grid {{ grid-template-columns: 1fr; }} }}
+        .checker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media(max-width:900px){ .checker-grid { grid-template-columns: 1fr; } }
 
-        .theme-btn {{
+        .theme-btn {
             background: var(--input-bg); border: 1px solid var(--border-card);
             border-radius: 30px; padding: 8px 16px; cursor: pointer;
             font-size: 12px; color: var(--text-main); font-weight: 700; transition: all 0.2s;
-        }}
-        .theme-btn:hover {{ border-color: var(--accent-purple); }}
+        }
+        .theme-btn:hover { border-color: var(--accent-purple); }
 
-        .footer {{
+        .footer {
             text-align: center; padding-top: 20px; color: var(--text-muted);
             font-size: 12px; font-weight: 600; border-top: 1px solid var(--border-card); margin-top: 24px;
-        }}
+        }
         
-        .history-card {{
+        .history-card {
             background: var(--input-bg); border: 1px solid var(--border-card);
             border-radius: 16px; padding: 16px; margin-bottom: 14px;
-        }}
-        .history-header {{
+        }
+        .history-header {
             display: flex; justify-content: space-between; align-items: center;
             font-size: 13px; font-weight: 700; color: var(--accent-pink);
             flex-wrap: wrap; gap: 8px;
-        }}
-        .history-users {{
+        }
+        .history-users {
             font-size: 11px; color: var(--text-main); margin-top: 6px; font-weight: 600;
             display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-        }}
-        .avatar-img {{
+        }
+        .avatar-img {
             width: 32px; height: 32px; border-radius: 50%;
             border: 2px solid var(--accent-pink);
             background: #000; box-shadow: 0 0 10px var(--accent-glow);
-        }}
+        }
         
-        .avatars-list {{ display: flex; align-items: center; gap: 6px; margin-top: 6px; }}
+        .avatars-list { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
         
-        .tool-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }}
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
     </style>
 </head>
 <body>
+<!-- ПОЛНОЭКРАННАЯ КАРТИНКА НА ФОНЕ -->
+<div class="bg-custom-image"></div>
 <canvas id="particles-canvas"></canvas>
 <div class="bg-glow"></div>
 
-<div class="layout-container">
-    <div class="wrapper">
-        <!-- Шапка -->
-        <div class="header">
-            <div class="logo-wrap">
-                <img src="{GIRL_IMAGE_URL}" alt="Logo" class="header-logo-img" onerror="this.src='https://tr.rbxcdn.com/30day-avatar-headshot-placeholder'">
-                <div class="logo-text">KAI CHECKER</div>
-                <span class="badge-pro">PRO EDITION</span>
-            </div>
-            <div class="stats-bar">
-                <div class="stat-card"><span class="stat-val" id="statValid">0</span><span class="stat-lbl">Валид</span></div>
-                <div class="stat-card"><span class="stat-val" id="statRobux">0</span><span class="stat-lbl">Robux</span></div>
-                <div class="stat-card"><span class="stat-val" id="statPremium">0</span><span class="stat-lbl">Premium</span></div>
-            </div>
-            <button class="theme-btn" onclick="toggleTheme()">🌓 Тема</button>
+<div class="wrapper">
+    <!-- Шапка -->
+    <div class="header">
+        <div class="logo-wrap">
+            <div class="logo-text">KAI CHECKER</div>
+            <span class="badge-pro">PRO EDITION</span>
         </div>
-
-        <!-- Вкладки -->
-        <div class="tabs">
-            <button class="tab active" data-tab="checker">🔍 Чекер</button>
-            <button class="tab" data-tab="fresher">🔄 Фрешер</button>
-            <button class="tab" data-tab="history">📋 История</button>
-            <button class="tab" data-tab="tools">🧰 Инструменты</button>
+        <div class="stats-bar">
+            <div class="stat-card"><span class="stat-val" id="statValid">0</span><span class="stat-lbl">Валид</span></div>
+            <div class="stat-card"><span class="stat-val" id="statRobux">0</span><span class="stat-lbl">Robux</span></div>
+            <div class="stat-card"><span class="stat-val" id="statPremium">0</span><span class="stat-lbl">Premium</span></div>
         </div>
+        <button class="theme-btn" onclick="toggleTheme()">🌓 Тема</button>
+    </div>
 
-        <!-- ЧЕКЕР -->
-        <div class="tab-content active" id="tab-checker">
-            <div class="checker-grid">
-                <div class="card">
-                    <h2>🔍 Одиночная проверка</h2>
-                    <textarea id="singleCookie" placeholder="Вставьте ОДИН .ROBLOSECURITY кук..." rows="5"></textarea>
-                    <div style="margin-top:12px;">
-                        <button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">Проверить кук</button>
-                    </div>
-                    <div class="result-container" id="singleContainer" style="display:none;">
-                        <div class="result-header">
-                            <span class="result-title">РЕЗУЛЬТАТ:</span>
-                            <div class="action-btn-group">
-                                <button class="btn-download-txt" onclick="downloadTxtFromBox('singleResult', 'single_report.txt')">📥 Скачать TXT</button>
-                                <button class="btn-toggle-box" id="btnToggle_singleResult" onclick="toggleBox('singleResult')">▼ Свернуть</button>
-                            </div>
-                        </div>
-                        <div class="result-box" id="singleResult"></div>
-                    </div>
-                </div>
-                <div class="card">
-                    <h2>📦 Массовая проверка (30 Потоков)</h2>
-                    <div class="upload-area" id="massDropArea" onclick="document.getElementById('massFile').click()">
-                        <p style="font-weight:700;">📁 Перетащите TXT файл с куками</p>
-                        <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">или нажмите для выбора</p>
-                    </div>
-                    <input type="file" id="massFile" accept=".txt" style="display:none;">
-                    <div id="massFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px;font-weight:600;"></div>
-                    <div style="margin-top:12px;">
-                        <button class="btn btn-primary" onclick="runMassCheck()" style="width:100%;">🚀 Запустить массовый чек</button>
-                    </div>
-                    <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
-                    
-                    <div class="result-container" id="massContainer" style="display:none;">
-                        <div class="result-header">
-                            <span class="result-title">РЕЗУЛЬТАТЫ ЧЕКА:</span>
-                            <div class="action-btn-group">
-                                <button class="btn-download-zip" onclick="downloadMassZip()">📦 Скачать ZIP (Все аккаунты)</button>
-                                <button class="btn-download-txt" onclick="downloadTxtFromBox('massResult', 'mass_report.txt')">📥 Скачать TXT</button>
-                                <button class="btn-toggle-box" id="btnToggle_massResult" onclick="toggleBox('massResult')">▼ Свернуть</button>
-                            </div>
-                        </div>
-                        <div class="result-box" id="massResult"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <!-- Вкладки -->
+    <div class="tabs">
+        <button class="tab active" data-tab="checker">🔍 Чекер</button>
+        <button class="tab" data-tab="fresher">🔄 Фрешер</button>
+        <button class="tab" data-tab="history">📋 История</button>
+        <button class="tab" data-tab="tools">🧰 Инструменты</button>
+    </div>
 
-        <!-- ФРЕШЕР -->
-        <div class="tab-content" id="tab-fresher">
+    <!-- ЧЕКЕР -->
+    <div class="tab-content active" id="tab-checker">
+        <div class="checker-grid">
             <div class="card">
-                <h2>🔄 Обновление сессий (20 Потоков)</h2>
-                <div style="display:flex;gap:12px;margin-bottom:14px;align-items:center;">
-                    <span style="font-size:13px;font-weight:700;color:var(--text-muted);">Режим работы:</span>
-                    <button class="btn btn-secondary btn-sm fresher-mode-btn active-mode" id="btnDup" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
-                    <button class="btn btn-secondary btn-sm fresher-mode-btn" id="btnKill" onclick="setFresherMode('kill')">💀 Инвалидировать старую</button>
+                <h2>🔍 Одиночная проверка</h2>
+                <textarea id="singleCookie" placeholder="Вставьте ОДИН .ROBLOSECURITY кук..." rows="5"></textarea>
+                <div style="margin-top:12px;">
+                    <button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">Проверить кук</button>
                 </div>
-                <input type="hidden" id="fresherMode" value="duplicate">
-                <textarea id="fresherCookies" placeholder="Вставьте куки списком..." rows="6"></textarea>
-                <div style="margin-top:12px;display:flex;gap:10px;">
-                    <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить куки</button>
-                </div>
-                
-                <div class="result-container" id="fresherContainer" style="display:none;">
+                <div class="result-container" id="singleContainer" style="display:none;">
                     <div class="result-header">
-                        <span class="result-title">ОБНОВЛЕННЫЕ КУКИ:</span>
+                        <span class="result-title">РЕЗУЛЬТАТ:</span>
                         <div class="action-btn-group">
-                            <button class="btn-download-txt" onclick="downloadTxtFromBox('fresherResult', 'refreshed_cookies.txt')">📥 Скачать TXT</button>
-                            <button class="btn-toggle-box" id="btnToggle_fresherResult" onclick="toggleBox('fresherResult')">▼ Свернуть</button>
+                            <button class="btn-download-txt" onclick="downloadTxtFromBox('singleResult', 'single_report.txt')">📥 Скачать TXT</button>
+                            <button class="btn-toggle-box" id="btnToggle_singleResult" onclick="toggleBox('singleResult')">▼ Свернуть</button>
                         </div>
                     </div>
-                    <div class="result-box" id="fresherResult"></div>
+                    <div class="result-box" id="singleResult"></div>
                 </div>
-            </div>
-        </div>
-
-        <!-- ИСТОРИЯ -->
-        <div class="tab-content" id="tab-history">
-            <div class="card">
-                <h2>📋 История Чекера (Лут и Отчеты) <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
-                <div id="checkerHistoryList">Загрузка истории...</div>
             </div>
             <div class="card">
-                <h2>🔄 История Фрешера (Новые Куки) <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
-                <div id="fresherHistoryList">Загрузка истории...</div>
+                <h2>📦 Массовая проверка (30 Потоков)</h2>
+                <div class="upload-area" id="massDropArea" onclick="document.getElementById('massFile').click()">
+                    <p style="font-weight:700;">📁 Перетащите TXT файл с куками</p>
+                    <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">или нажмите для выбора</p>
+                </div>
+                <input type="file" id="massFile" accept=".txt" style="display:none;">
+                <div id="massFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px;font-weight:600;"></div>
+                <div style="margin-top:12px;">
+                    <button class="btn btn-primary" onclick="runMassCheck()" style="width:100%;">🚀 Запустить массовый чек</button>
+                </div>
+                <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
+                
+                <div class="result-container" id="massContainer" style="display:none;">
+                    <div class="result-header">
+                        <span class="result-title">РЕЗУЛЬТАТЫ ЧЕКА:</span>
+                        <div class="action-btn-group">
+                            <button class="btn-download-zip" onclick="downloadMassZip()">📦 Скачать ZIP (Все аккаунты)</button>
+                            <button class="btn-download-txt" onclick="downloadTxtFromBox('massResult', 'mass_report.txt')">📥 Скачать TXT</button>
+                            <button class="btn-toggle-box" id="btnToggle_massResult" onclick="toggleBox('massResult')">▼ Свернуть</button>
+                        </div>
+                    </div>
+                    <div class="result-box" id="massResult"></div>
+                </div>
             </div>
         </div>
+    </div>
 
-        <!-- ИНСТРУМЕНТЫ -->
-        <div class="tab-content" id="tab-tools">
-            <div class="tool-grid">
-                <div class="card">
-                    <h3>🔗 Слияние TXT</h3>
-                    <input type="file" id="mergeFiles" accept=".txt" multiple style="margin-top:8px;">
-                    <button class="btn btn-primary btn-sm" onclick="mergeCookies()" style="margin-top:10px;width:100%;">Объединить</button>
-                    <div class="result-box" id="mergeResult" style="max-height:80px;margin-top:10px;"></div>
+    <!-- ФРЕШЕР -->
+    <div class="tab-content" id="tab-fresher">
+        <div class="card">
+            <h2>🔄 Обновление сессий (20 Потоков)</h2>
+            <div style="display:flex;gap:12px;margin-bottom:14px;align-items:center;">
+                <span style="font-size:13px;font-weight:700;color:var(--text-muted);">Режим работы:</span>
+                <button class="btn btn-secondary btn-sm fresher-mode-btn active-mode" id="btnDup" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
+                <button class="btn btn-secondary btn-sm fresher-mode-btn" id="btnKill" onclick="setFresherMode('kill')">💀 Инвалидировать старую</button>
+            </div>
+            <input type="hidden" id="fresherMode" value="duplicate">
+            <textarea id="fresherCookies" placeholder="Вставьте куки списком..." rows="6"></textarea>
+            <div style="margin-top:12px;display:flex;gap:10px;">
+                <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить куки</button>
+            </div>
+            
+            <div class="result-container" id="fresherContainer" style="display:none;">
+                <div class="result-header">
+                    <span class="result-title">ОБНОВЛЕННЫЕ КУКИ:</span>
+                    <div class="action-btn-group">
+                        <button class="btn-download-txt" onclick="downloadTxtFromBox('fresherResult', 'refreshed_cookies.txt')">📥 Скачать TXT</button>
+                        <button class="btn-toggle-box" id="btnToggle_fresherResult" onclick="toggleBox('fresherResult')">▼ Свернуть</button>
+                    </div>
                 </div>
-                <div class="card">
-                    <h3>✂️ Очистка от дубликатов</h3>
-                    <textarea id="cleanInput" placeholder="Куки..." rows="3"></textarea>
-                    <button class="btn btn-primary btn-sm" onclick="cleanCookies()" style="margin-top:10px;width:100%;">Удалить дубли</button>
-                    <div class="result-box" id="cleanResult" style="max-height:80px;margin-top:10px;"></div>
-                </div>
+                <div class="result-box" id="fresherResult"></div>
             </div>
         </div>
-
-        <!-- Подвал -->
-        <div class="footer">KAI CHECKER © ALL RIGHTS RESERVED</div>
     </div>
 
-    <!-- Боковая панель персонажа -->
-    <div class="character-sidebar">
-        <img src="{GIRL_IMAGE_URL}" alt="Kai Character" class="character-img">
+    <!-- ИСТОРИЯ -->
+    <div class="tab-content" id="tab-history">
+        <div class="card">
+            <h2>📋 История Чекера (Лут и Отчеты) <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
+            <div id="checkerHistoryList">Загрузка истории...</div>
+        </div>
+        <div class="card">
+            <h2>🔄 История Фрешера (Новые Куки) <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
+            <div id="fresherHistoryList">Загрузка истории...</div>
+        </div>
     </div>
+
+    <!-- ИНСТРУМЕНТЫ -->
+    <div class="tab-content" id="tab-tools">
+        <div class="tool-grid">
+            <div class="card">
+                <h3>🔗 Слияние TXT</h3>
+                <input type="file" id="mergeFiles" accept=".txt" multiple style="margin-top:8px;">
+                <button class="btn btn-primary btn-sm" onclick="mergeCookies()" style="margin-top:10px;width:100%;">Объединить</button>
+                <div class="result-box" id="mergeResult" style="max-height:80px;margin-top:10px;"></div>
+            </div>
+            <div class="card">
+                <h3>✂️ Очистка от дубликатов</h3>
+                <textarea id="cleanInput" placeholder="Куки..." rows="3"></textarea>
+                <button class="btn btn-primary btn-sm" onclick="cleanCookies()" style="margin-top:10px;width:100%;">Удалить дубли</button>
+                <div class="result-box" id="cleanResult" style="max-height:80px;margin-top:10px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Подвал -->
+    <div class="footer">KAI CHECKER © ALL RIGHTS RESERVED</div>
 </div>
 
 <script>
@@ -880,97 +844,97 @@ HTML = f"""<!DOCTYPE html>
 const canvas = document.getElementById('particles-canvas');
 const ctx = canvas.getContext('2d');
 let particles = [];
-function resizeCanvas() {{ canvas.width = window.innerWidth; canvas.height = window.innerHeight; }}
+function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-for(let i=0; i<40; i++) {{
-    particles.push({{
+for(let i=0; i<40; i++) {
+    particles.push({
         x: Math.random() * canvas.width, y: Math.random() * canvas.height,
         r: Math.random() * 2 + 1, dx: (Math.random() - 0.5) * 0.5, dy: (Math.random() - 0.5) * 0.5,
         alpha: Math.random() * 0.5 + 0.2
-    }});
-}}
-function animateParticles() {{
+    });
+}
+function animateParticles() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    particles.forEach(p => {{
+    particles.forEach(p => {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-        ctx.fillStyle = `rgba(217, 70, 239, ${{p.alpha}})`;
+        ctx.fillStyle = `rgba(217, 70, 239, ${p.alpha})`;
         ctx.shadowBlur = 10; ctx.shadowColor = '#a855f7'; ctx.fill();
         p.x += p.dx; p.y += p.dy;
         if(p.x<0 || p.x>canvas.width) p.dx *= -1;
         if(p.y<0 || p.y>canvas.height) p.dy *= -1;
-    }});
+    });
     requestAnimationFrame(animateParticles);
-}}
+}
 animateParticles();
 
-// --- ВЛАДКИ ---
-function activateTab(tabName) {{
+// --- ВЛАДКИИ ---
+function activateTab(tabName) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    const targetBtn = document.querySelector(`.tab[data-tab="${{tabName}}"]`);
+    const targetBtn = document.querySelector(`.tab[data-tab="${tabName}"]`);
     const targetContent = document.getElementById('tab-' + tabName);
-    if(targetBtn && targetContent) {{
+    if(targetBtn && targetContent) {
         targetBtn.classList.add('active'); targetContent.classList.add('active');
         localStorage.setItem('kai_active_tab', tabName);
-        if(tabName === 'history') {{ loadCheckerHistory(); loadFresherHistory(); }}
-    }}
-}}
-document.querySelectorAll('.tab').forEach(tab => {{
-    tab.addEventListener('click', function() {{ activateTab(this.dataset.tab); }});
-}});
-window.addEventListener('DOMContentLoaded', () => {{
+        if(tabName === 'history') { loadCheckerHistory(); loadFresherHistory(); }
+    }
+}
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', function() { activateTab(this.dataset.tab); });
+});
+window.addEventListener('DOMContentLoaded', () => {
     activateTab(localStorage.getItem('kai_active_tab') || 'checker');
-}});
+});
 
-function toggleTheme() {{
+function toggleTheme() {
     const html = document.documentElement;
     html.setAttribute('data-theme', html.getAttribute('data-theme')==='dark'?'light':'dark');
-}}
+}
 
-function toggleBox(boxId) {{
+function toggleBox(boxId) {
     const box = document.getElementById(boxId);
     const btn = document.getElementById('btnToggle_' + boxId);
     if (!box) return;
-    if (box.style.display === 'none') {{
+    if (box.style.display === 'none') {
         box.style.display = 'block';
         if (btn) btn.textContent = '▼ Свернуть';
-    }} else {{
+    } else {
         box.style.display = 'none';
         if (btn) btn.textContent = '▶ Развернуть';
-    }}
-}}
+    }
+}
 
-function downloadTxtFromBox(boxId, defaultFilename = 'report.txt') {{
+function downloadTxtFromBox(boxId, defaultFilename = 'report.txt') {
     const box = document.getElementById(boxId);
     if (!box || !box.textContent.trim()) return alert('Нет данных для скачивания!');
-    const blob = new Blob([box.textContent], {{ type: 'text/plain;charset=utf-8' }});
+    const blob = new Blob([box.textContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = defaultFilename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-}}
+}
 
 // --- ДРАГ И ДРОП ---
 const dropArea = document.getElementById('massDropArea');
 ['dragenter', 'dragover'].forEach(e => dropArea.addEventListener(e, prev => prev.preventDefault()));
-dropArea.addEventListener('drop', e => {{
+dropArea.addEventListener('drop', e => {
     e.preventDefault();
-    if(e.dataTransfer.files.length) {{
+    if(e.dataTransfer.files.length) {
         document.getElementById('massFile').files = e.dataTransfer.files;
         document.getElementById('massFileInfo').textContent = 'Файл: ' + e.dataTransfer.files[0].name;
-    }}
-}});
-document.getElementById('massFile').addEventListener('change', function() {{
+    }
+});
+document.getElementById('massFile').addEventListener('change', function() {
     if(this.files.length) document.getElementById('massFileInfo').textContent = 'Файл: ' + this.files[0].name;
-}});
+});
 
 // --- API ЛОГИКА ---
 let lastMassReports = [];
 
-async function runSingleCheck() {{
+async function runSingleCheck() {
     const cookie = document.getElementById('singleCookie').value.trim();
     if(!cookie) return alert('Вставьте кук!');
     document.getElementById('singleContainer').style.display = 'block';
@@ -978,12 +942,12 @@ async function runSingleCheck() {{
     document.getElementById('btnToggle_singleResult').textContent = '▼ Свернуть';
     document.getElementById('singleResult').textContent = '⏳ Проверка...';
     
-    const res = await fetch('/api/single-check', {{ method: 'POST', headers: {{'Content-Type':'application/json'}}, body: JSON.stringify({{cookie}}) }});
+    const res = await fetch('/api/single-check', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookie}) });
     const data = await res.json();
     document.getElementById('singleResult').textContent = data.report || 'Ошибка';
-}}
+}
 
-async function runMassCheck() {{
+async function runMassCheck() {
     const file = document.getElementById('massFile').files[0];
     if(!file) return alert('Выберите TXT файл!');
     const fd = new FormData(); fd.append('file', file);
@@ -993,43 +957,43 @@ async function runMassCheck() {{
     document.getElementById('massProgress').style.width = '50%';
     document.getElementById('massResult').textContent = '⏳ Массовая проверка... (RAP, Playtime, Avatars, Full Analysis)';
     
-    const res = await fetch('/api/mass-check', {{ method: 'POST', body: fd }});
+    const res = await fetch('/api/mass-check', { method: 'POST', body: fd });
     const data = await res.json();
     document.getElementById('massProgress').style.width = '100%';
     setTimeout(() => document.getElementById('massProgress').style.width = '0%', 1000);
     
-    if(data.success) {{
+    if(data.success) {
         lastMassReports = data.full_reports || [];
         document.getElementById('statValid').textContent = data.valid_count;
         document.getElementById('statRobux').textContent = data.total_robux.toLocaleString();
         document.getElementById('statPremium').textContent = data.premium_count;
         document.getElementById('massResult').textContent = data.results.join('\n\n');
-    }}
-}}
+    }
+}
 
-async function downloadMassZip() {{
+async function downloadMassZip() {
     if (!lastMassReports.length) return alert('Нет готовых отчетов!');
-    const res = await fetch('/api/download-zip', {{
+    const res = await fetch('/api/download-zip', {
         method: 'POST',
-        headers: {{'Content-Type':'application/json'}},
-        body: JSON.stringify({{reports: lastMassReports}})
-    }});
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({reports: lastMassReports})
+    });
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = 'accounts_reports.zip';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-}}
+}
 
-function setFresherMode(m) {{
+function setFresherMode(m) {
     document.getElementById('fresherMode').value = m;
     document.getElementById('btnDup').classList.remove('active-mode');
     document.getElementById('btnKill').classList.remove('active-mode');
     if(m === 'duplicate') document.getElementById('btnDup').classList.add('active-mode');
     else document.getElementById('btnKill').classList.add('active-mode');
-}}
+}
 
-async function runFresher() {{
+async function runFresher() {
     const cookies = document.getElementById('fresherCookies').value.trim();
     const mode = document.getElementById('fresherMode').value;
     if(!cookies) return alert('Вставьте куки!');
@@ -1038,99 +1002,99 @@ async function runFresher() {{
     document.getElementById('btnToggle_fresherResult').textContent = '▼ Свернуть';
     document.getElementById('fresherResult').textContent = '⏳ Обновление...';
     
-    const res = await fetch('/api/fresher', {{ method: 'POST', headers: {{'Content-Type':'application/json'}}, body: JSON.stringify({{cookies, mode}}) }});
+    const res = await fetch('/api/fresher', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookies, mode}) });
     const data = await res.json();
     document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
-}}
+}
 
 // --- ИСТОРИЯ С АВАТАРКАМИ ---
-async function loadCheckerHistory() {{
+async function loadCheckerHistory() {
     const res = await fetch('/api/history/checker');
     const data = await res.json();
     let html = '';
-    data.history.slice().reverse().forEach((i, idx) => {{
+    data.history.slice().reverse().forEach((i, idx) => {
         const resultsText = i.results ? i.results.join('\n\n') : 'Нет результатов';
         const usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
-        const boxId = `chk_hist_${{idx}}`;
-        const fileName = `checker_history_${{i.timestamp.replace(/[:. ]/g, '_')}}.txt`;
+        const boxId = `chk_hist_${idx}`;
+        const fileName = `checker_history_${i.timestamp.replace(/[:. ]/g, '_')}.txt`;
         
         let avatarsHtml = '';
-        if(i.full_reports && i.full_reports.length) {{
+        if(i.full_reports && i.full_reports.length) {
             avatarsHtml = '<div class="avatars-list">';
-            i.full_reports.forEach(fr => {{
-                if(fr.avatar) avatarsHtml += `<img src="${{fr.avatar}}" class="avatar-img" title="${{fr.username}}">`;
-            }});
+            i.full_reports.forEach(fr => {
+                if(fr.avatar) avatarsHtml += `<img src="${fr.avatar}" class="avatar-img" title="${fr.username}">`;
+            });
             avatarsHtml += '</div>';
-        }}
+        }
 
         html += `
         <div class="history-card">
             <div class="history-header">
-                <span>🕒 ${{i.timestamp}} (${{i.type === 'single' ? 'Одиночная' : 'Массовая'}}) — Валид: ${{i.valid}} / ${{i.total}}</span>
+                <span>🕒 ${i.timestamp} (${i.type === 'single' ? 'Одиночная' : 'Массовая'}) — Валид: ${i.valid} / ${i.total}</span>
                 <div class="action-btn-group">
-                    <button class="btn-download-txt" onclick="downloadTxtFromBox('${{boxId}}', '${{fileName}}')">📥 Скачать TXT</button>
-                    <button class="btn-toggle-box" id="btnToggle_${{boxId}}" onclick="toggleBox('${{boxId}}')">▶ Развернуть</button>
+                    <button class="btn-download-txt" onclick="downloadTxtFromBox('${boxId}', '${fileName}')">📥 Скачать TXT</button>
+                    <button class="btn-toggle-box" id="btnToggle_${boxId}" onclick="toggleBox('${boxId}')">▶ Развернуть</button>
                 </div>
             </div>
             <div class="history-users">
-                <span>👤 Аккаунты: ${{usernames}}</span>
+                <span>👤 Аккаунты: ${usernames}</span>
             </div>
-            ${{avatarsHtml}}
-            <div class="result-box" id="${{boxId}}" style="display:none;">${{resultsText}}</div>
+            ${avatarsHtml}
+            <div class="result-box" id="${boxId}" style="display:none;">${resultsText}</div>
         </div>`;
-    }});
+    });
     document.getElementById('checkerHistoryList').innerHTML = html || 'История чекера пуста';
-}}
+}
 
-async function loadFresherHistory() {{
+async function loadFresherHistory() {
     const res = await fetch('/api/history/fresher');
     const data = await res.json();
     let html = '';
-    data.history.slice().reverse().forEach((i, idx) => {{
+    data.history.slice().reverse().forEach((i, idx) => {
         const cookiesText = i.cookies ? i.cookies.join('\n') : 'Нет кук';
         const usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
-        const boxId = `frs_hist_${{idx}}`;
+        const boxId = `frs_hist_${idx}`;
         const modeTitle = i.mode === 'kill' ? '💀 Убийство куки' : '♻️ Дублирование';
-        const fileName = `fresher_history_${{i.timestamp.replace(/[:. ]/g, '_')}}.txt`;
+        const fileName = `fresher_history_${i.timestamp.replace(/[:. ]/g, '_')}.txt`;
         html += `
         <div class="history-card">
             <div class="history-header">
-                <span>🕒 ${{i.timestamp}} (Режим: ${{modeTitle}}) — Обновлено: ${{i.refreshed_count}} шт.</span>
+                <span>🕒 ${i.timestamp} (Режим: ${modeTitle}) — Обновлено: ${i.refreshed_count} шт.</span>
                 <div class="action-btn-group">
-                    <button class="btn-download-txt" onclick="downloadTxtFromBox('${{boxId}}', '${{fileName}}')">📥 Скачать TXT</button>
-                    <button class="btn-toggle-box" id="btnToggle_${{boxId}}" onclick="toggleBox('${{boxId}}')">▶ Развернуть</button>
+                    <button class="btn-download-txt" onclick="downloadTxtFromBox('${boxId}', '${fileName}')">📥 Скачать TXT</button>
+                    <button class="btn-toggle-box" id="btnToggle_${boxId}" onclick="toggleBox('${boxId}')">▶ Развернуть</button>
                 </div>
             </div>
-            <div class="history-users">👤 Аккаунты: ${{usernames}}</div>
-            <div class="result-box" id="${{boxId}}" style="display:none;">${{cookiesText}}</div>
+            <div class="history-users">👤 Аккаунты: ${usernames}</div>
+            <div class="result-box" id="${boxId}" style="display:none;">${cookiesText}</div>
         </div>`;
-    }});
+    });
     document.getElementById('fresherHistoryList').innerHTML = html || 'История фрешера пуста';
-}}
+}
 
-async function clearCheckerHistory() {{
-    await fetch('/api/history/checker/clear', {{method:'POST'}}); loadCheckerHistory();
-}}
+async function clearCheckerHistory() {
+    await fetch('/api/history/checker/clear', {method:'POST'}); loadCheckerHistory();
+}
 
-async function clearFresherHistory() {{
-    await fetch('/api/history/fresher/clear', {{method:'POST'}}); loadFresherHistory();
-}}
+async function clearFresherHistory() {
+    await fetch('/api/history/fresher/clear', {method:'POST'}); loadFresherHistory();
+}
 
-async function mergeCookies() {{
+async function mergeCookies() {
     const files = document.getElementById('mergeFiles').files;
     if(files.length < 2) return alert('Выберите от 2 файлов');
     const fd = new FormData(); Array.from(files).forEach(f => fd.append('files', f));
-    const res = await fetch('/api/merge-cookies', {{method:'POST', body:fd}});
+    const res = await fetch('/api/merge-cookies', {method:'POST', body:fd});
     const data = await res.json();
-    document.getElementById('mergeResult').innerHTML = `<a href="${{data.download_url}}" style="color:var(--accent-pink)">Скачать объединенный файл</a>`;
-}}
+    document.getElementById('mergeResult').innerHTML = `<a href="${data.download_url}" style="color:var(--accent-pink)">Скачать объединенный файл</a>`;
+}
 
-async function cleanCookies() {{
+async function cleanCookies() {
     const content = document.getElementById('cleanInput').value;
-    const res = await fetch('/api/clean-cookies', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{content, action:'deduplicate'}})}});
+    const res = await fetch('/api/clean-cookies', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content, action:'deduplicate'})});
     const data = await res.json();
-    document.getElementById('cleanResult').innerHTML = `<a href="${{data.download_url}}" style="color:var(--accent-pink)">Скачать без дубликатов</a>`;
-}}
+    document.getElementById('cleanResult').innerHTML = `<a href="${data.download_url}" style="color:var(--accent-pink)">Скачать без дубликатов</a>`;
+}
 </script>
 </body>
 </html>"""
