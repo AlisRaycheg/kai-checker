@@ -490,9 +490,8 @@ HTML = r"""<!DOCTYPE html>
         .btn-secondary:hover { color: var(--text-main); border-color: var(--accent-purple); }
         .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
         .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
-        .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 10px; }
+        .btn-sm { padding: 6px 14px; font-size: 11px; border-radius: 10px; }
 
-        /* Стиль подсвеченной активной кнопки фрешера */
         .fresher-mode-btn.active-mode {
             background: var(--gradient-btn) !important;
             color: #fff !important;
@@ -546,18 +545,43 @@ HTML = r"""<!DOCTYPE html>
             font-weight: 700;
             color: var(--text-muted);
         }
-        .btn-close-box {
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #fca5a5;
-            padding: 3px 10px;
+
+        .action-btn-group {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .btn-toggle-box {
+            background: rgba(168, 85, 247, 0.15);
+            border: 1px solid var(--border-card);
+            color: var(--text-main);
+            padding: 4px 12px;
             border-radius: 8px;
             font-size: 11px;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
         }
-        .btn-close-box:hover {
-            background: rgba(239, 68, 68, 0.3);
+        .btn-toggle-box:hover {
+            background: rgba(168, 85, 247, 0.3);
+            border-color: var(--accent-pink);
+        }
+
+        .btn-download-txt {
+            background: rgba(217, 70, 239, 0.15);
+            border: 1px solid rgba(217, 70, 239, 0.3);
+            color: var(--accent-pink);
+            padding: 4px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-download-txt:hover {
+            background: rgba(217, 70, 239, 0.3);
+            box-shadow: 0 0 10px var(--accent-glow);
         }
 
         .result-box {
@@ -565,6 +589,7 @@ HTML = r"""<!DOCTYPE html>
             border-radius: 14px; padding: 14px;
             max-height: 400px; overflow-y: auto; font-family: monospace;
             font-size: 12px; color: var(--text-main); white-space: pre-wrap; word-break: break-all;
+            margin-top: 6px;
         }
 
         .progress-bar {
@@ -594,7 +619,8 @@ HTML = r"""<!DOCTYPE html>
         }
         .history-header {
             display: flex; justify-content: space-between; align-items: center;
-            font-size: 13px; font-weight: 700; margin-bottom: 10px; color: var(--accent-pink);
+            font-size: 13px; font-weight: 700; color: var(--accent-pink);
+            flex-wrap: wrap; gap: 8px;
         }
         
         .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
@@ -639,7 +665,10 @@ HTML = r"""<!DOCTYPE html>
                 <div class="result-container" id="singleContainer" style="display:none;">
                     <div class="result-header">
                         <span class="result-title">РЕЗУЛЬТАТ:</span>
-                        <button class="btn-close-box" onclick="closeBox('singleContainer')">✖ Свернуть</button>
+                        <div class="action-btn-group">
+                            <button class="btn-download-txt" onclick="downloadTxtFromBox('singleResult', 'single_report.txt')">📥 Скачать TXT</button>
+                            <button class="btn-toggle-box" id="btnToggle_singleResult" onclick="toggleBox('singleResult')">▼ Свернуть</button>
+                        </div>
                     </div>
                     <div class="result-box" id="singleResult"></div>
                 </div>
@@ -660,7 +689,10 @@ HTML = r"""<!DOCTYPE html>
                 <div class="result-container" id="massContainer" style="display:none;">
                     <div class="result-header">
                         <span class="result-title">РЕЗУЛЬТАТЫ ЧЕКА:</span>
-                        <button class="btn-close-box" onclick="closeBox('massContainer')">✖ Свернуть</button>
+                        <div class="action-btn-group">
+                            <button class="btn-download-txt" onclick="downloadTxtFromBox('massResult', 'mass_report.txt')">📥 Скачать TXT</button>
+                            <button class="btn-toggle-box" id="btnToggle_massResult" onclick="toggleBox('massResult')">▼ Свернуть</button>
+                        </div>
                     </div>
                     <div class="result-box" id="massResult"></div>
                 </div>
@@ -686,7 +718,10 @@ HTML = r"""<!DOCTYPE html>
             <div class="result-container" id="fresherContainer" style="display:none;">
                 <div class="result-header">
                     <span class="result-title">ОБНОВЛЕННЫЕ КУКИ:</span>
-                    <button class="btn-close-box" onclick="closeBox('fresherContainer')">✖ Свернуть</button>
+                    <div class="action-btn-group">
+                        <button class="btn-download-txt" onclick="downloadTxtFromBox('fresherResult', 'refreshed_cookies.txt')">📥 Скачать TXT</button>
+                        <button class="btn-toggle-box" id="btnToggle_fresherResult" onclick="toggleBox('fresherResult')">▼ Свернуть</button>
+                    </div>
                 </div>
                 <div class="result-box" id="fresherResult"></div>
             </div>
@@ -781,7 +816,7 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// --- ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК И СОХРАНЕНИЕ ВЫБРАННОЙ ---
+// --- ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК С СОХРАНЕНИЕМ СОСТОЯНИЯ ---
 function activateTab(tabName) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -803,7 +838,6 @@ document.querySelectorAll('.tab').forEach(tab => {
     });
 });
 
-// Загрузка сохраненной вкладки при перезагрузке
 window.addEventListener('DOMContentLoaded', () => {
     const savedTab = localStorage.getItem('kai_active_tab') || 'checker';
     activateTab(savedTab);
@@ -814,9 +848,35 @@ function toggleTheme() {
     html.setAttribute('data-theme', html.getAttribute('data-theme')==='dark'?'light':'dark');
 }
 
-// Вспомогательная функция сворачивания результатов
-function closeBox(id) {
-    document.getElementById(id).style.display = 'none';
+// --- УНИВЕРСАЛЬНОЕ СВОРАЧИВАНИЕ / РАЗВОРАЧИВАНИЕ ---
+function toggleBox(boxId) {
+    const box = document.getElementById(boxId);
+    const btn = document.getElementById('btnToggle_' + boxId);
+    if (!box) return;
+    
+    if (box.style.display === 'none') {
+        box.style.display = 'block';
+        if (btn) btn.textContent = '▼ Свернуть';
+    } else {
+        box.style.display = 'none';
+        if (btn) btn.textContent = '▶ Развернуть';
+    }
+}
+
+// --- СКАЧИВАНИЕ ТЕКСТА В TXT ФАЙЛ ---
+function downloadTxtFromBox(boxId, defaultFilename = 'report.txt') {
+    const box = document.getElementById(boxId);
+    if (!box || !box.textContent.trim()) return alert('Нет данных для скачивания!');
+    
+    const blob = new Blob([box.textContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = defaultFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 
 // --- ДРАГ-Н-ДРОП ---
@@ -838,7 +898,10 @@ async function runSingleCheck() {
     const cookie = document.getElementById('singleCookie').value.trim();
     if(!cookie) return alert('Вставьте кук!');
     document.getElementById('singleContainer').style.display = 'block';
+    document.getElementById('singleResult').style.display = 'block';
+    document.getElementById('btnToggle_singleResult').textContent = '▼ Свернуть';
     document.getElementById('singleResult').textContent = '⏳ Проверка...';
+    
     const res = await fetch('/api/single-check', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookie}) });
     const data = await res.json();
     document.getElementById('singleResult').textContent = data.report || 'Ошибка';
@@ -849,8 +912,11 @@ async function runMassCheck() {
     if(!file) return alert('Выберите TXT файл!');
     const fd = new FormData(); fd.append('file', file);
     document.getElementById('massContainer').style.display = 'block';
+    document.getElementById('massResult').style.display = 'block';
+    document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
     document.getElementById('massProgress').style.width = '50%';
     document.getElementById('massResult').textContent = '⏳ Массовая проверка...';
+    
     const res = await fetch('/api/mass-check', { method: 'POST', body: fd });
     const data = await res.json();
     document.getElementById('massProgress').style.width = '100%';
@@ -868,12 +934,8 @@ function setFresherMode(m) {
     document.getElementById('fresherMode').value = m;
     document.getElementById('btnDup').classList.remove('active-mode');
     document.getElementById('btnKill').classList.remove('active-mode');
-    
-    if(m === 'duplicate') {
-        document.getElementById('btnDup').classList.add('active-mode');
-    } else {
-        document.getElementById('btnKill').classList.add('active-mode');
-    }
+    if(m === 'duplicate') document.getElementById('btnDup').classList.add('active-mode');
+    else document.getElementById('btnKill').classList.add('active-mode');
 }
 
 async function runFresher() {
@@ -881,13 +943,16 @@ async function runFresher() {
     const mode = document.getElementById('fresherMode').value;
     if(!cookies) return alert('Вставьте куки!');
     document.getElementById('fresherContainer').style.display = 'block';
+    document.getElementById('fresherResult').style.display = 'block';
+    document.getElementById('btnToggle_fresherResult').textContent = '▼ Свернуть';
     document.getElementById('fresherResult').textContent = '⏳ Обновление...';
+    
     const res = await fetch('/api/fresher', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookies, mode}) });
     const data = await res.json();
     document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
 }
 
-// --- ВЫВОД ИСТОРИИ C ВОЗМОЖНОСТЬЮ СВЕРНУТЬ БЛОК ---
+// --- ВЫВОД ИСТОРИИ (ПО УМОЛЧАНИЮ СВЕРНУТА, C ВОЗМОЖНОСТЬЮ РАЗВЕРНУТЬ И СКАЧАТЬ) ---
 async function loadCheckerHistory() {
     const res = await fetch('/api/history/checker');
     const data = await res.json();
@@ -895,16 +960,17 @@ async function loadCheckerHistory() {
     data.history.slice().reverse().forEach((i, idx) => {
         const resultsText = i.results ? i.results.join('\n\n') : 'Нет результатов';
         const boxId = `chk_hist_${idx}`;
+        const fileName = `checker_history_${i.timestamp.replace(/[:. ]/g, '_')}.txt`;
         html += `
         <div class="history-card">
             <div class="history-header">
-                <span>🕒 ${i.timestamp} (${i.type === 'single' ? 'Одиночная' : 'Массовая'})</span>
-                <div style="display:flex;gap:10px;align-items:center;">
-                    <span>Валид: ${i.valid} / ${i.total}</span>
-                    <button class="btn-close-box" onclick="closeBox('${boxId}')">✖ Свернуть</button>
+                <span>🕒 ${i.timestamp} (${i.type === 'single' ? 'Одиночная' : 'Массовая'}) — Валид: ${i.valid} / ${i.total}</span>
+                <div class="action-btn-group">
+                    <button class="btn-download-txt" onclick="downloadTxtFromBox('${boxId}', '${fileName}')">📥 Скачать TXT</button>
+                    <button class="btn-toggle-box" id="btnToggle_${boxId}" onclick="toggleBox('${boxId}')">▶ Развернуть</button>
                 </div>
             </div>
-            <div class="result-box" id="${boxId}">${resultsText}</div>
+            <div class="result-box" id="${boxId}" style="display:none;">${resultsText}</div>
         </div>`;
     });
     document.getElementById('checkerHistoryList').innerHTML = html || 'История чекера пуста';
@@ -918,16 +984,17 @@ async function loadFresherHistory() {
         const cookiesText = i.cookies ? i.cookies.join('\n') : 'Нет кук';
         const boxId = `frs_hist_${idx}`;
         const modeTitle = i.mode === 'kill' ? '💀 Убийство куки' : '♻️ Дублирование';
+        const fileName = `fresher_history_${i.timestamp.replace(/[:. ]/g, '_')}.txt`;
         html += `
         <div class="history-card">
             <div class="history-header">
-                <span>🕒 ${i.timestamp} (Режим: ${modeTitle})</span>
-                <div style="display:flex;gap:10px;align-items:center;">
-                    <span>Обновлено: ${i.refreshed_count} шт.</span>
-                    <button class="btn-close-box" onclick="closeBox('${boxId}')">✖ Свернуть</button>
+                <span>🕒 ${i.timestamp} (Режим: ${modeTitle}) — Обновлено: ${i.refreshed_count} шт.</span>
+                <div class="action-btn-group">
+                    <button class="btn-download-txt" onclick="downloadTxtFromBox('${boxId}', '${fileName}')">📥 Скачать TXT</button>
+                    <button class="btn-toggle-box" id="btnToggle_${boxId}" onclick="toggleBox('${boxId}')">▶ Развернуть</button>
                 </div>
             </div>
-            <div class="result-box" id="${boxId}">${cookiesText}</div>
+            <div class="result-box" id="${boxId}" style="display:none;">${cookiesText}</div>
         </div>`;
     });
     document.getElementById('fresherHistoryList').innerHTML = html || 'История фрешера пуста';
