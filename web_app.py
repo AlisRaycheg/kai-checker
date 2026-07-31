@@ -11,6 +11,7 @@ from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
 from io import BytesIO
 
+# ===== ПОДГОТОВКА =====
 os.makedirs("downloads", exist_ok=True)
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("history", exist_ok=True)
@@ -22,6 +23,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 CHECKER_HISTORY_FILE = "history/checker_history.json"
 FRESHER_HISTORY_FILE = "history/fresher_history.json"
 
+# ===== ИСТОРИЯ (JSON) =====
 def load_history(fp):
     if not os.path.exists(fp): return []
     try:
@@ -45,6 +47,7 @@ def add_fresher_history(entry):
     if len(h) > 50: h = h[-50:]
     save_history(FRESHER_HISTORY_FILE, h)
 
+# ===== ПАРСИНГ КУК =====
 def extract_cookies_from_text(text):
     cookies = []
     pattern = r'_\|WARNING:-DO-NOT-SHARE-THIS[^\s]*'
@@ -62,6 +65,7 @@ def extract_cookies_from_text(text):
         if c not in seen: seen.add(c); unique.append(c)
     return unique
 
+# ===== ОДИНОЧНАЯ ПРОВЕРКА (ДЕТАЛЬНАЯ) =====
 def get_full_info(cookie):
     info = {'status':'❌','Username':'?','UserID':'?','Robux':0,'Created':'?','Country':'?','EmailSet':False,'TwoFactorEnabled':False,'AccountPinEnabled':False,'PhoneSet':False,'SecurityStatus':'⚠️ НИЗКИЙ','Cookie':cookie,'PurchasedGamepasses':{},'CreditCardsCount':0,'IsPremium':False,'DonationTotal':0}
     try:
@@ -126,6 +130,7 @@ def get_full_info(cookie):
     except: pass
     return info
 
+# ===== БЫСТРАЯ ПРОВЕРКА (ДЛЯ МАСС-ЧЕКА) =====
 def quick_validate(cookie):
     result = {'status':'❌','username':'?','user_id':'?','robux':0,'created':'?','created_ts':0,'is_premium':False,'has_email':False,'has_2fa':False,'cookie':cookie,'score':0}
     try:
@@ -177,6 +182,7 @@ def quick_validate(cookie):
     except: pass
     return result
 
+# ===== МАСС-ЧЕК (20 ПОТОКОВ) =====
 def mass_check(cookies_list):
     results = []
     with ThreadPoolExecutor(max_workers=20) as ex:
@@ -188,6 +194,7 @@ def mass_check(cookies_list):
     valid.sort(key=lambda x: x['score'], reverse=True)
     return valid + invalid
 
+# ===== ОБНОВЛЕНИЕ СЕССИИ (ФРЕШЕР) =====
 def refresh_roblox_cookie(cookie, kill_old=False):
     result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
     try:
@@ -238,6 +245,7 @@ def refresh_roblox_cookie(cookie, kill_old=False):
         result['error'] = str(e)
     return result
 
+# ===== ФОРМАТТЕРЫ =====
 def format_full_report(info):
     if info['status'] != '✅': return f"❌ НЕВАЛИДНЫЙ КУК\n{info['Cookie']}"
     gp = info.get('PurchasedGamepasses',{})
@@ -262,6 +270,7 @@ def format_quick_report(result):
         return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} | {result['created']} | S:{score} {' '.join(badges)}"
     return "❌ НЕВАЛИД"
 
+# ===== ИНСТРУМЕНТЫ =====
 def merge_cookie_files(contents):
     all_cookies = set()
     for c in contents:
@@ -306,8 +315,10 @@ def clean_cookies(content):
         elif len(l)>50 and not l.startswith('#'): cookies.append(l)
     return '\n'.join(cookies)
 
+# ===== FLASK APP =====
 app = Flask(__name__)
 
+# ===== HTML С НОВЫМ ДИЗАЙНОМ =====
 HTML = """<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
@@ -508,7 +519,9 @@ HTML = """<!DOCTYPE html>
     </div>
     <div class="footer">SWILL CHECKER V3 · 20 потоков · Премиум-интерфейс</div>
 </div>
+
 <script>
+// ===== ЧАСТИЦЫ =====
 (function() {
     const container = document.getElementById('particles');
     for (let i = 0; i < 50; i++) {
@@ -522,6 +535,8 @@ HTML = """<!DOCTYPE html>
         container.appendChild(particle);
     }
 })();
+
+// ===== ТЕМА =====
 function toggleTheme() {
     let html = document.documentElement;
     let current = html.getAttribute('data-theme');
@@ -533,6 +548,8 @@ function toggleTheme() {
     let saved = localStorage.getItem('theme');
     if (saved) document.documentElement.setAttribute('data-theme', saved);
 })();
+
+// ===== ТАБЫ =====
 document.querySelectorAll('.tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
         let tabId = this.getAttribute('data-tab');
@@ -544,11 +561,15 @@ document.querySelectorAll('.tab').forEach(function(tab) {
         if (tabId === 'checker') loadStats();
     });
 });
+
+// ===== ФРЕШЕР МОД =====
 function setFresherMode(mode) {
     document.getElementById('fresherMode').value = mode;
     document.getElementById('modeDuplicate').className = 'toggle-btn' + (mode === 'duplicate' ? ' active' : '');
     document.getElementById('modeKill').className = 'toggle-btn' + (mode === 'kill' ? ' active' : '');
 }
+
+// ===== DRAG & DROP =====
 function setupDrop(areaId, inputId) {
     let area = document.getElementById(areaId);
     if (!area) return;
@@ -569,6 +590,8 @@ setupDrop('massDropArea', 'massFile');
 setupDrop('fresherDropArea', 'fresherFile');
 setupDrop('mergeDropArea', 'mergeFiles');
 setupDrop('splitDropArea', 'splitFile');
+
+// ===== ЗАГРУЗКА ФАЙЛОВ =====
 document.getElementById('massFile').addEventListener('change', function() {
     if (this.files && this.files[0]) {
         let file = this.files[0];
@@ -583,6 +606,7 @@ document.getElementById('massFile').addEventListener('change', function() {
         reader.readAsText(file);
     }
 });
+
 document.getElementById('fresherFile').addEventListener('change', function() {
     if (this.files && this.files[0]) {
         let reader = new FileReader();
@@ -590,8 +614,11 @@ document.getElementById('fresherFile').addEventListener('change', function() {
         reader.readAsText(this.files[0]);
     }
 });
+
 window.massResultsData = [];
 window.currentFilter = 'all';
+
+// ===== ОСНОВНЫЕ ФУНКЦИИ =====
 async function runSingleCheck() {
     let resBox = document.getElementById('singleResult');
     let cookie = document.getElementById('singleCookie').value.trim();
@@ -604,6 +631,7 @@ async function runSingleCheck() {
         loadStats();
     } catch(e) { resBox.textContent = '❌ ' + e.message; }
 }
+
 async function runMassCheck() {
     if (!window.massFileContent) { document.getElementById('massResult').textContent = '❌ Загрузите TXT файл!'; return; }
     let resBox = document.getElementById('massResult');
@@ -633,6 +661,7 @@ async function runMassCheck() {
         } else { resBox.textContent = '❌ ' + (d.message || 'Ошибка'); }
     } catch(e) { resBox.textContent = '❌ ' + e.message; progress.style.width = '0%'; }
 }
+
 function applyFilter(type, element) {
     window.currentFilter = type;
     document.querySelectorAll('#filterBar .filter-chip').forEach(c => c.classList.remove('active'));
@@ -657,6 +686,7 @@ function applyFilter(type, element) {
     });
     document.getElementById('massResult').textContent = html || 'Нет результатов';
 }
+
 function copyValidCookies() {
     let valid = window.massResultsData.filter(r => r.status === '✅');
     let text = valid.map(r => r.cookie).join('\n');
@@ -666,6 +696,8 @@ function downloadValidOnly() { let valid = window.massResultsData.filter(r => r.
 function downloadInvalidOnly() { let invalid = window.massResultsData.filter(r => r.status === '❌'); downloadFile(invalid.map(r => r.cookie).join('\n'), 'invalid_cookies.txt'); }
 function downloadFullReport() { let text = ''; window.massResultsData.forEach(r => { if (r.status === '✅') { text += '✅ ' + r.username + ' [' + r.user_id + '] | R$' + r.robux + ' | ' + r.created + ' | Score:' + r.score + '\n' + r.cookie + '\n\n'; } else { text += '❌ ' + r.cookie + '\n'; } }); downloadFile(text, 'full_report.txt'); }
 function downloadFile(content, filename) { let blob = new Blob([content], { type: 'text/plain' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); }
+
+// ===== ФРЕШЕР =====
 async function runFresher() {
     let cookies = document.getElementById('fresherCookies').value.trim();
     let mode = document.getElementById('fresherMode').value;
@@ -684,8 +716,11 @@ async function runFresher() {
         loadFresherHistory();
     } catch(e) { document.getElementById('fresherResult').textContent = '❌ ' + e.message; document.getElementById('fresherProgress').style.width = '0%'; }
 }
+
 function copyFresherCookies() { let text = document.getElementById('fresherResult').textContent; if (text && text !== 'Новые куки здесь...' && text !== '⏳ Обновление...') { navigator.clipboard.writeText(text).then(() => alert('✅ Скопировано!')); } }
 function downloadFresherCookies() { let text = document.getElementById('fresherResult').textContent; if (text && text !== 'Новые куки здесь...' && text !== '⏳ Обновление...') { downloadFile(text, 'refreshed_cookies.txt'); } }
+
+// ===== ИСТОРИЯ =====
 async function loadCheckerHistory() {
     try {
         let r = await fetch('/api/history/checker');
@@ -701,6 +736,7 @@ async function loadCheckerHistory() {
         document.getElementById('checkerHistoryList').innerHTML = html;
     } catch(e) { document.getElementById('checkerHistoryList').innerHTML = '<div class="empty-history">❌ Ошибка</div>'; }
 }
+
 async function loadFresherHistory() {
     try {
         let r = await fetch('/api/history/fresher');
@@ -716,8 +752,11 @@ async function loadFresherHistory() {
         document.getElementById('fresherHistoryList').innerHTML = html;
     } catch(e) { document.getElementById('fresherHistoryList').innerHTML = '<div class="empty-history">❌ Ошибка</div>'; }
 }
+
 async function clearCheckerHistory() { if (!confirm('Удалить историю проверок?')) return; await fetch('/api/history/checker/clear', { method: 'POST' }); loadCheckerHistory(); }
 async function clearFresherHistory() { if (!confirm('Удалить историю обновлений?')) return; await fetch('/api/history/fresher/clear', { method: 'POST' }); loadFresherHistory(); }
+
+// ===== ИНСТРУМЕНТЫ =====
 async function mergeCookies() {
     let files = document.getElementById('mergeFiles').files;
     if (!files || files.length < 2) { document.getElementById('mergeResult').textContent = '❌ Минимум 2 файла'; return; }
@@ -729,6 +768,7 @@ async function mergeCookies() {
         document.getElementById('mergeResult').innerHTML = d.success ? '✅ ' + d.total_files + ' файлов | 📊 ' + d.total_cookies + ' куки\n📥 <a href="' + d.download_url + '" target="_blank" style="color:#a855f7;">Скачать</a>' : '❌ Ошибка';
     } catch(e) { document.getElementById('mergeResult').textContent = '❌ ' + e.message; }
 }
+
 async function splitByCount() {
     let file = document.getElementById('splitFile').files[0];
     if (!file) { document.getElementById('splitResult').textContent = '❌ Загрузите файл'; return; }
@@ -741,6 +781,7 @@ async function splitByCount() {
         document.getElementById('splitResult').innerHTML = d.success ? '✅ ' + d.file_count + ' файлов\n📥 <a href="' + d.download_url + '" target="_blank" style="color:#a855f7;">Скачать</a>' : '❌ Ошибка';
     } catch(e) { document.getElementById('splitResult').textContent = '❌ ' + e.message; }
 }
+
 async function splitByFiles() {
     let file = document.getElementById('splitFile').files[0];
     if (!file) { document.getElementById('splitResult').textContent = '❌ Загрузите файл'; return; }
@@ -753,6 +794,7 @@ async function splitByFiles() {
         document.getElementById('splitResult').innerHTML = d.success ? '✅ ' + d.file_count + ' файлов\n📥 <a href="' + d.download_url + '" target="_blank" style="color:#a855f7;">Скачать</a>' : '❌ Ошибка';
     } catch(e) { document.getElementById('splitResult').textContent = '❌ ' + e.message; }
 }
+
 async function cleanCookies(action) {
     let content = document.getElementById('cleanInput').value.trim();
     if (!content) { document.getElementById('cleanResult').textContent = '❌ Вставьте куки'; return; }
@@ -763,6 +805,8 @@ async function cleanCookies(action) {
         document.getElementById('cleanResult').innerHTML = d.success ? '✅ ' + d.original_count + ' → ' + d.processed_count + (d.duplicates_removed > 0 ? ' (-' + d.duplicates_removed + ')' : '') + '\n📥 <a href="' + d.download_url + '" target="_blank" style="color:#a855f7;">Скачать</a>' : '❌ Ошибка';
     } catch(e) { document.getElementById('cleanResult').textContent = '❌ ' + e.message; }
 }
+
+// ===== СТАТИСТИКА =====
 async function loadStats() {
     try {
         let r = await fetch('/api/stats');
@@ -776,6 +820,8 @@ async function loadStats() {
         }
     } catch(e) { document.getElementById('statsResult').textContent = '❌ ' + e.message; }
 }
+
+// ===== ЗАГРУЗКА =====
 loadStats();
 loadCheckerHistory();
 loadFresherHistory();
@@ -783,6 +829,7 @@ loadFresherHistory();
 </body>
 </html>"""
 
+# ===== API ЭНДПОИНТЫ =====
 @app.route("/")
 def index():
     return render_template_string(HTML)
@@ -994,5 +1041,6 @@ def api_stats():
 def download_file(filename):
     return send_from_directory("downloads", filename, as_attachment=True)
 
+# ===== ЗАПУСК =====
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)
