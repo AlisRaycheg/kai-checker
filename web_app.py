@@ -5,7 +5,6 @@ import re
 import urllib3
 import json
 import requests
-import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
@@ -45,7 +44,7 @@ def add_checker_history(entry):
         'type': entry.get('type','single'),
         'total': entry.get('total',1),
         'valid': entry.get('valid',0),
-        'results': entry.get('results', []) # Сохраняем полный лут/отчеты
+        'results': entry.get('results', [])
     })
     if len(h) > 50: h = h[-50:]
     save_history(CHECKER_HISTORY_FILE, h)
@@ -56,7 +55,7 @@ def add_fresher_history(entry):
         'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'mode': entry.get('mode','duplicate'),
         'refreshed_count': entry.get('refreshed_count',0),
-        'cookies': entry.get('cookies', []) # Сохраняем все новые куки
+        'cookies': entry.get('cookies', [])
     })
     if len(h) > 50: h = h[-50:]
     save_history(FRESHER_HISTORY_FILE, h)
@@ -427,7 +426,6 @@ HTML = r"""<!DOCTYPE html>
         .stat-val { font-size: 16px; font-weight: 800; color: var(--accent-pink); text-shadow: 0 0 10px var(--accent-glow); }
         .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
 
-        /* Вкладки (Увеличенное удобное меню) */
         .tabs {
             display: flex; gap: 12px; margin-bottom: 32px;
             background: var(--input-bg);
@@ -494,6 +492,15 @@ HTML = r"""<!DOCTYPE html>
         .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
         .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 10px; }
 
+        /* Стиль подсвеченной активной кнопки фрешера */
+        .fresher-mode-btn.active-mode {
+            background: var(--gradient-btn) !important;
+            color: #fff !important;
+            border-color: var(--accent-pink) !important;
+            box-shadow: 0 0 20px var(--accent-glow), 0 0 10px var(--accent-pink);
+            transform: scale(1.03);
+        }
+
         .ripple {
             position: absolute; border-radius: 50%;
             transform: scale(0); animation: ripple-anim 0.6s linear;
@@ -524,9 +531,38 @@ HTML = r"""<!DOCTYPE html>
             box-shadow: 0 0 15px var(--accent-glow);
         }
 
+        .result-container {
+            margin-top: 16px;
+            position: relative;
+        }
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .result-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+        }
+        .btn-close-box {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 3px 10px;
+            border-radius: 8px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-close-box:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+
         .result-box {
             background: var(--input-bg); border: 1px solid var(--border-card);
-            border-radius: 14px; padding: 14px; margin-top: 16px;
+            border-radius: 14px; padding: 14px;
             max-height: 400px; overflow-y: auto; font-family: monospace;
             font-size: 12px; color: var(--text-main); white-space: pre-wrap; word-break: break-all;
         }
@@ -552,7 +588,6 @@ HTML = r"""<!DOCTYPE html>
             font-size: 12px; font-weight: 600; border-top: 1px solid var(--border-card); margin-top: 24px;
         }
         
-        /* Стили Истории */
         .history-card {
             background: var(--input-bg); border: 1px solid var(--border-card);
             border-radius: 16px; padding: 16px; margin-bottom: 14px;
@@ -601,7 +636,13 @@ HTML = r"""<!DOCTYPE html>
                 <div style="margin-top:12px;">
                     <button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">Проверить кук</button>
                 </div>
-                <div class="result-box" id="singleResult">Результат...</div>
+                <div class="result-container" id="singleContainer" style="display:none;">
+                    <div class="result-header">
+                        <span class="result-title">РЕЗУЛЬТАТ:</span>
+                        <button class="btn-close-box" onclick="closeBox('singleContainer')">✖ Свернуть</button>
+                    </div>
+                    <div class="result-box" id="singleResult"></div>
+                </div>
             </div>
             <div class="card">
                 <h2>📦 Массовая проверка (30 Потоков)</h2>
@@ -615,7 +656,14 @@ HTML = r"""<!DOCTYPE html>
                     <button class="btn btn-primary" onclick="runMassCheck()" style="width:100%;">🚀 Запустить массовый чек</button>
                 </div>
                 <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
-                <div class="result-box" id="massResult">Результаты...</div>
+                
+                <div class="result-container" id="massContainer" style="display:none;">
+                    <div class="result-header">
+                        <span class="result-title">РЕЗУЛЬТАТЫ ЧЕКА:</span>
+                        <button class="btn-close-box" onclick="closeBox('massContainer')">✖ Свернуть</button>
+                    </div>
+                    <div class="result-box" id="massResult"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -624,20 +672,28 @@ HTML = r"""<!DOCTYPE html>
     <div class="tab-content" id="tab-fresher">
         <div class="card">
             <h2>🔄 Обновление сессий (20 Потоков)</h2>
-            <div style="display:flex;gap:10px;margin-bottom:12px;">
-                <button class="btn btn-secondary btn-sm" id="btnDup" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
-                <button class="btn btn-secondary btn-sm" id="btnKill" onclick="setFresherMode('kill')">💀 Инвалидировать старую</button>
+            <div style="display:flex;gap:12px;margin-bottom:14px;align-items:center;">
+                <span style="font-size:13px;font-weight:700;color:var(--text-muted);">Режим работы:</span>
+                <button class="btn btn-secondary btn-sm fresher-mode-btn active-mode" id="btnDup" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
+                <button class="btn btn-secondary btn-sm fresher-mode-btn" id="btnKill" onclick="setFresherMode('kill')">💀 Инвалидировать старую</button>
             </div>
             <input type="hidden" id="fresherMode" value="duplicate">
             <textarea id="fresherCookies" placeholder="Вставьте куки списком..." rows="6"></textarea>
             <div style="margin-top:12px;display:flex;gap:10px;">
                 <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить куки</button>
             </div>
-            <div class="result-box" id="fresherResult">Обновленные куки появятся здесь...</div>
+            
+            <div class="result-container" id="fresherContainer" style="display:none;">
+                <div class="result-header">
+                    <span class="result-title">ОБНОВЛЕННЫЕ КУКИ:</span>
+                    <button class="btn-close-box" onclick="closeBox('fresherContainer')">✖ Свернуть</button>
+                </div>
+                <div class="result-box" id="fresherResult"></div>
+            </div>
         </div>
     </div>
 
-    <!-- ИСТОРИЯ С ПОЛНЫМИ ДАННЫМИ И ЛУТОМ -->
+    <!-- ИСТОРИЯ -->
     <div class="tab-content" id="tab-history">
         <div class="card">
             <h2>📋 История Чекера (Лут и Отчеты) <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
@@ -656,13 +712,13 @@ HTML = r"""<!DOCTYPE html>
                 <h3>🔗 Слияние TXT</h3>
                 <input type="file" id="mergeFiles" accept=".txt" multiple style="margin-top:8px;">
                 <button class="btn btn-primary btn-sm" onclick="mergeCookies()" style="margin-top:10px;width:100%;">Объединить</button>
-                <div class="result-box" id="mergeResult" style="max-height:80px;"></div>
+                <div class="result-box" id="mergeResult" style="max-height:80px;margin-top:10px;"></div>
             </div>
             <div class="card">
                 <h3>✂️ Очистка от дубликатов</h3>
                 <textarea id="cleanInput" placeholder="Куки..." rows="3"></textarea>
                 <button class="btn btn-primary btn-sm" onclick="cleanCookies()" style="margin-top:10px;width:100%;">Удалить дубли</button>
-                <div class="result-box" id="cleanResult" style="max-height:80px;"></div>
+                <div class="result-box" id="cleanResult" style="max-height:80px;margin-top:10px;"></div>
             </div>
         </div>
     </div>
@@ -725,20 +781,42 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// --- ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ---
+// --- ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК И СОХРАНЕНИЕ ВЫБРАННОЙ ---
+function activateTab(tabName) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    
+    const targetBtn = document.querySelector(`.tab[data-tab="${tabName}"]`);
+    const targetContent = document.getElementById('tab-' + tabName);
+    
+    if(targetBtn && targetContent) {
+        targetBtn.classList.add('active');
+        targetContent.classList.add('active');
+        localStorage.setItem('kai_active_tab', tabName);
+        if(tabName === 'history') { loadCheckerHistory(); loadFresherHistory(); }
+    }
+}
+
 document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', function() {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        this.classList.add('active');
-        document.getElementById('tab-' + this.dataset.tab).classList.add('active');
-        if(this.dataset.tab === 'history') { loadCheckerHistory(); loadFresherHistory(); }
+        activateTab(this.dataset.tab);
     });
+});
+
+// Загрузка сохраненной вкладки при перезагрузке
+window.addEventListener('DOMContentLoaded', () => {
+    const savedTab = localStorage.getItem('kai_active_tab') || 'checker';
+    activateTab(savedTab);
 });
 
 function toggleTheme() {
     const html = document.documentElement;
     html.setAttribute('data-theme', html.getAttribute('data-theme')==='dark'?'light':'dark');
+}
+
+// Вспомогательная функция сворачивания результатов
+function closeBox(id) {
+    document.getElementById(id).style.display = 'none';
 }
 
 // --- ДРАГ-Н-ДРОП ---
@@ -759,6 +837,7 @@ document.getElementById('massFile').addEventListener('change', function() {
 async function runSingleCheck() {
     const cookie = document.getElementById('singleCookie').value.trim();
     if(!cookie) return alert('Вставьте кук!');
+    document.getElementById('singleContainer').style.display = 'block';
     document.getElementById('singleResult').textContent = '⏳ Проверка...';
     const res = await fetch('/api/single-check', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookie}) });
     const data = await res.json();
@@ -769,6 +848,7 @@ async function runMassCheck() {
     const file = document.getElementById('massFile').files[0];
     if(!file) return alert('Выберите TXT файл!');
     const fd = new FormData(); fd.append('file', file);
+    document.getElementById('massContainer').style.display = 'block';
     document.getElementById('massProgress').style.width = '50%';
     document.getElementById('massResult').textContent = '⏳ Массовая проверка...';
     const res = await fetch('/api/mass-check', { method: 'POST', body: fd });
@@ -786,32 +866,45 @@ async function runMassCheck() {
 
 function setFresherMode(m) {
     document.getElementById('fresherMode').value = m;
+    document.getElementById('btnDup').classList.remove('active-mode');
+    document.getElementById('btnKill').classList.remove('active-mode');
+    
+    if(m === 'duplicate') {
+        document.getElementById('btnDup').classList.add('active-mode');
+    } else {
+        document.getElementById('btnKill').classList.add('active-mode');
+    }
 }
 
 async function runFresher() {
     const cookies = document.getElementById('fresherCookies').value.trim();
     const mode = document.getElementById('fresherMode').value;
     if(!cookies) return alert('Вставьте куки!');
+    document.getElementById('fresherContainer').style.display = 'block';
     document.getElementById('fresherResult').textContent = '⏳ Обновление...';
     const res = await fetch('/api/fresher', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookies, mode}) });
     const data = await res.json();
     document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
 }
 
-// --- ВЫВОД ИСТОРИИ C ЛУТОМ И КУКАМИ ---
+// --- ВЫВОД ИСТОРИИ C ВОЗМОЖНОСТЬЮ СВЕРНУТЬ БЛОК ---
 async function loadCheckerHistory() {
     const res = await fetch('/api/history/checker');
     const data = await res.json();
     let html = '';
-    data.history.slice().reverse().forEach(i => {
+    data.history.slice().reverse().forEach((i, idx) => {
         const resultsText = i.results ? i.results.join('\n\n') : 'Нет результатов';
+        const boxId = `chk_hist_${idx}`;
         html += `
         <div class="history-card">
             <div class="history-header">
                 <span>🕒 ${i.timestamp} (${i.type === 'single' ? 'Одиночная' : 'Массовая'})</span>
-                <span>Валид: ${i.valid} / ${i.total}</span>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <span>Валид: ${i.valid} / ${i.total}</span>
+                    <button class="btn-close-box" onclick="closeBox('${boxId}')">✖ Свернуть</button>
+                </div>
             </div>
-            <div class="result-box">${resultsText}</div>
+            <div class="result-box" id="${boxId}">${resultsText}</div>
         </div>`;
     });
     document.getElementById('checkerHistoryList').innerHTML = html || 'История чекера пуста';
@@ -821,15 +914,20 @@ async function loadFresherHistory() {
     const res = await fetch('/api/history/fresher');
     const data = await res.json();
     let html = '';
-    data.history.slice().reverse().forEach(i => {
+    data.history.slice().reverse().forEach((i, idx) => {
         const cookiesText = i.cookies ? i.cookies.join('\n') : 'Нет кук';
+        const boxId = `frs_hist_${idx}`;
+        const modeTitle = i.mode === 'kill' ? '💀 Убийство куки' : '♻️ Дублирование';
         html += `
         <div class="history-card">
             <div class="history-header">
-                <span>🕒 ${i.timestamp} (Режим: ${i.mode})</span>
-                <span>Обновлено: ${i.refreshed_count} шт.</span>
+                <span>🕒 ${i.timestamp} (Режим: ${modeTitle})</span>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <span>Обновлено: ${i.refreshed_count} шт.</span>
+                    <button class="btn-close-box" onclick="closeBox('${boxId}')">✖ Свернуть</button>
+                </div>
             </div>
-            <div class="result-box">${cookiesText}</div>
+            <div class="result-box" id="${boxId}">${cookiesText}</div>
         </div>`;
     });
     document.getElementById('fresherHistoryList').innerHTML = html || 'История фрешера пуста';
