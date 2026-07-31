@@ -9,7 +9,6 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
-from io import BytesIO
 
 # ==========================================
 # ИНИЦИАЛИЗАЦИЯ И НАСТРОЙКИ
@@ -46,9 +45,7 @@ def add_checker_history(entry):
         'type': entry.get('type','single'),
         'total': entry.get('total',1),
         'valid': entry.get('valid',0),
-        'cookies': entry.get('cookies',[])[:30],
-        'download_url': entry.get('download_url',''),
-        'full_data': entry.get('full_data', [])[:50]
+        'results': entry.get('results', []) # Сохраняем полный лут/отчеты
     })
     if len(h) > 50: h = h[-50:]
     save_history(CHECKER_HISTORY_FILE, h)
@@ -59,9 +56,7 @@ def add_fresher_history(entry):
         'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'mode': entry.get('mode','duplicate'),
         'refreshed_count': entry.get('refreshed_count',0),
-        'success_count': entry.get('success_count',0),
-        'fail_count': entry.get('fail_count',0),
-        'cookies': entry.get('cookies',[])[:20]
+        'cookies': entry.get('cookies', []) # Сохраняем все новые куки
     })
     if len(h) > 50: h = h[-50:]
     save_history(FRESHER_HISTORY_FILE, h)
@@ -233,8 +228,8 @@ def format_quick_report(result):
         badges = []
         if result.get('is_premium'): badges.append("💠")
         if result.get('has_2fa'): badges.append("🔐")
-        return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} | {result['created']} | S:{score} {' '.join(badges)}"
-    return "❌ НЕВАЛИД"
+        return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} | {result['created']} | S:{score} {' '.join(badges)}\n🍪 {result['cookie']}"
+    return f"❌ НЕВАЛИД | {result['cookie']}"
 
 # ==========================================
 # БЛОК: ФРЕШЕР
@@ -300,38 +295,9 @@ def merge_cookie_files(contents):
             if len(l)>20: all_cookies.add(l)
     return '\n'.join(sorted(all_cookies))
 
-def split_cookies_by_count(content, count):
-    cookies = [l.strip() for l in content.split('\n') if len(l)>20]
-    if not cookies or count <= 0: return []
-    files = []
-    for i in range(0, len(cookies), count): files.append('\n'.join(cookies[i:i+count]))
-    return files
-
-def split_cookies_by_files(content, num):
-    cookies = [l.strip() for l in content.split('\n') if len(l)>20]
-    if not cookies or num <= 0: return []
-    if num > len(cookies): num = len(cookies)
-    per = len(cookies)//num; rem = len(cookies)%num
-    files = []; idx = 0
-    for i in range(num):
-        end = idx+per+(1 if i<rem else 0)
-        files.append('\n'.join(cookies[idx:end])); idx=end
-    return files
-
 def remove_duplicates(content):
     cookies = [l.strip() for l in content.split('\n') if len(l)>20]
     return '\n'.join(list(dict.fromkeys(cookies)))
-
-def clean_cookies(content):
-    cookies = []
-    for l in content.split('\n'):
-        l = l.strip()
-        if not l: continue
-        if '.ROBLOSECURITY=' in l:
-            val = l.split('.ROBLOSECURITY=')[-1].split(';')[0].strip()
-            cookies.append(f'.ROBLOSECURITY={val}')
-        elif len(l)>50 and not l.startswith('#'): cookies.append(l)
-    return '\n'.join(cookies)
 
 # ==========================================
 # БЛОК: ИНТЕРФЕЙС (HTML/CSS/JS)
@@ -343,7 +309,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kai Checker PRO | Sparkl Edition</title>
+    <title>Kai Checker PRO</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -388,7 +354,6 @@ HTML = r"""<!DOCTYPE html>
             padding: 24px 16px;
         }
 
-        /* Анимированный декор фона */
         #particles-canvas {
             position: fixed;
             top: 0; left: 0;
@@ -425,7 +390,6 @@ HTML = r"""<!DOCTYPE html>
             box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
         }
 
-        /* Шапка */
         .header {
             display: flex;
             justify-content: space-between;
@@ -453,7 +417,6 @@ HTML = r"""<!DOCTYPE html>
             letter-spacing: 1.5px;
         }
 
-        /* Неоновая статистика */
         .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; }
         .stat-card {
             background: var(--input-bg);
@@ -464,30 +427,39 @@ HTML = r"""<!DOCTYPE html>
         .stat-val { font-size: 16px; font-weight: 800; color: var(--accent-pink); text-shadow: 0 0 10px var(--accent-glow); }
         .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
 
-        /* Вкладки (Tabs) */
+        /* Вкладки (Увеличенное удобное меню) */
         .tabs {
-            display: flex; gap: 8px; margin-bottom: 28px;
+            display: flex; gap: 12px; margin-bottom: 32px;
             background: var(--input-bg);
-            padding: 6px; border-radius: 18px;
+            padding: 8px; border-radius: 22px;
             border: 1px solid var(--border-card);
             width: fit-content; flex-wrap: wrap;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.25);
         }
         .tab {
-            padding: 10px 24px; border-radius: 14px;
+            padding: 14px 32px; border-radius: 16px;
             color: var(--text-muted); cursor: pointer;
-            font-size: 13px; font-weight: 700;
-            transition: all 0.25s ease; border: none; background: transparent;
+            font-size: 15px; font-weight: 700;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid transparent; background: transparent;
+            display: flex; align-items: center; gap: 8px;
         }
-        .tab:hover { color: var(--text-main); }
+        .tab:hover {
+            color: var(--text-main);
+            background: rgba(168, 85, 247, 0.1);
+            border-color: rgba(168, 85, 247, 0.2);
+            transform: translateY(-1px);
+        }
         .tab.active {
             background: var(--gradient-btn);
             color: #fff;
-            box-shadow: 0 4px 20px var(--accent-glow);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 6px 25px var(--accent-glow), 0 0 15px rgba(217, 70, 239, 0.4);
+            transform: translateY(-1px);
         }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        /* Карточки с Glassmorphism */
         .card {
             background: var(--bg-card);
             border: 1px solid var(--border-card);
@@ -500,14 +472,12 @@ HTML = r"""<!DOCTYPE html>
         .card:hover {
             border-color: var(--border-hover);
             box-shadow: 0 10px 30px var(--accent-glow);
-            transform: translateY(-2px);
         }
         .card h2, .card h3 {
             font-size: 16px; font-weight: 800; margin-bottom: 16px;
             color: var(--text-main); display: flex; align-items: center; gap: 8px;
         }
 
-        /* Кнопки с Ripple эффектом */
         .btn {
             position: relative; overflow: hidden;
             padding: 12px 24px; border: none; border-radius: 14px;
@@ -533,7 +503,6 @@ HTML = r"""<!DOCTYPE html>
             to { transform: scale(4); opacity: 0; }
         }
 
-        /* Поля ввода и Драг-н-Дроп */
         textarea, input[type="number"], input[type="text"] {
             width: 100%; padding: 14px;
             background: var(--input-bg);
@@ -568,7 +537,6 @@ HTML = r"""<!DOCTYPE html>
         }
         .progress-fill { height: 100%; width: 0%; background: var(--gradient-btn); transition: width 0.3s ease; }
 
-        /* Сетка результатов */
         .checker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media(max-width:900px){ .checker-grid { grid-template-columns: 1fr; } }
 
@@ -584,14 +552,15 @@ HTML = r"""<!DOCTYPE html>
             font-size: 12px; font-weight: 600; border-top: 1px solid var(--border-card); margin-top: 24px;
         }
         
-        /* История */
-        .history-item {
+        /* Стили Истории */
+        .history-card {
             background: var(--input-bg); border: 1px solid var(--border-card);
-            border-radius: 14px; padding: 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s;
+            border-radius: 16px; padding: 16px; margin-bottom: 14px;
         }
-        .history-item:hover { border-color: var(--accent-purple); }
-        .hist-header { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
-        .hist-detail { display: none; margin-top: 10px; font-size: 11px; white-space: pre-wrap; border-top: 1px dashed var(--border-card); padding-top: 8px; }
+        .history-header {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 13px; font-weight: 700; margin-bottom: 10px; color: var(--accent-pink);
+        }
         
         .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
     </style>
@@ -605,7 +574,7 @@ HTML = r"""<!DOCTYPE html>
     <div class="header">
         <div class="logo-wrap">
             <div class="logo-text">KAI CHECKER</div>
-            <span class="badge-pro">SPARKL EDITION</span>
+            <span class="badge-pro">PRO EDITION</span>
         </div>
         <div class="stats-bar">
             <div class="stat-card"><span class="stat-val" id="statValid">0</span><span class="stat-lbl">Валид</span></div>
@@ -615,7 +584,7 @@ HTML = r"""<!DOCTYPE html>
         <button class="theme-btn" onclick="toggleTheme()">🌓 Тема</button>
     </div>
 
-    <!-- Навигация -->
+    <!-- Вкладки -->
     <div class="tabs">
         <button class="tab active" data-tab="checker">🔍 Чекер</button>
         <button class="tab" data-tab="fresher">🔄 Фрешер</button>
@@ -664,19 +633,19 @@ HTML = r"""<!DOCTYPE html>
             <div style="margin-top:12px;display:flex;gap:10px;">
                 <button class="btn btn-primary" onclick="runFresher()">⚡ Обновить куки</button>
             </div>
-            <div class="result-box" id="fresherResult">Обновленные куки появится здесь...</div>
+            <div class="result-box" id="fresherResult">Обновленные куки появятся здесь...</div>
         </div>
     </div>
 
-    <!-- ИСТОРИЯ -->
+    <!-- ИСТОРИЯ С ПОЛНЫМИ ДАННЫМИ И ЛУТОМ -->
     <div class="tab-content" id="tab-history">
         <div class="card">
-            <h2>📋 История проверок чекера <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
-            <div id="checkerHistoryList">Загрузка...</div>
+            <h2>📋 История Чекера (Лут и Отчеты) <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
+            <div id="checkerHistoryList">Загрузка истории...</div>
         </div>
         <div class="card">
-            <h2>🔄 История обновления сессий <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
-            <div id="fresherHistoryList">Загрузка...</div>
+            <h2>🔄 История Фрешера (Новые Куки) <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
+            <div id="fresherHistoryList">Загрузка истории...</div>
         </div>
     </div>
 
@@ -699,7 +668,7 @@ HTML = r"""<!DOCTYPE html>
     </div>
 
     <!-- Подвал -->
-    <div class="footer">KAI CHECKER © SPARKL SHOP UI</div>
+    <div class="footer">KAI CHECKER © ALL RIGHTS RESERVED</div>
 </div>
 
 <script>
@@ -739,7 +708,7 @@ function animateParticles() {
 }
 animateParticles();
 
-// --- RIPPLE ЭФФЕКТ ДЛЯ КНОПОК ---
+// --- RIPPLE ЭФФЕКТ ---
 document.addEventListener('click', function(e) {
     if (e.target.classList.contains('btn')) {
         const btn = e.target;
@@ -811,7 +780,7 @@ async function runMassCheck() {
         document.getElementById('statValid').textContent = data.valid_count;
         document.getElementById('statRobux').textContent = data.total_robux.toLocaleString();
         document.getElementById('statPremium').textContent = data.premium_count;
-        document.getElementById('massResult').textContent = data.results.join('\n');
+        document.getElementById('massResult').textContent = data.results.join('\n\n');
     }
 }
 
@@ -829,24 +798,41 @@ async function runFresher() {
     document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
 }
 
+// --- ВЫВОД ИСТОРИИ C ЛУТОМ И КУКАМИ ---
 async function loadCheckerHistory() {
     const res = await fetch('/api/history/checker');
     const data = await res.json();
     let html = '';
-    data.history.reverse().forEach(i => {
-        html += `<div class="history-item"><b>${i.timestamp}</b> | Валид: ${i.valid}/${i.total}</div>`;
+    data.history.slice().reverse().forEach(i => {
+        const resultsText = i.results ? i.results.join('\n\n') : 'Нет результатов';
+        html += `
+        <div class="history-card">
+            <div class="history-header">
+                <span>🕒 ${i.timestamp} (${i.type === 'single' ? 'Одиночная' : 'Массовая'})</span>
+                <span>Валид: ${i.valid} / ${i.total}</span>
+            </div>
+            <div class="result-box">${resultsText}</div>
+        </div>`;
     });
-    document.getElementById('checkerHistoryList').innerHTML = html || 'История пуста';
+    document.getElementById('checkerHistoryList').innerHTML = html || 'История чекера пуста';
 }
 
 async function loadFresherHistory() {
     const res = await fetch('/api/history/fresher');
     const data = await res.json();
     let html = '';
-    data.history.reverse().forEach(i => {
-        html += `<div class="history-item"><b>${i.timestamp}</b> | Обновлено: ${i.refreshed_count} шт.</div>`;
+    data.history.slice().reverse().forEach(i => {
+        const cookiesText = i.cookies ? i.cookies.join('\n') : 'Нет кук';
+        html += `
+        <div class="history-card">
+            <div class="history-header">
+                <span>🕒 ${i.timestamp} (Режим: ${i.mode})</span>
+                <span>Обновлено: ${i.refreshed_count} шт.</span>
+            </div>
+            <div class="result-box">${cookiesText}</div>
+        </div>`;
     });
-    document.getElementById('fresherHistoryList').innerHTML = html || 'История пуста';
+    document.getElementById('fresherHistoryList').innerHTML = html || 'История фрешера пуста';
 }
 
 async function clearCheckerHistory() {
@@ -890,7 +876,7 @@ def api_single_check():
     if not cookie: return jsonify({"success": False, "message": "Кук не предоставлен"})
     info = get_full_info(cookie)
     report = format_full_report(info)
-    add_checker_history({'type': 'single', 'total': 1, 'valid': 1 if info['status']=='✅' else 0, 'cookies': [report]})
+    add_checker_history({'type': 'single', 'total': 1, 'valid': 1 if info['status']=='✅' else 0, 'results': [report]})
     return jsonify({"success": True, "report": report})
 
 @app.route("/api/mass-check", methods=["POST"])
@@ -906,7 +892,7 @@ def api_mass_check():
     premium_count = sum(1 for r in valid if r.get('is_premium'))
     total_robux = sum(r.get('robux',0) for r in valid)
     
-    add_checker_history({'type': 'mass', 'total': len(results), 'valid': len(valid), 'cookies': formatted[:30]})
+    add_checker_history({'type': 'mass', 'total': len(results), 'valid': len(valid), 'results': formatted})
     return jsonify({"success": True, "valid_count": len(valid), "premium_count": premium_count, "total_robux": total_robux, "results": formatted})
 
 @app.route("/api/fresher", methods=["POST"])
