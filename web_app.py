@@ -358,10 +358,10 @@ HTML = r"""<!DOCTYPE html>
     <style>
         :root {
             --bg: #07030d;
-            --bg-card: rgba(23, 10, 38, 0.65);
+            --bg-card: rgba(23, 10, 38, 0.55);
             --border-card: rgba(168, 85, 247, 0.25);
             --border-hover: rgba(217, 70, 239, 0.6);
-            --input-bg: rgba(12, 5, 20, 0.8);
+            --input-bg: rgba(12, 5, 20, 0.75);
             --text-main: #f3e8ff;
             --text-muted: #a78bfa;
             --accent-purple: #a855f7;
@@ -373,10 +373,10 @@ HTML = r"""<!DOCTYPE html>
         }
         [data-theme="light"] {
             --bg: #f5f0ff;
-            --bg-card: rgba(255, 255, 255, 0.82);
+            --bg-card: rgba(255, 255, 255, 0.75);
             --border-card: rgba(168, 85, 247, 0.2);
             --border-hover: rgba(168, 85, 247, 0.5);
-            --input-bg: rgba(243, 232, 255, 0.7);
+            --input-bg: rgba(243, 232, 255, 0.6);
             --text-main: #2e1065;
             --text-muted: #7e22ce;
             --accent-purple: #7e22ce;
@@ -396,25 +396,6 @@ HTML = r"""<!DOCTYPE html>
             position: relative;
             overflow-x: hidden;
             padding: 24px 16px;
-        }
-
-        /* ПОЛНОЭКРАННЫЙ ЗАДНИЙ ФОН ИЗ ФОТОГРАФИИ */
-        .bg-custom-image {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            background-image: url('anime_girl.jpg'), url('https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1920&auto=format&fit=crop');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            opacity: 0.25;
-            filter: blur(4px);
-            z-index: 0;
-            pointer-events: none;
-            transition: opacity 0.3s ease;
-        }
-        [data-theme="light"] .bg-custom-image {
-            opacity: 0.15;
         }
 
         #particles-canvas {
@@ -446,8 +427,8 @@ HTML = r"""<!DOCTYPE html>
             z-index: 1;
             background: var(--bg-card);
             border: 1px solid var(--border-card);
-            backdrop-filter: blur(25px);
-            -webkit-backdrop-filter: blur(25px);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border-radius: 28px;
             padding: 32px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
@@ -464,6 +445,16 @@ HTML = r"""<!DOCTYPE html>
             gap: 16px;
         }
         .logo-wrap { display: flex; align-items: center; gap: 14px; }
+        
+        /* СТИЛИ ДЛЯ ВСТАВЛЕННОЙ ФОТОГРАФИИ (АВАТАРКИ ЛОГОТИПА) */
+        .header-logo-img {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--accent-pink);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
 
         /* НАДУВНОЙ ШРИФТ ДЛЯ LOGO */
         .logo-text {
@@ -537,7 +528,6 @@ HTML = r"""<!DOCTYPE html>
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
-            backdrop-filter: blur(10px);
         }
         .card:hover {
             border-color: var(--border-hover);
@@ -701,8 +691,6 @@ HTML = r"""<!DOCTYPE html>
     </style>
 </head>
 <body>
-<!-- ПОЛНОЭКРАННАЯ КАРТИНКА НА ФОНЕ -->
-<div class="bg-custom-image"></div>
 <canvas id="particles-canvas"></canvas>
 <div class="bg-glow"></div>
 
@@ -710,6 +698,8 @@ HTML = r"""<!DOCTYPE html>
     <!-- Шапка -->
     <div class="header">
         <div class="logo-wrap">
+            <!-- ВСТАВКА ФОТОГРАФИИ -->
+            <img src="anime_girl.jpg" alt="Logo" class="header-logo-img" onerror="this.src='https://tr.rbxcdn.com/30day-avatar-headshot-placeholder'">
             <div class="logo-text">KAI CHECKER</div>
             <span class="badge-pro">PRO EDITION</span>
         </div>
