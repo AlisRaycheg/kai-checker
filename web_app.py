@@ -66,7 +66,7 @@ def add_fresher_history(entry):
     save_history(FRESHER_HISTORY_FILE, h)
 
 # ==========================================
-# БЛОК: ЧЕКЕР И АНАЛИТИКА (RAP, PLAYTIME, AVATAR)
+# БЛОК: ЧЕКЕР И АНАЛИТИКА (RAP, PLAYTIME)
 # ==========================================
 def extract_cookies_from_text(text):
     cookies = []
@@ -84,17 +84,6 @@ def extract_cookies_from_text(text):
     for c in cookies:
         if c not in seen: seen.add(c); unique.append(c)
     return unique
-
-def get_user_avatar(user_id):
-    try:
-        url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=150x150&format=Png&isCircular=true"
-        r = requests.get(url, timeout=5, verify=False)
-        if r.status_code == 200:
-            data = r.json().get('data', [])
-            if data and data[0].get('imageUrl'):
-                return data[0]['imageUrl']
-    except: pass
-    return "https://tr.rbxcdn.com/30day-avatar-headshot-placeholder"
 
 def get_user_rap(session, user_id):
     try:
@@ -121,7 +110,7 @@ def get_user_playtime(session, user_id):
 
 def get_full_info(cookie):
     info = {
-        'status':'❌', 'Username':'?', 'UserID':'?', 'AvatarUrl':'', 'Robux':0, 'RAP': None, 'PlaytimeHours': None,
+        'status':'❌', 'Username':'?', 'UserID':'?', 'Robux':0, 'RAP': None, 'PlaytimeHours': None,
         'Created':'?', 'Country':'?', 'EmailSet':False, 'TwoFactorEnabled':False,
         'AccountPinEnabled':False, 'PhoneSet':False, 'SecurityStatus':'⚠️ НИЗКИЙ',
         'Cookie':cookie, 'PurchasedGamepasses':{}, 'CreditCardsCount':0,
@@ -138,8 +127,6 @@ def get_full_info(cookie):
         if 'id' not in d: return info
         info['UserID'] = d.get('id'); info['Username'] = d.get('name'); info['status'] = '✅'
         uid = info['UserID']
-
-        info['AvatarUrl'] = get_user_avatar(uid)
 
         def g(url):
             try:
@@ -204,7 +191,7 @@ def get_full_info(cookie):
 
 def quick_validate(cookie):
     result = {
-        'status':'❌', 'username':'?', 'user_id':'?', 'avatar':'', 'robux':0, 'rap': None, 'playtime': None,
+        'status':'❌', 'username':'?', 'user_id':'?', 'robux':0, 'rap': None, 'playtime': None,
         'created':'?', 'is_premium':False, 'has_email':False, 'has_2fa':False,
         'cookie':cookie, 'score':0, 'full_info': None
     }
@@ -213,7 +200,6 @@ def quick_validate(cookie):
         result['status'] = '✅'
         result['username'] = info['Username']
         result['user_id'] = info['UserID']
-        result['avatar'] = info['AvatarUrl']
         result['robux'] = info['Robux']
         result['rap'] = info['RAP']
         result['playtime'] = info['PlaytimeHours']
@@ -240,7 +226,7 @@ def mass_check(cookies_list):
         futures = {ex.submit(quick_validate, c): c for c in cookies_list}
         for f in as_completed(futures):
             try: results.append(f.result())
-            except: results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','avatar':'','robux':0,'rap':None,'playtime':None,'created':'?','is_premium':False,'has_email':False,'has_2fa':False})
+            except: results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','robux':0,'rap':None,'playtime':None,'created':'?','is_premium':False,'has_email':False,'has_2fa':False})
     valid = [r for r in results if r['status']=='✅']; invalid = [r for r in results if r['status']=='❌']
     valid.sort(key=lambda x: x['score'], reverse=True)
     return valid + invalid
@@ -445,16 +431,6 @@ HTML = r"""<!DOCTYPE html>
             gap: 16px;
         }
         .logo-wrap { display: flex; align-items: center; gap: 14px; }
-        
-        /* СТИЛИ ДЛЯ ВСТАВЛЕННОЙ ФОТОГРАФИИ (АВАТАРКИ ЛОГОТИПА) */
-        .header-logo-img {
-            width: 52px;
-            height: 52px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 2px solid var(--accent-pink);
-            box-shadow: 0 0 15px var(--accent-glow);
-        }
 
         /* НАДУВНОЙ ШРИФТ ДЛЯ LOGO */
         .logo-text {
@@ -679,13 +655,6 @@ HTML = r"""<!DOCTYPE html>
             font-size: 11px; color: var(--text-main); margin-top: 6px; font-weight: 600;
             display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
         }
-        .avatar-img {
-            width: 32px; height: 32px; border-radius: 50%;
-            border: 2px solid var(--accent-pink);
-            background: #000; box-shadow: 0 0 10px var(--accent-glow);
-        }
-        
-        .avatars-list { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
         
         .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
     </style>
@@ -698,8 +667,6 @@ HTML = r"""<!DOCTYPE html>
     <!-- Шапка -->
     <div class="header">
         <div class="logo-wrap">
-            <!-- ВСТАВКА ФОТОГРАФИИ -->
-            <img src="anime_girl.jpg" alt="Logo" class="header-logo-img" onerror="this.src='https://tr.rbxcdn.com/30day-avatar-headshot-placeholder'">
             <div class="logo-text">KAI CHECKER</div>
             <span class="badge-pro">PRO EDITION</span>
         </div>
@@ -945,7 +912,7 @@ async function runMassCheck() {
     document.getElementById('massResult').style.display = 'block';
     document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
     document.getElementById('massProgress').style.width = '50%';
-    document.getElementById('massResult').textContent = '⏳ Массовая проверка... (RAP, Playtime, Avatars, Full Analysis)';
+    document.getElementById('massResult').textContent = '⏳ Массовая проверка... (RAP, Playtime, Full Analysis)';
     
     const res = await fetch('/api/mass-check', { method: 'POST', body: fd });
     const data = await res.json();
@@ -997,7 +964,7 @@ async function runFresher() {
     document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
 }
 
-// --- ИСТОРИЯ С АВАТАРКАМИ ---
+// --- ИСТОРИЯ ---
 async function loadCheckerHistory() {
     const res = await fetch('/api/history/checker');
     const data = await res.json();
@@ -1007,15 +974,6 @@ async function loadCheckerHistory() {
         const usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
         const boxId = `chk_hist_${idx}`;
         const fileName = `checker_history_${i.timestamp.replace(/[:. ]/g, '_')}.txt`;
-        
-        let avatarsHtml = '';
-        if(i.full_reports && i.full_reports.length) {
-            avatarsHtml = '<div class="avatars-list">';
-            i.full_reports.forEach(fr => {
-                if(fr.avatar) avatarsHtml += `<img src="${fr.avatar}" class="avatar-img" title="${fr.username}">`;
-            });
-            avatarsHtml += '</div>';
-        }
 
         html += `
         <div class="history-card">
@@ -1029,7 +987,6 @@ async function loadCheckerHistory() {
             <div class="history-users">
                 <span>👤 Аккаунты: ${usernames}</span>
             </div>
-            ${avatarsHtml}
             <div class="result-box" id="${boxId}" style="display:none;">${resultsText}</div>
         </div>`;
     });
@@ -1107,7 +1064,7 @@ def api_single_check():
         'type': 'single', 'total': 1, 'valid': 1 if info['status']=='✅' else 0,
         'usernames': [info['Username']] if info['status']=='✅' else ['Unauthed'],
         'results': [report],
-        'full_reports': [{'username': info['Username'], 'user_id': info['UserID'], 'avatar': info['AvatarUrl'], 'report': report}]
+        'full_reports': [{'username': info['Username'], 'user_id': info['UserID'], 'report': report}]
     })
     return jsonify({"success": True, "report": report})
 
@@ -1129,7 +1086,6 @@ def api_mass_check():
             full_reports.append({
                 'username': r['username'],
                 'user_id': r['user_id'],
-                'avatar': r['avatar'],
                 'report': format_full_report(r['full_info'])
             })
             usernames.append(r['username'])
