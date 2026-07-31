@@ -446,6 +446,16 @@ HTML = r"""<!DOCTYPE html>
         }
         .logo-wrap { display: flex; align-items: center; gap: 14px; }
         
+        /* СТИЛИ ДЛЯ ВСТАВЛЕННОЙ ФОТОГРАФИИ (АВАТАРКИ ЛОГОТИПА) */
+        .header-logo-img {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--accent-pink);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
         /* НАДУВНОЙ ШРИФТ ДЛЯ LOGO */
         .logo-text {
             font-family: 'Paytone One', 'Rubik Puddles', cursive, sans-serif;
@@ -688,6 +698,8 @@ HTML = r"""<!DOCTYPE html>
     <!-- Шапка -->
     <div class="header">
         <div class="logo-wrap">
+            <!-- ВСТАВКА ФОТОГРАФИИ -->
+            <img src="anime_girl.jpg" alt="Logo" class="header-logo-img" onerror="this.src='https://tr.rbxcdn.com/30day-avatar-headshot-placeholder'">
             <div class="logo-text">KAI CHECKER</div>
             <span class="badge-pro">PRO EDITION</span>
         </div>
