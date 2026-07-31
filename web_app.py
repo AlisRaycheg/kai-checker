@@ -179,7 +179,8 @@ def quick_validate(cookie):
 
 def mass_check(cookies_list):
     results = []
-    with ThreadPoolExecutor(max_workers=10) as ex:
+    # Увеличено количество потоков до 30
+    with ThreadPoolExecutor(max_workers=30) as ex:
         futures = {ex.submit(quick_validate, c): c for c in cookies_list}
         for f in as_completed(futures):
             try: results.append(f.result())
@@ -272,18 +273,15 @@ def merge_cookie_files(contents):
 
 def split_cookies_by_count(content, count):
     cookies = [l.strip() for l in content.split('\n') if len(l)>20]
-    if not cookies or count <= 0:
-        return []
+    if not cookies or count <= 0: return []
     files = []
     for i in range(0, len(cookies), count): files.append('\n'.join(cookies[i:i+count]))
     return files
 
 def split_cookies_by_files(content, num):
     cookies = [l.strip() for l in content.split('\n') if len(l)>20]
-    if not cookies or num <= 0:
-        return []
-    if num > len(cookies):
-        num = len(cookies)
+    if not cookies or num <= 0: return []
+    if num > len(cookies): num = len(cookies)
     per = len(cookies)//num; rem = len(cookies)%num
     files = []; idx = 0
     for i in range(num):
@@ -308,193 +306,236 @@ def clean_cookies(content):
 
 app = Flask(__name__)
 
+# Стилизация под Sparklshop (Темный неоновый минимализм)
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kai Checker PRO</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0b081a;
-            --bg2: rgba(18,10,40,0.95);
-            --card: rgba(18,10,40,0.9);
-            --input: #0d0722;
-            --border: #2a1a50;
-            --text: #fff;
-            --text2: #9880c0;
-            --accent: #a855f7;
+            --bg: #070709;
+            --bg2: #0e0e12;
+            --card: #13131a;
+            --card-border: #222230;
+            --input: #0a0a0f;
+            --border: #232332;
+            --text: #f3f3f7;
+            --text2: #8a8a9e;
+            --accent: #8b5cf6;
+            --accent-glow: rgba(139, 92, 246, 0.25);
+            --accent-hover: #7c3aed;
+            --gradient: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+            --gradient-btn: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
         }
         [data-theme="light"] {
-            --bg: #f0f0f5;
-            --bg2: rgba(255,255,255,0.95);
-            --card: rgba(255,255,255,0.9);
-            --input: #e8e8ee;
-            --border: #d0d0dd;
-            --text: #1a1a2e;
-            --text2: #666;
+            --bg: #f4f4f8;
+            --bg2: #ffffff;
+            --card: #f8f8fc;
+            --card-border: #e2e2ec;
+            --input: #ededf5;
+            --border: #dcdce8;
+            --text: #0f0f14;
+            --text2: #646473;
             --accent: #7c3aed;
+            --accent-glow: rgba(124, 58, 237, 0.15);
+            --accent-hover: #6d28d9;
+            --gradient: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+            --gradient-btn: linear-gradient(135deg, #7c3aed 0%, #c026d3 100%);
         }
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Inter',sans-serif;min-height:100vh;padding:16px;background:var(--bg);transition:all 0.3s}
-        .wrapper{max-width:1500px;margin:0 auto;padding:24px;background:var(--bg2);border:2px solid var(--accent);border-radius:28px}
-        ::-webkit-scrollbar{width:5px}
-        ::-webkit-scrollbar-track{background:var(--input);border-radius:8px}
-        ::-webkit-scrollbar-thumb{background:var(--accent);border-radius:8px}
-        .header{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid var(--border);margin-bottom:24px;flex-wrap:wrap;gap:12px}
-        .logo{font-size:30px;font-weight:900;font-style:italic;background:linear-gradient(135deg,#c084fc,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-        .header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-        .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
-        .tab{padding:8px 18px;background:var(--card);border:1px solid var(--border);border-radius:30px;color:var(--text2);cursor:pointer;font-size:13px;font-weight:600;transition:all 0.2s}
-        .tab:hover{border-color:var(--accent);color:var(--text)}
-        .tab.active{border-color:#c084fc;background:rgba(168,85,247,0.3);color:#c084fc}
-        .tab-content{display:none}
-        .tab-content.active{display:block}
-        .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px 24px;margin-bottom:20px;color:var(--text)}
-        .card h2{font-size:18px;color:var(--text);margin-bottom:14px;font-weight:700}
-        .btn{padding:10px 22px;border:none;border-radius:30px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:6px;text-decoration:none;transition:all 0.2s}
-        .btn-primary{background:linear-gradient(135deg,#a855f7,#d946ef)}
-        .btn-success{background:linear-gradient(135deg,#10b981,#059669)}
-        .btn-secondary{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text2)}
-        .btn-danger{background:rgba(220,38,38,0.2);border:1px solid rgba(220,38,38,0.3);color:#fca5a5}
-        .btn-sm{padding:6px 14px;font-size:11px}
-        .btn-xs{padding:4px 10px;font-size:10px}
-        .toggle-group{display:flex;background:var(--input);border:1px solid var(--border);border-radius:12px;padding:3px;gap:3px;margin-bottom:14px}
-        .toggle-btn{flex:1;padding:10px 14px;background:transparent;border:none;border-radius:10px;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;text-align:center}
-        .toggle-btn.active{background:linear-gradient(135deg,rgba(168,85,247,0.3),rgba(217,70,239,0.3));color:#c084fc}
-        textarea,.upload-area{width:100%;padding:12px 14px;background:var(--input);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:monospace;font-size:13px;resize:vertical}
-        textarea:focus{border-color:var(--accent);outline:none}
-        .upload-area{min-height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border-style:dashed;gap:4px;text-align:center;transition:all 0.2s}
-        .upload-area.drag-over{background:rgba(168,85,247,0.15);border-color:var(--accent)}
-        .result-box{background:var(--input);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:16px;max-height:450px;overflow-y:auto;font-family:monospace;font-size:12px;color:var(--text);white-space:pre-wrap;word-break:break-all}
-        .progress-bar{margin-top:10px;background:var(--input);border-radius:20px;height:5px;overflow:hidden}
-        .progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#a855f7,#ec4899);transition:width 0.3s}
-        .footer{text-align:center;padding:24px 0 8px;color:var(--text2);font-size:12px;border-top:1px solid var(--border);margin-top:24px}
-        .tool-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:16px}
-        .tool-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px}
-        .tool-card h3{font-size:15px;color:var(--accent);margin-bottom:6px}
-        .tool-card .desc{color:var(--text2);font-size:12px;margin-bottom:12px}
-        .input-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
-        .input-row input{flex:1;padding:10px 12px;background:var(--input);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px}
-        .history-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:all 0.2s}
-        .history-item:hover{border-color:var(--accent)}
-        .hist-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-        .hist-detail{display:none;margin-top:8px;white-space:pre-wrap;font-size:11px;color:var(--text);max-height:250px;overflow-y:auto}
-        .empty-history{text-align:center;padding:24px;color:var(--text2)}
-        .flex-row{display:flex;flex-wrap:wrap;gap:14px}
-        .flex-2{flex:2;min-width:200px}
-        .flex-1{flex:1;min-width:150px}
-        .mt-8{margin-top:8px}
-        .mt-12{margin-top:12px}
-        .gap-8{display:flex;gap:8px;flex-wrap:wrap}
-        .gap-12{display:flex;gap:12px;flex-wrap:wrap}
-        .checker-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-        @media(max-width:900px){.checker-grid{grid-template-columns:1fr}}
-        .theme-btn{background:var(--input);border:1px solid var(--border);border-radius:20px;padding:6px 12px;cursor:pointer;font-size:16px;color:var(--text)}
-        .filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-        .filter-chip{padding:4px 10px;border-radius:14px;font-size:11px;cursor:pointer;background:var(--input);border:1px solid var(--border);color:var(--text2);transition:all 0.2s;user-select:none}
-        .filter-chip.active{background:rgba(168,85,247,0.3);border-color:var(--accent);color:var(--accent)}
-        .log-line{color:var(--text2);font-size:11px;padding:2px 0}
+        * { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
+        body { font-family: 'Inter', sans-serif; min-height: 100vh; padding: 24px 16px; background: var(--bg); color: var(--text); transition: background 0.3s, color 0.3s; }
+        .wrapper { max-width: 1400px; margin: 0 auto; padding: 28px; background: var(--bg2); border: 1px solid var(--border); border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--input); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* Header */
+        .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+        .logo { font-size: 26px; font-weight: 900; letter-spacing: -0.5px; background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; display: flex; align-items: center; gap: 10px; }
+        .badge-pro { font-size: 10px; font-weight: 800; background: var(--accent-glow); color: var(--accent); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--accent); letter-spacing: 1px; text-transform: uppercase; -webkit-text-fill-color: initial; }
+        .header-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .stat-pill { background: var(--card); border: 1px solid var(--border); padding: 6px 14px; border-radius: 30px; font-size: 12px; font-weight: 600; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+
+        /* Navigation Tabs */
+        .tabs { display: flex; gap: 10px; margin-bottom: 24px; background: var(--input); padding: 5px; border-radius: 16px; border: 1px solid var(--border); width: fit-content; }
+        .tab { padding: 10px 22px; border-radius: 12px; color: var(--text2); cursor: pointer; font-size: 13px; font-weight: 700; transition: all 0.2s; border: none; }
+        .tab:hover { color: var(--text); }
+        .tab.active { background: var(--card); color: var(--text); border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Cards & Layout */
+        .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 18px; padding: 24px; margin-bottom: 20px; color: var(--text); transition: border-color 0.2s; }
+        .card:hover { border-color: rgba(139, 92, 246, 0.4); }
+        .card h2, .card h3 { font-size: 16px; color: var(--text); margin-bottom: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+
+        /* Buttons */
+        .btn { padding: 12px 24px; border: none; border-radius: 12px; font-size: 13px; font-weight: 700; cursor: pointer; color: #fff; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; transition: all 0.2s; box-shadow: 0 4px 14px rgba(0,0,0,0.2); }
+        .btn-primary { background: var(--gradient-btn); }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 6px 20px var(--accent-glow); }
+        .btn-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+        .btn-success:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-secondary { background: var(--input); border: 1px solid var(--border); color: var(--text2); }
+        .btn-secondary:hover { color: var(--text); border-color: var(--accent); }
+        .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
+        .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 10px; }
+        .btn-xs { padding: 5px 12px; font-size: 11px; border-radius: 8px; }
+
+        /* Forms & Inputs */
+        .toggle-group { display: flex; background: var(--input); border: 1px solid var(--border); border-radius: 12px; padding: 4px; gap: 4px; margin-bottom: 16px; }
+        .toggle-btn { flex: 1; padding: 10px 14px; background: transparent; border: none; border-radius: 8px; color: var(--text2); font-size: 12px; font-weight: 700; cursor: pointer; text-align: center; transition: all 0.2s; }
+        .toggle-btn.active { background: var(--accent); color: #fff; }
+        textarea, .upload-area { width: 100%; padding: 14px; background: var(--input); border: 1px solid var(--border); border-radius: 12px; color: var(--text); font-family: monospace; font-size: 12px; resize: vertical; transition: border-color 0.2s; }
+        textarea:focus { border-color: var(--accent); }
+        .upload-area { min-height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; border-style: dashed; gap: 6px; text-align: center; transition: all 0.2s; }
+        .upload-area:hover, .upload-area.drag-over { background: var(--accent-glow); border-color: var(--accent); }
+        
+        .result-box { background: var(--input); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-top: 16px; max-height: 450px; overflow-y: auto; font-family: monospace; font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-all; }
+        .progress-bar { margin-top: 12px; background: var(--input); border-radius: 20px; height: 6px; overflow: hidden; border: 1px solid var(--border); }
+        .progress-fill { height: 100%; width: 0%; background: var(--gradient-btn); transition: width 0.3s; }
+        
+        .footer { text-align: center; padding: 20px 0 8px; color: var(--text2); font-size: 12px; font-weight: 600; border-top: 1px solid var(--border); margin-top: 24px; }
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+        .tool-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+        .tool-card h3 { font-size: 15px; color: var(--accent); margin-bottom: 4px; }
+        .tool-card .desc { color: var(--text2); font-size: 12px; margin-bottom: 14px; }
+        
+        .input-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+        .input-row input { flex: 1; padding: 10px 14px; background: var(--input); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 13px; }
+        
+        .history-item { background: var(--input); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; }
+        .history-item:hover { border-color: var(--accent); }
+        .hist-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; }
+        .hist-detail { display: none; margin-top: 10px; white-space: pre-wrap; font-size: 11px; color: var(--text); max-height: 250px; overflow-y: auto; padding-top: 10px; border-top: 1px dashed var(--border); }
+        .empty-history { text-align: center; padding: 24px; color: var(--text2); font-size: 13px; }
+
+        .flex-row { display: flex; flex-wrap: wrap; gap: 14px; }
+        .flex-2 { flex: 2; min-width: 220px; }
+        .flex-1 { flex: 1; min-width: 160px; }
+        .mt-8 { margin-top: 8px; }
+        .mt-12 { margin-top: 12px; }
+        .gap-8 { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .checker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media(max-width:900px){ .checker-grid { grid-template-columns: 1fr; } }
+        
+        .theme-btn { background: var(--input); border: 1px solid var(--border); border-radius: 30px; padding: 6px 14px; cursor: pointer; font-size: 14px; color: var(--text); font-weight: 600; }
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+        .filter-chip { padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; cursor: pointer; background: var(--input); border: 1px solid var(--border); color: var(--text2); transition: all 0.2s; user-select: none; }
+        .filter-chip.active { background: var(--accent-glow); border-color: var(--accent); color: var(--accent); }
+        .log-line { color: var(--text2); font-size: 11px; padding: 2px 0; }
     </style>
 </head>
 <body>
 <div class="wrapper">
+    <!-- Header -->
     <div class="header">
-        <div class="logo">KAI CHECKER</div>
+        <div class="logo">
+            <span>KAI CHECKER</span>
+            <span class="badge-pro">PRO 30T</span>
+        </div>
         <div class="header-right">
-            <span id="logStats" style="color:var(--text2);font-size:11px;"></span>
-            <span id="sessionTimer" style="color:#00b894;font-family:monospace;font-size:12px;">⏱️ 00:00:00</span>
-            <button class="theme-btn" onclick="toggleTheme()" title="Сменить тему">🌓</button>
-            <span style="color:var(--text2);font-size:12px;">⚡ PRO</span>
+            <div class="stat-pill" id="logStats">📊 0 к/с</div>
+            <div class="stat-pill" id="sessionTimer" style="color: #10b981;">⏱️ 00:00:00</div>
+            <button class="theme-btn" onclick="toggleTheme()" title="Сменить тему">🌓 Тема</button>
         </div>
     </div>
 
+    <!-- Navigation Tabs -->
     <div class="tabs">
-        <div class="tab active" data-tab="checker">🔍 Чекер</div>
-        <div class="tab" data-tab="fresher">🔄 Фрешер</div>
-        <div class="tab" data-tab="tools">🧰 Инструменты</div>
+        <button class="tab active" data-tab="checker">🔍 Чекер</button>
+        <button class="tab" data-tab="fresher">🔄 Фрешер</button>
+        <button class="tab" data-tab="tools">🧰 Инструменты</button>
     </div>
 
+    <!-- Checker Tab -->
     <div class="tab-content active" id="tab-checker">
         <div class="checker-grid">
             <div class="card">
                 <h2>🔍 Одиночная проверка</h2>
-                <textarea id="singleCookie" placeholder="Вставьте ОДИН кук..." rows="3"></textarea>
-                <div class="mt-12"><button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">🔍 Проверить</button></div>
-                <div class="result-box" id="singleResult">Результат здесь...</div>
+                <textarea id="singleCookie" placeholder="Вставьте ОДИН .ROBLOSECURITY кук..." rows="4"></textarea>
+                <div class="mt-12"><button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">🔍 Проверить аккаунт</button></div>
+                <div class="result-box" id="singleResult">Результат проверки появится здесь...</div>
             </div>
             <div class="card">
-                <h2>📦 Массовая проверка</h2>
+                <h2>📦 Массовая проверка (30 Потоков)</h2>
                 <div class="upload-area" id="massDropArea" onclick="document.getElementById('massFile').click()">
                     <p>📁 <strong>Перетащите TXT файл сюда</strong></p>
-                    <p style="font-size:11px;color:var(--text2)">или кликните для выбора</p>
+                    <p style="font-size:11px;color:var(--text2)">или кликните для выбора с компьютера</p>
                 </div>
                 <input type="file" id="massFile" accept=".txt" style="display:none;">
-                <div id="massFileInfo" style="font-size:12px;color:#10b981;margin-top:6px;"></div>
-                <div id="extractInfo" style="font-size:12px;color:#10b981;margin-top:4px;display:none;"></div>
-                <div class="mt-8"><button class="btn btn-success" onclick="runMassCheck()" style="width:100%;">🚀 Массовая проверка</button></div>
+                <div id="massFileInfo" style="font-size:12px;color:#10b981;margin-top:6px;font-weight:600;"></div>
+                <div id="extractInfo" style="font-size:12px;color:var(--accent);margin-top:4px;display:none;font-weight:600;"></div>
+                <div class="mt-8"><button class="btn btn-success" onclick="runMassCheck()" style="width:100%;">🚀 Запустить проверка</button></div>
                 <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
                 <div id="massLog" style="max-height:80px;overflow-y:auto;margin-top:6px;"></div>
                 <div class="filter-bar mt-8" id="filterBar" style="display:none;">
-                    <span style="font-size:11px;color:var(--text2);">🔍</span>
                     <span class="filter-chip active" onclick="applyFilter('all', this)">Все</span>
                     <span class="filter-chip" onclick="applyFilter('premium', this)">💠 Premium</span>
                     <span class="filter-chip" onclick="applyFilter('rich', this)">💰 Robux>1000</span>
                     <span class="filter-chip" onclick="applyFilter('secure', this)">🔐 2FA</span>
                     <span class="filter-chip" onclick="applyFilter('old', this)">👴 Старые (>3 лет)</span>
                 </div>
-                <div class="result-box" id="massResult">Результаты здесь...</div>
+                <div class="result-box" id="massResult">Результаты появится здесь...</div>
                 <div class="gap-8 mt-8" id="massActions" style="display:none;">
-                    <button class="btn btn-primary btn-sm" onclick="copyValidCookies()">📋 Копировать валидные</button>
-                    <button class="btn btn-secondary btn-sm" onclick="downloadValidOnly()">📥 Только валидные</button>
-                    <button class="btn btn-secondary btn-sm" onclick="downloadInvalidOnly()">📥 Только невалидные</button>
+                    <button class="btn btn-primary btn-sm" onclick="copyValidCookies()">📋 Скопировать валид</button>
+                    <button class="btn btn-secondary btn-sm" onclick="downloadValidOnly()">📥 Валид (.txt)</button>
+                    <button class="btn btn-secondary btn-sm" onclick="downloadInvalidOnly()">📥 Невалид (.txt)</button>
                 </div>
-                <div id="robuxCalc" style="display:none;margin-top:10px;padding:10px;background:var(--input);border-radius:10px;font-size:12px;color:var(--text);"></div>
+                <div id="robuxCalc" style="display:none;margin-top:10px;padding:12px;background:var(--input);border-radius:12px;font-size:12px;border:1px solid var(--border);"></div>
             </div>
         </div>
         <div class="card">
-            <h3>📋 История проверок <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()">🗑️</button></h3>
-            <div id="checkerHistoryList"><div class="empty-history">Загрузка...</div></div>
+            <h3>📋 История проверок <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()" style="margin-left:auto;">🗑️ Очистить</button></h3>
+            <div id="checkerHistoryList"><div class="empty-history">Загрузка истории...</div></div>
         </div>
     </div>
 
+    <!-- Fresher Tab -->
     <div class="tab-content" id="tab-fresher">
         <div class="card">
-            <h2>🔄 Фрешер сессий</h2>
+            <h2>🔄 Фрешер сессий (20 Потоков)</h2>
             <div class="toggle-group">
-                <button class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
-                <button class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Сбросить</button>
+                <button class="toggle-btn active" id="modeDuplicate" onclick="setFresherMode('duplicate')">♻️ Дублировать (Сохранить старую)</button>
+                <button class="toggle-btn" id="modeKill" onclick="setFresherMode('kill')">💀 Сбросить (Инвалидировать старую)</button>
             </div>
             <input type="hidden" id="fresherMode" value="duplicate">
             <div class="flex-row">
-                <div class="flex-2"><textarea id="fresherCookies" placeholder="Вставьте куки..." rows="6"></textarea></div>
-                <div class="flex-1"><div class="upload-area" id="fresherDropArea" onclick="document.getElementById('fresherFile').click()"><p>📁 <strong>Перетащите .txt</strong></p></div><input type="file" id="fresherFile" accept=".txt" style="display:none;"></div>
+                <div class="flex-2"><textarea id="fresherCookies" placeholder="Вставьте куки списком..." rows="6"></textarea></div>
+                <div class="flex-1"><div class="upload-area" id="fresherDropArea" onclick="document.getElementById('fresherFile').click()"><p>📁 <strong>Загрузить .txt</strong></p></div><input type="file" id="fresherFile" accept=".txt" style="display:none;"></div>
             </div>
             <div class="mt-12 gap-8">
-                <button class="btn btn-success" onclick="runFresher()">⚡ Обновить</button>
+                <button class="btn btn-success" onclick="runFresher()">⚡ Обновить куки</button>
                 <button class="btn btn-secondary" onclick="clearFresherInputs()">🧹 Очистить</button>
             </div>
             <div class="progress-bar"><div class="progress-fill" id="fresherProgress"></div></div>
-            <div id="fresherStats" style="font-size:12px;color:var(--text2);margin-top:6px;"></div>
-            <div class="result-box" id="fresherResult">Новые куки здесь...</div>
+            <div id="fresherStats" style="font-size:12px;color:var(--text2);margin-top:8px;"></div>
+            <div class="result-box" id="fresherResult">Обновленные куки появится здесь...</div>
         </div>
         <div class="card">
-            <h3>📋 История обновлений <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()">🗑️</button></h3>
-            <div id="fresherHistoryList"><div class="empty-history">Загрузка...</div></div>
+            <h3>📋 История обновлений <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()" style="margin-left:auto;">🗑️ Очистить</button></h3>
+            <div id="fresherHistoryList"><div class="empty-history">Загрузка истории...</div></div>
         </div>
     </div>
 
+    <!-- Tools Tab -->
     <div class="tab-content" id="tab-tools">
         <div class="tool-grid">
-            <div class="tool-card"><h3>🔗 Слияние</h3><p class="desc">Объедините .txt файлы</p><div class="upload-area" id="mergeDropArea" onclick="document.getElementById('mergeFiles').click()"><p>📁 Перетащите файлы</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;"><button class="btn btn-primary mt-8" onclick="mergeCookies()" style="width:100%;">🔄 Объединить</button><div class="result-box" id="mergeResult" style="max-height:80px;">Результат...</div></div>
-            <div class="tool-card"><h3>✂️ По количеству</h3><p class="desc">Разделите по N куки</p><div class="upload-area" id="splitCountDropArea" onclick="document.getElementById('splitCountFile').click()"><p>📁 Перетащите файл</p></div><input type="file" id="splitCountFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitCount" value="100" min="1"><span>шт.</span></div><button class="btn btn-primary" onclick="splitByCount()" style="width:100%;">📦 Разделить</button><div class="result-box" id="splitCountResult" style="max-height:80px;">Результат...</div></div>
-            <div class="tool-card"><h3>📊 На N файлов</h3><p class="desc">Равномерно распределите</p><div class="upload-area" id="splitFilesDropArea" onclick="document.getElementById('splitFilesFile').click()"><p>📁 Перетащите файл</p></div><input type="file" id="splitFilesFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitFilesCount" value="5" min="1"><span>файлов</span></div><button class="btn btn-primary" onclick="splitByFiles()" style="width:100%;">📂 Разделить</button><div class="result-box" id="splitFilesResult" style="max-height:80px;">Результат...</div></div>
-            <div class="tool-card"><h3>🧹 Очистка</h3><p class="desc">Дубликаты или формат</p><textarea id="cleanCookiesInput" placeholder="Вставьте куки..." rows="3"></textarea><div class="gap-8 mt-8"><button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Дубликаты</button><button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Формат</button></div><div class="result-box" id="cleanResult" style="max-height:80px;">Результат...</div></div>
+            <div class="tool-card"><h3>🔗 Слияние</h3><p class="desc">Объедините несколько .txt файлов</p><div class="upload-area" id="mergeDropArea" onclick="document.getElementById('mergeFiles').click()"><p>📁 Перетащите файлы</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;"><button class="btn btn-primary mt-8" onclick="mergeCookies()" style="width:100%;">🔄 Объединить</button><div class="result-box" id="mergeResult" style="max-height:80px;">Результат...</div></div>
+            <div class="tool-card"><h3>✂️ Раздел по количеству</h3><p class="desc">Разделите файл по N куки в каждый</p><div class="upload-area" id="splitCountDropArea" onclick="document.getElementById('splitCountFile').click()"><p>📁 Перетащите файл</p></div><input type="file" id="splitCountFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitCount" value="100" min="1"><span>шт.</span></div><button class="btn btn-primary" onclick="splitByCount()" style="width:100%;">📦 Разделить</button><div class="result-box" id="splitCountResult" style="max-height:80px;">Результат...</div></div>
+            <div class="tool-card"><h3>📊 Раздел на N файлов</h3><p class="desc">Равномерно разбейте на указанное число файлов</p><div class="upload-area" id="splitFilesDropArea" onclick="document.getElementById('splitFilesFile').click()"><p>📁 Перетащите файл</p></div><input type="file" id="splitFilesFile" accept=".txt" style="display:none;"><div class="input-row"><input type="number" id="splitFilesCount" value="5" min="1"><span>файлов</span></div><button class="btn btn-primary" onclick="splitByFiles()" style="width:100%;">📂 Разделить</button><div class="result-box" id="splitFilesResult" style="max-height:80px;">Результат...</div></div>
+            <div class="tool-card"><h3>🧹 Очистка</h3><p class="desc">Удаление дубликатов или форматирование</p><textarea id="cleanCookiesInput" placeholder="Вставьте куки..." rows="3"></textarea><div class="gap-8 mt-8"><button class="btn btn-primary" onclick="cleanCookies('deduplicate')" style="flex:1;">🔄 Дубликаты</button><button class="btn btn-secondary" onclick="cleanCookies('format')" style="flex:1;">📝 Формат</button></div><div class="result-box" id="cleanResult" style="max-height:80px;">Результат...</div></div>
         </div>
     </div>
 
-    <div class="footer">KAI CHECKER · PRO</div>
+    <!-- Footer -->
+    <div class="footer">KAI CHECKER · POWERED BY SPARKL STYLE UI</div>
 </div>
 
 <script>
@@ -593,16 +634,6 @@ document.getElementById('massFile').addEventListener('change', function(e) {
     }
 });
 
-document.getElementById('mergeFiles').addEventListener('change', function(e) {
-    var list = document.getElementById('mergeFileList'); list.innerHTML = '';
-    if (this.files) {
-        Array.from(this.files).forEach(function(f, i) {
-            var div = document.createElement('div'); div.className = 'file-item';
-            div.textContent = (i+1) + '. ' + f.name; list.appendChild(div);
-        });
-    }
-});
-
 document.getElementById('splitCountFile').addEventListener('change', function(e) {
     if (this.files && this.files[0]) {
         var reader = new FileReader();
@@ -642,9 +673,9 @@ async function runMassCheck() {
     var progress = document.getElementById('massProgress');
     var startCheck = Date.now();
     
-    resBox.textContent = '⏳ Извлечение и проверка...';
-    progress.style.width = '10%';
-    logBox.innerHTML = '<div class="log-line">🔄 Запуск многопоточной проверки (10 потоков)...</div>';
+    resBox.textContent = '⏳ Извлечение и многопоточная проверка...';
+    progress.style.width = '15%';
+    logBox.innerHTML = '<div class="log-line">🚀 Запуск многопоточной проверки (30 потоков)...</div>';
     
     try {
         var fd = new FormData(); fd.append('file', new Blob([window.massFileContent]));
@@ -763,7 +794,7 @@ async function runFresher() {
 
 function clearFresherInputs() {
     document.getElementById('fresherCookies').value = '';
-    document.getElementById('fresherResult').textContent = 'Новые куки здесь...';
+    document.getElementById('fresherResult').textContent = 'Обновленные куки появится здесь...';
     document.getElementById('fresherStats').textContent = '';
 }
 
@@ -933,6 +964,7 @@ def api_mass_check():
     
     return jsonify({"success": True, "extracted_count": extracted_count, "total": len(results), "valid_count": len(valid), "invalid_count": len(invalid), "premium_count": premium_count, "total_robux": total_robux, "results": formatted, "full_data": full_data, "download_url": download_url})
 
+# Многопоточная реализация Фрешера сессий (20 Потоков)
 @app.route("/api/fresher", methods=["POST"])
 def api_fresher():
     data = request.json or {}
@@ -946,20 +978,26 @@ def api_fresher():
     success_count = 0
     fail_count = 0
     
-    for c in cookies_list:
-        result = refresh_roblox_cookie(c, kill_old=(mode=='kill'))
-        if result['success'] and result['new_cookie']:
-            is_new = True
-            if '.ROBLOSECURITY=' in c:
-                old_val = c.strip().split('.ROBLOSECURITY=')[-1].split(';')[0]
-                is_new = result['new_cookie'] != old_val
-            status_text = "НОВАЯ" if is_new else "БЕЗ ИЗМЕНЕНИЙ"
-            cookie_hist.append(f"🟢 {result.get('username','?')} - {status_text}")
-            only_cookies.append(result['new_cookie'])
-            success_count += 1
-        else:
-            cookie_hist.append(f"❌ {result.get('error', 'Ошибка')[:40]}")
-            fail_count += 1
+    def process_fresher_item(c):
+        res = refresh_roblox_cookie(c, kill_old=(mode=='kill'))
+        return c, res
+
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = [executor.submit(process_fresher_item, c) for c in cookies_list]
+        for f in as_completed(futures):
+            c, result = f.result()
+            if result['success'] and result['new_cookie']:
+                is_new = True
+                if '.ROBLOSECURITY=' in c:
+                    old_val = c.strip().split('.ROBLOSECURITY=')[-1].split(';')[0]
+                    is_new = result['new_cookie'] != old_val
+                status_text = "НОВАЯ" if is_new else "БЕЗ ИЗМЕНЕНИЙ"
+                cookie_hist.append(f"🟢 {result.get('username','?')} - {status_text}")
+                only_cookies.append(result['new_cookie'])
+                success_count += 1
+            else:
+                cookie_hist.append(f"❌ {result.get('error', 'Ошибка')[:40]}")
+                fail_count += 1
     
     add_fresher_history({'mode': mode, 'refreshed_count': len(only_cookies), 'success_count': success_count, 'fail_count': fail_count, 'cookies': cookie_hist})
     
