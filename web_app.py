@@ -66,7 +66,7 @@ def add_fresher_history(entry):
     save_history(FRESHER_HISTORY_FILE, h)
 
 # ==========================================
-# БЛОК: ЧЕКЕР И АНАЛИТИКА (RAP, PLAYTIME)
+# БЛОК: ЧЕКЕР И АНАЛИТИКА
 # ==========================================
 def extract_cookies_from_text(text):
     cookies = []
@@ -317,16 +317,16 @@ def refresh_roblox_cookie(cookie, kill_old=False):
 # БЛОК: ИНСТРУМЕНТЫ
 # ==========================================
 def merge_cookie_files(contents):
-    all_cookies = set()
+    all_cookies = []
     for c in contents:
-        for l in c.split('\n'):
-            l = l.strip()
-            if len(l)>20: all_cookies.add(l)
-    return '\n'.join(sorted(all_cookies))
+        extracted = extract_cookies_from_text(c)
+        all_cookies.extend(extracted)
+    unique = list(dict.fromkeys(all_cookies))
+    return '\n'.join(unique)
 
 def remove_duplicates(content):
-    cookies = [l.strip() for l in content.split('\n') if len(l)>20]
-    return '\n'.join(list(dict.fromkeys(cookies)))
+    cookies = extract_cookies_from_text(content)
+    return '\n'.join(cookies)
 
 # ==========================================
 # БЛОК: ИНТЕРФЕЙС (HTML/CSS/JS)
@@ -339,7 +339,6 @@ HTML = r"""<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kai Checker PRO</title>
-    <!-- НАДУВНОЙ И ПРОФЕССИОНАЛЬНЫЕ ШРИФТЫ -->
     <link href="https://fonts.googleapis.com/css2?family=Rubik+Puddles&family=Paytone+One&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -432,7 +431,6 @@ HTML = r"""<!DOCTYPE html>
         }
         .logo-wrap { display: flex; align-items: center; gap: 14px; }
 
-        /* НАДУВНОЙ ШРИФТ ДЛЯ LOGO */
         .logo-text {
             font-family: 'Paytone One', 'Rubik Puddles', cursive, sans-serif;
             font-size: 38px;
@@ -528,7 +526,7 @@ HTML = r"""<!DOCTYPE html>
         .btn-secondary:hover { color: var(--text-main); border-color: var(--accent-purple); }
         .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
         .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
-        .btn-sm { padding: 6px 14px; font-size: 11px; border-radius: 10px; }
+        .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 10px; }
 
         .fresher-mode-btn.active-mode {
             background: var(--gradient-btn) !important;
@@ -553,6 +551,7 @@ HTML = r"""<!DOCTYPE html>
             border-radius: 16px; background: var(--input-bg);
             display: flex; flex-direction: column; align-items: center;
             justify-content: center; cursor: pointer; transition: all 0.25s; text-align: center;
+            padding: 16px;
         }
         .upload-area:hover, .upload-area.drag-over {
             border-color: var(--accent-pink); background: rgba(168, 85, 247, 0.08);
@@ -656,7 +655,7 @@ HTML = r"""<!DOCTYPE html>
             display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
         }
         
-        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
     </style>
 </head>
 <body>
@@ -777,17 +776,45 @@ HTML = r"""<!DOCTYPE html>
     <!-- ИНСТРУМЕНТЫ -->
     <div class="tab-content" id="tab-tools">
         <div class="tool-grid">
+            <!-- СЛИЯНИЕ -->
             <div class="card">
-                <h3>🔗 Слияние TXT</h3>
-                <input type="file" id="mergeFiles" accept=".txt" multiple style="margin-top:8px;">
-                <button class="btn btn-primary btn-sm" onclick="mergeCookies()" style="margin-top:10px;width:100%;">Объединить</button>
-                <div class="result-box" id="mergeResult" style="max-height:80px;margin-top:10px;"></div>
+                <h3>🔗 Слияние TXT файлов</h3>
+                <div class="upload-area" id="mergeDropArea" onclick="document.getElementById('mergeFiles').click()">
+                    <p style="font-weight:700;">📁 Перетащите TXT файлы</p>
+                    <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">выберите сразу несколько файлов</p>
+                </div>
+                <input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;">
+                <div id="mergeFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px;font-weight:600;"></div>
+                <button class="btn btn-primary btn-sm" onclick="mergeCookies()" style="margin-top:12px;width:100%;">Объединить в один TXT</button>
+                <div class="result-box" id="mergeResult" style="display:none;margin-top:10px;"></div>
             </div>
+
+            <!-- РАЗДЕЛЕНИЕ -->
             <div class="card">
-                <h3>✂️ Очистка от дубликатов</h3>
-                <textarea id="cleanInput" placeholder="Куки..." rows="3"></textarea>
-                <button class="btn btn-primary btn-sm" onclick="cleanCookies()" style="margin-top:10px;width:100%;">Удалить дубли</button>
-                <div class="result-box" id="cleanResult" style="max-height:80px;margin-top:10px;"></div>
+                <h3>✂️ Разделение куки по файлам</h3>
+                <div class="upload-area" id="splitDropArea" onclick="document.getElementById('splitFiles').click()">
+                    <p style="font-weight:700;">📁 Загрузить TXT для разделения</p>
+                    <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">или вставьте куки вручную ниже</p>
+                </div>
+                <input type="file" id="splitFiles" accept=".txt" multiple style="display:none;">
+                <div id="splitFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px;font-weight:600;"></div>
+                
+                <textarea id="splitInput" placeholder="Или вставьте куки списком..." rows="3" style="margin-top:10px;"></textarea>
+                
+                <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
+                    <label style="font-size:12px;font-weight:700;color:var(--text-muted);white-space:nowrap;">Куков на файл:</label>
+                    <input type="number" id="splitCount" value="1" min="1" style="padding:8px 12px;width:100px;">
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="splitCookies()" style="margin-top:12px;width:100%;">Разделить и скачать ZIP</button>
+                <div class="result-box" id="splitResult" style="display:none;margin-top:10px;"></div>
+            </div>
+
+            <!-- ДУБЛИКАТЫ -->
+            <div class="card">
+                <h3>🧹 Очистка от дубликатов</h3>
+                <textarea id="cleanInput" placeholder="Вставьте куки для дедупликации..." rows="5"></textarea>
+                <button class="btn btn-primary btn-sm" onclick="cleanCookies()" style="margin-top:12px;width:100%;">Удалить дубликаты</button>
+                <div class="result-box" id="cleanResult" style="display:none;margin-top:10px;"></div>
             </div>
         </div>
     </div>
@@ -874,19 +901,35 @@ function downloadTxtFromBox(boxId, defaultFilename = 'report.txt') {
     URL.revokeObjectURL(url);
 }
 
-// --- ДРАГ И ДРОП ---
-const dropArea = document.getElementById('massDropArea');
-['dragenter', 'dragover'].forEach(e => dropArea.addEventListener(e, prev => prev.preventDefault()));
-dropArea.addEventListener('drop', e => {
-    e.preventDefault();
-    if(e.dataTransfer.files.length) {
-        document.getElementById('massFile').files = e.dataTransfer.files;
-        document.getElementById('massFileInfo').textContent = 'Файл: ' + e.dataTransfer.files[0].name;
-    }
-});
-document.getElementById('massFile').addEventListener('change', function() {
-    if(this.files.length) document.getElementById('massFileInfo').textContent = 'Файл: ' + this.files[0].name;
-});
+// --- УНИВЕРСАЛЬНАЯ НАСТРОЙКА DRAG & DROP ---
+function setupDragAndDrop(areaId, inputId, infoId) {
+    const area = document.getElementById(areaId);
+    const input = document.getElementById(inputId);
+    const info = document.getElementById(infoId);
+    if(!area || !input) return;
+
+    ['dragenter', 'dragover'].forEach(e => area.addEventListener(e, prev => {
+        prev.preventDefault(); area.classList.add('drag-over');
+    }));
+    ['dragleave', 'drop'].forEach(e => area.addEventListener(e, prev => {
+        prev.preventDefault(); area.classList.remove('drag-over');
+    }));
+    area.addEventListener('drop', e => {
+        if(e.dataTransfer.files.length) {
+            input.files = e.dataTransfer.files;
+            if(info) info.textContent = `Выбрано файлов: ${input.files.length} (${input.files[0].name})`;
+        }
+    });
+    input.addEventListener('change', function() {
+        if(this.files.length && info) {
+            info.textContent = `Выбрано файлов: ${this.files.length} (${this.files[0].name})`;
+        }
+    });
+}
+
+setupDragAndDrop('massDropArea', 'massFile', 'massFileInfo');
+setupDragAndDrop('mergeDropArea', 'mergeFiles', 'mergeFileInfo');
+setupDragAndDrop('splitDropArea', 'splitFiles', 'splitFileInfo');
 
 // --- API ЛОГИКА ---
 let lastMassReports = [];
@@ -1027,20 +1070,63 @@ async function clearFresherHistory() {
     await fetch('/api/history/fresher/clear', {method:'POST'}); loadFresherHistory();
 }
 
+// --- ИНСТРУМЕНТЫ: СЛИЯНИЕ, РАЗДЕЛЕНИЕ И ОЧИСТКА ---
 async function mergeCookies() {
     const files = document.getElementById('mergeFiles').files;
-    if(files.length < 2) return alert('Выберите от 2 файлов');
+    if(files.length < 2) return alert('Выберите минимум 2 TXT файла для объединения!');
     const fd = new FormData(); Array.from(files).forEach(f => fd.append('files', f));
+    
+    const box = document.getElementById('mergeResult');
+    box.style.display = 'block'; box.textContent = '⏳ Объединение файлов...';
+    
     const res = await fetch('/api/merge-cookies', {method:'POST', body:fd});
     const data = await res.json();
-    document.getElementById('mergeResult').innerHTML = `<a href="${data.download_url}" style="color:var(--accent-pink)">Скачать объединенный файл</a>`;
+    if(data.success) {
+        box.innerHTML = `✅ Успешно объединено! <br><a href="${data.download_url}" style="color:var(--accent-pink);font-weight:700;">📥 Скачать единый TXT файл</a>`;
+    } else {
+        box.textContent = '❌ Ошибка объединения';
+    }
+}
+
+async function splitCookies() {
+    const files = document.getElementById('splitFiles').files;
+    const textInput = document.getElementById('splitInput').value;
+    const perFile = parseInt(document.getElementById('splitCount').value) || 1;
+    
+    if(!files.length && !textInput.trim()) {
+        return alert('Загрузите хотя бы один TXT файл или вставьте куки вручную!');
+    }
+
+    const fd = new FormData();
+    Array.from(files).forEach(f => fd.append('files', f));
+    fd.append('text', textInput);
+    fd.append('per_file', perFile);
+
+    const box = document.getElementById('splitResult');
+    box.style.display = 'block'; box.textContent = '⏳ Разделение куки по файлам и создание ZIP...';
+
+    const res = await fetch('/api/split-cookies', {method:'POST', body:fd});
+    const data = await res.json();
+    if(data.success) {
+        box.innerHTML = `✅ Успешно разделено на ${data.total_files} файлов! <br><a href="${data.download_url}" style="color:var(--accent-pink);font-weight:700;">📦 Скачать ZIP-архив с файлами</a>`;
+    } else {
+        box.textContent = data.message || '❌ Ошибка при разделении';
+    }
 }
 
 async function cleanCookies() {
     const content = document.getElementById('cleanInput').value;
-    const res = await fetch('/api/clean-cookies', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content, action:'deduplicate'})});
+    if(!content.trim()) return alert('Вставьте куки!');
+    const box = document.getElementById('cleanResult');
+    box.style.display = 'block'; box.textContent = '⏳ Очистка дубликатов...';
+    
+    const res = await fetch('/api/clean-cookies', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content})});
     const data = await res.json();
-    document.getElementById('cleanResult').innerHTML = `<a href="${data.download_url}" style="color:var(--accent-pink)">Скачать без дубликатов</a>`;
+    if(data.success) {
+        box.innerHTML = `✅ Найдено уникальных: ${data.count} шт. <br><a href="${data.download_url}" style="color:var(--accent-pink);font-weight:700;">📥 Скачать очищенный TXT</a>`;
+    } else {
+        box.textContent = '❌ Ошибка очистки';
+    }
 }
 </script>
 </body>
@@ -1164,23 +1250,54 @@ def api_merge_cookies():
     contents = [f.read().decode('utf-8', errors='ignore') for f in files]
     merged = merge_cookie_files(contents)
     filename = f"merged_{int(time.time())}.txt"
-    with open(os.path.join("downloads", filename), 'w') as f: f.write(merged)
+    filepath = os.path.join("downloads", filename)
+    with open(filepath, 'w', encoding='utf-8') as f: f.write(merged)
     return jsonify({"success": True, "download_url": f"/downloads/{filename}"})
+
+@app.route("/api/split-cookies", methods=["POST"])
+def api_split_cookies():
+    files = request.files.getlist('files')
+    text_input = request.form.get('text', '')
+    per_file = int(request.form.get('per_file', 1))
+
+    all_contents = [f.read().decode('utf-8', errors='ignore') for f in files]
+    if text_input: all_contents.append(text_input)
+
+    cookies = extract_cookies_from_text('\n'.join(all_contents))
+    if not cookies:
+        return jsonify({"success": False, "message": "Валидные куки для разделения не найдены"})
+
+    chunks = [cookies[i:i + per_file] for i in range(0, len(cookies), per_file)]
+    zip_filename = f"splitted_cookies_{int(time.time())}.zip"
+    zip_filepath = os.path.join("downloads", zip_filename)
+
+    with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for idx, chunk in enumerate(chunks, 1):
+            file_data = '\n'.join(chunk)
+            zf.writestr(f"cookies_part_{idx}.txt", file_data)
+
+    return jsonify({
+        "success": True,
+        "total_files": len(chunks),
+        "download_url": f"/downloads/{zip_filename}"
+    })
 
 @app.route("/api/clean-cookies", methods=["POST"])
 def api_clean_cookies():
     data = request.json or {}
     processed = remove_duplicates(data.get("content", ""))
     filename = f"cleaned_{int(time.time())}.txt"
-    with open(os.path.join("downloads", filename), 'w') as f: f.write(processed)
-    return jsonify({"success": True, "download_url": f"/downloads/{filename}"})
+    filepath = os.path.join("downloads", filename)
+    with open(filepath, 'w', encoding='utf-8') as f: f.write(processed)
+    count = len([line for line in processed.split('\n') if line.strip()])
+    return jsonify({"success": True, "count": count, "download_url": f"/downloads/{filename}"})
 
 @app.route("/downloads/<filename>")
 def download_file(filename):
     return send_from_directory("downloads", filename, as_attachment=True)
 
 # ==========================================
-# ТОЧКА ВХОДА (RENDER / LOCAL)
+# ТОЧКА ВХОДА
 # ==========================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
