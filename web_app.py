@@ -6,10 +6,11 @@ import urllib3
 import json
 import io
 import zipfile
+import uuid
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from flask import Flask, render_template_string, request, jsonify, send_from_directory, send_file
+from flask import Flask, render_template_string, request, jsonify, send_from_directory, send_file, session
 
 # ==========================================
 # ИНИЦИАЛИЗАЦИЯ И НАСТРОЙКИ
@@ -22,11 +23,26 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-CHECKER_HISTORY_FILE = "history/checker_history.json"
-FRESHER_HISTORY_FILE = "history/fresher_history.json"
+# ==========================================
+# БЛОК: ИЗОЛЯЦИЯ ПО СЕССИЯМ
+# ==========================================
+def get_user_session_id():
+    if 'user_id' not in session:
+        session['user_id'] = str(uuid.uuid4())
+    return session['user_id']
+
+def get_user_history_file(prefix):
+    sid = get_user_session_id()
+    return f"history/{prefix}_{sid}.json"
+
+def get_user_download_dir():
+    sid = get_user_session_id()
+    user_dir = os.path.join("downloads", sid)
+    os.makedirs(user_dir, exist_ok=True)
+    return user_dir, sid
 
 # ==========================================
-# БЛОК: ИСТОРИЯ
+# БЛОК: ИСТОРИЯ (ПЕРСОНАЛЬНАЯ)
 # ==========================================
 def load_history(fp):
     if not os.path.exists(fp): return []
@@ -40,7 +56,8 @@ def save_history(fp, data):
     except: pass
 
 def add_checker_history(entry):
-    h = load_history(CHECKER_HISTORY_FILE)
+    fp = get_user_history_file("checker")
+    h = load_history(fp)
     h.append({
         'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'type': entry.get('type','single'),
@@ -51,10 +68,11 @@ def add_checker_history(entry):
         'full_reports': entry.get('full_reports', [])
     })
     if len(h) > 50: h = h[-50:]
-    save_history(CHECKER_HISTORY_FILE, h)
+    save_history(fp, h)
 
 def add_fresher_history(entry):
-    h = load_history(FRESHER_HISTORY_FILE)
+    fp = get_user_history_file("fresher")
+    h = load_history(fp)
     h.append({
         'timestamp': datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         'mode': entry.get('mode','duplicate'),
@@ -63,7 +81,7 @@ def add_fresher_history(entry):
         'cookies': entry.get('cookies', [])
     })
     if len(h) > 50: h = h[-50:]
-    save_history(FRESHER_HISTORY_FILE, h)
+    save_history(fp, h)
 
 # ==========================================
 # БЛОК: ЧЕКЕР И АНАЛИТИКА
@@ -332,6 +350,7 @@ def remove_duplicates(content):
 # БЛОК: ИНТЕРФЕЙС (HTML/CSS/JS)
 # ==========================================
 app = Flask(__name__)
+app.secret_key = os.urandom(24)
 
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
@@ -1137,6 +1156,7 @@ async function cleanCookies() {
 # ==========================================
 @app.route("/")
 def index():
+    get_user_session_id()
     return render_template_string(HTML)
 
 @app.route("/api/single-check", methods=["POST"])
@@ -1228,20 +1248,24 @@ def api_fresher():
 
 @app.route("/api/history/checker")
 def api_history_checker():
-    return jsonify({"history": load_history(CHECKER_HISTORY_FILE)})
+    fp = get_user_history_file("checker")
+    return jsonify({"history": load_history(fp)})
 
 @app.route("/api/history/fresher")
 def api_history_fresher():
-    return jsonify({"history": load_history(FRESHER_HISTORY_FILE)})
+    fp = get_user_history_file("fresher")
+    return jsonify({"history": load_history(fp)})
 
 @app.route("/api/history/checker/clear", methods=["POST"])
 def api_clear_checker_history():
-    save_history(CHECKER_HISTORY_FILE, [])
+    fp = get_user_history_file("checker")
+    save_history(fp, [])
     return jsonify({"success": True})
 
 @app.route("/api/history/fresher/clear", methods=["POST"])
 def api_clear_fresher_history():
-    save_history(FRESHER_HISTORY_FILE, [])
+    fp = get_user_history_file("fresher")
+    save_history(fp, [])
     return jsonify({"success": True})
 
 @app.route("/api/merge-cookies", methods=["POST"])
@@ -1249,10 +1273,13 @@ def api_merge_cookies():
     files = request.files.getlist('files')
     contents = [f.read().decode('utf-8', errors='ignore') for f in files]
     merged = merge_cookie_files(contents)
+    
+    user_dir, sid = get_user_download_dir()
     filename = f"merged_{int(time.time())}.txt"
-    filepath = os.path.join("downloads", filename)
+    filepath = os.path.join(user_dir, filename)
     with open(filepath, 'w', encoding='utf-8') as f: f.write(merged)
-    return jsonify({"success": True, "download_url": f"/downloads/{filename}"})
+    
+    return jsonify({"success": True, "download_url": f"/downloads/{sid}/{filename}"})
 
 @app.route("/api/split-cookies", methods=["POST"])
 def api_split_cookies():
@@ -1268,8 +1295,10 @@ def api_split_cookies():
         return jsonify({"success": False, "message": "Валидные куки для разделения не найдены"})
 
     chunks = [cookies[i:i + per_file] for i in range(0, len(cookies), per_file)]
+    
+    user_dir, sid = get_user_download_dir()
     zip_filename = f"splitted_cookies_{int(time.time())}.zip"
-    zip_filepath = os.path.join("downloads", zip_filename)
+    zip_filepath = os.path.join(user_dir, zip_filename)
 
     with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
         for idx, chunk in enumerate(chunks, 1):
@@ -1279,22 +1308,28 @@ def api_split_cookies():
     return jsonify({
         "success": True,
         "total_files": len(chunks),
-        "download_url": f"/downloads/{zip_filename}"
+        "download_url": f"/downloads/{sid}/{zip_filename}"
     })
 
 @app.route("/api/clean-cookies", methods=["POST"])
 def api_clean_cookies():
     data = request.json or {}
     processed = remove_duplicates(data.get("content", ""))
+    
+    user_dir, sid = get_user_download_dir()
     filename = f"cleaned_{int(time.time())}.txt"
-    filepath = os.path.join("downloads", filename)
+    filepath = os.path.join(user_dir, filename)
+    
     with open(filepath, 'w', encoding='utf-8') as f: f.write(processed)
     count = len([line for line in processed.split('\n') if line.strip()])
-    return jsonify({"success": True, "count": count, "download_url": f"/downloads/{filename}"})
+    return jsonify({"success": True, "count": count, "download_url": f"/downloads/{sid}/{filename}"})
 
-@app.route("/downloads/<filename>")
-def download_file(filename):
-    return send_from_directory("downloads", filename, as_attachment=True)
+@app.route("/downloads/<sid>/<filename>")
+def download_file(sid, filename):
+    user_sid = get_user_session_id()
+    if sid != user_sid:
+        return jsonify({"error": "Forbidden"}), 403
+    return send_from_directory(os.path.join("downloads", sid), filename, as_attachment=True)
 
 # ==========================================
 # ТОЧКА ВХОДА
