@@ -249,8 +249,11 @@ def mass_check(cookies_list):
     valid.sort(key=lambda x: x['score'], reverse=True)
     return valid + invalid
 
+# ==========================================
+# ФОРМАТТЕРЫ — КУК УБРАН ИЗ ВСЕХ ОТОБРАЖЕНИЙ
+# ==========================================
 def format_full_report(info):
-    if info['status'] != '✅': return f"❌ НЕВАЛИДНЫЙ КУК\n{info['Cookie']}"
+    if info['status'] != '✅': return f"❌ НЕВАЛИДНЫЙ КУК"
     gp = info.get('PurchasedGamepasses',{})
     rap_str = f"⏣ {info['RAP']:,}" if info['RAP'] is not None else "❌"
     play_str = f"{info['PlaytimeHours']} ч." if info['PlaytimeHours'] is not None else "❌"
@@ -263,12 +266,8 @@ def format_full_report(info):
         r += "📦 ГЕЙМПАССЫ:\n"
         for game, passes in list(gp.items())[:3]:
             for p in passes[:5]: r += f"  {game} - {p['name']} ({p['price']} R$)\n"
-    r += f"\n🍪 {info['Cookie']}"
     return r
 
-# ==========================================
-# ИСПРАВЛЕННАЯ ФУНКЦИЯ — КУК УБРАН ИЗ МИНИ-ОТЧЁТА
-# ==========================================
 def format_quick_report(result):
     if result['status'] == '✅':
         score = result.get('score',0)
@@ -278,7 +277,6 @@ def format_quick_report(result):
         if result.get('has_2fa'): badges.append("🔐")
         rap_str = f"RAP: {result['rap']:,}" if result['rap'] is not None else "RAP: ❌"
         play_str = f"{result['playtime']}h" if result['playtime'] is not None else "⏱️ ❌"
-        # ❌ КУК УБРАН ИЗ МИНИ-ОТЧЁТА
         return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} ({rap_str}) | {play_str} | S:{score} {' '.join(badges)}"
     return f"❌ НЕВАЛИД"
 
@@ -351,11 +349,14 @@ def remove_duplicates(content):
     return '\n'.join(cookies)
 
 # ==========================================
-# БЛОК: ИНТЕРФЕЙС (HTML/CSS/JS)
+# БЛОК: FLASK APP
 # ==========================================
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
+# ==========================================
+# БЛОК: HTML (ПОЛНЫЙ ИНТЕРФЕЙС)
+# ==========================================
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
