@@ -6,3 +6,4 @@ aiohttp
 aiosqlite
 cryptography
 urllib3
+httpx
