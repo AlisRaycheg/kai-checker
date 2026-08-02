@@ -553,6 +553,31 @@ HTML = r"""<!DOCTYPE html>
         .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
         .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 10px; }
 
+        /* ВТОРОСТЕПЕННАЯ ПОЛНОРАЗМЕРНАЯ КНОПКА СКОПИРОВАТЬ */
+        .btn-copy-wide {
+            width: 100%;
+            margin-top: 10px;
+            padding: 12px 20px;
+            background: rgba(168, 85, 247, 0.12);
+            border: 1px solid var(--border-card);
+            border-radius: 12px;
+            color: var(--text-main);
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.25s ease;
+        }
+        .btn-copy-wide:hover {
+            background: rgba(217, 70, 239, 0.22);
+            border-color: var(--border-hover);
+            box-shadow: 0 4px 15px var(--accent-glow);
+            transform: translateY(-1px);
+        }
+
         .fresher-mode-btn.active-mode {
             background: var(--gradient-btn) !important;
             color: #fff !important;
@@ -619,22 +644,6 @@ HTML = r"""<!DOCTYPE html>
         .btn-toggle-box:hover {
             background: rgba(168, 85, 247, 0.3);
             border-color: var(--accent-pink);
-        }
-
-        .btn-copy-text {
-            background: rgba(147, 51, 234, 0.25);
-            border: 1px solid var(--border-hover);
-            color: #f3e8ff;
-            padding: 4px 12px;
-            border-radius: 8px;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .btn-copy-text:hover {
-            background: rgba(192, 38, 211, 0.4);
-            box-shadow: 0 0 8px var(--accent-glow);
         }
 
         .btn-download-txt, .btn-download-zip {
@@ -781,9 +790,9 @@ HTML = r"""<!DOCTYPE html>
 <!-- Выплывающее уведомление в углу -->
 <div id="custom-alert" class="custom-alert-overlay">
     <div class="custom-alert-card">
-        <div class="alert-icon" id="custom-alert-icon">⚠️</div>
+        <div class="alert-icon">⚠️</div>
         <div class="alert-body">
-            <h3 id="custom-alert-title">Внимание</h3>
+            <h3>Внимание</h3>
             <p id="custom-alert-msg">Вставьте кук!</p>
         </div>
         <button class="alert-close-btn" onclick="closeAlert()">✕</button>
@@ -831,6 +840,8 @@ HTML = r"""<!DOCTYPE html>
                         </div>
                     </div>
                     <div class="result-box" id="singleResult"></div>
+                    <!-- Кнопка Скопировать снизу -->
+                    <button class="btn-copy-wide" onclick="copyBoxContent('singleResult', this)">📋 Скопировать</button>
                 </div>
             </div>
             <div class="card">
@@ -856,6 +867,8 @@ HTML = r"""<!DOCTYPE html>
                         </div>
                     </div>
                     <div class="result-box" id="massResult"></div>
+                    <!-- Кнопка Скопировать снизу -->
+                    <button class="btn-copy-wide" onclick="copyBoxContent('massResult', this)">📋 Скопировать</button>
                 </div>
             </div>
         </div>
@@ -880,12 +893,13 @@ HTML = r"""<!DOCTYPE html>
                 <div class="result-header">
                     <span class="result-title">ОБНОВЛЕННЫЕ КУКИ:</span>
                     <div class="action-btn-group">
-                        <button class="btn-copy-text" onclick="copyFresherResult()">📋 Скопировать куки</button>
                         <button class="btn-download-txt" onclick="downloadTxtFromBox('fresherResult', 'refreshed_cookies.txt')">📥 Скачать TXT</button>
                         <button class="btn-toggle-box" id="btnToggle_fresherResult" onclick="toggleBox('fresherResult')">▼ Свернуть</button>
                     </div>
                 </div>
                 <div class="result-box" id="fresherResult"></div>
+                <!-- Кнопка Скопировать снизу -->
+                <button class="btn-copy-wide" onclick="copyBoxContent('fresherResult', this)">📋 Скопировать</button>
             </div>
         </div>
     </div>
@@ -956,11 +970,9 @@ HTML = r"""<!DOCTYPE html>
 // --- КОМПАКТНОЕ УВЕДОМЛЕНИЕ СВЕРХУ-СБОКУ ---
 let alertTimeout;
 
-function showAlert(message, title = 'Внимание', icon = '⚠️') {
+function showAlert(message) {
     const alertEl = document.getElementById('custom-alert');
     document.getElementById('custom-alert-msg').innerText = message || 'Вставьте кук!';
-    document.getElementById('custom-alert-title').innerText = title;
-    document.getElementById('custom-alert-icon').innerText = icon;
     
     alertEl.classList.add('show');
 
@@ -972,6 +984,27 @@ function showAlert(message, title = 'Внимание', icon = '⚠️') {
 
 function closeAlert() {
     document.getElementById('custom-alert').classList.remove('show');
+}
+
+// --- ФУНКЦИЯ КОПИРОВАНИЯ ИЗ БЛОКОВ ---
+function copyBoxContent(boxId, btn) {
+    const box = document.getElementById(boxId);
+    if (!box || !box.innerText.trim()) return showAlert('Нет данных для скопирования!');
+    
+    navigator.clipboard.writeText(box.innerText.trim()).then(() => {
+        const origText = btn.innerHTML;
+        btn.innerHTML = '✅ Скопировано!';
+        btn.style.background = 'rgba(34, 197, 94, 0.25)';
+        btn.style.borderColor = '#22c55e';
+        
+        setTimeout(() => {
+            btn.innerHTML = origText;
+            btn.style.background = '';
+            btn.style.borderColor = '';
+        }, 1500);
+    }).catch(() => {
+        showAlert('Не удалось скопировать!');
+    });
 }
 
 // --- АНИМАЦИЯ ЧАСТИЦ ---
@@ -1049,18 +1082,6 @@ function downloadTxtFromBox(boxId, defaultFilename = 'report.txt') {
     a.href = url; a.download = defaultFilename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-}
-
-function copyFresherResult() {
-    const box = document.getElementById('fresherResult');
-    if (!box || !box.textContent.trim() || box.textContent.includes('⏳') || box.textContent.includes('Ошибка')) {
-        return showAlert('Нет кук для копирования!');
-    }
-    navigator.clipboard.writeText(box.textContent.trim()).then(() => {
-        showAlert('Обновленные куки скопированы в буфер!', 'Успех', '📋');
-    }).catch(err => {
-        showAlert('Не удалось скопировать данные');
-    });
 }
 
 // --- УНИВЕРСАЛЬНАЯ НАСТРОЙКА DRAG & DROP ---
@@ -1193,6 +1214,7 @@ async function loadCheckerHistory() {
                 <span>👤 Аккаунты: ${usernames}</span>
             </div>
             <div class="result-box" id="${boxId}" style="display:none;">${resultsText}</div>
+            <button class="btn-copy-wide" onclick="copyBoxContent('${boxId}', this)">📋 Скопировать</button>
         </div>`;
     });
     document.getElementById('checkerHistoryList').innerHTML = html || 'История чекера пуста';
@@ -1219,6 +1241,7 @@ async function loadFresherHistory() {
             </div>
             <div class="history-users">👤 Аккаунты: ${usernames}</div>
             <div class="result-box" id="${boxId}" style="display:none;">${cookiesText}</div>
+            <button class="btn-copy-wide" onclick="copyBoxContent('${boxId}', this)">📋 Скопировать</button>
         </div>`;
     });
     document.getElementById('fresherHistoryList').innerHTML = html || 'История фрешера пуста';
