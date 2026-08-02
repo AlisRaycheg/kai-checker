@@ -676,34 +676,79 @@ HTML = r"""<!DOCTYPE html>
         
         .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
 
-        /* --- КАСТОМНОЕ МОДАЛЬНОЕ ОКНО (ВМЕСТО ALERT) --- */
+        /* --- КАСТОМНОЕ УВЕДОМЛЕНИЕ В ПРАВОМ ВЕРХНЕМ УГЛУ (TOAST) --- */
         .custom-alert-overlay {
             position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.65);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            display: flex; align-items: center; justify-content: center;
+            top: 24px;
+            right: 24px;
             z-index: 99999;
-            opacity: 1; transition: opacity 0.25s ease;
+            pointer-events: none;
         }
-        .custom-alert-overlay.hidden {
-            display: none; opacity: 0; pointer-events: none;
-        }
+
         .custom-alert-card {
-            background: rgba(18, 10, 28, 0.95);
-            border: 1px solid var(--border-card);
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7);
-            border-radius: 20px; padding: 24px 32px;
-            text-align: center; max-width: 380px; width: 90%;
-            animation: alertPop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: auto;
+            background: rgba(23, 10, 38, 0.95);
+            border: 1px solid var(--border-hover);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px var(--accent-glow);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 280px;
+            max-width: 360px;
+            transform: translateY(-20px) scale(0.95);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .alert-icon { font-size: 32px; margin-bottom: 8px; }
-        .custom-alert-card h3 { margin: 0 0 8px 0; color: #fff; font-size: 1.1rem; }
-        .custom-alert-card p { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 20px; word-break: break-word; }
-        @keyframes alertPop {
-            from { transform: scale(0.85); opacity: 0; }
-            to { transform: scale(1); opacity: 1; }
+
+        .custom-alert-overlay.show .custom-alert-card {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+        }
+
+        .alert-icon { 
+            font-size: 22px; 
+            line-height: 1;
+        }
+
+        .alert-body {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex-grow: 1;
+        }
+
+        .alert-body h3 { 
+            margin: 0; 
+            color: #fff; 
+            font-size: 13px; 
+            font-weight: 700;
+        }
+
+        .alert-body p { 
+            color: var(--text-muted); 
+            font-size: 12px; 
+            margin: 0; 
+            word-break: break-word; 
+            font-weight: 500;
+        }
+
+        .alert-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .alert-close-btn:hover {
+            color: #fff;
         }
     </style>
 </head>
@@ -711,13 +756,15 @@ HTML = r"""<!DOCTYPE html>
 <canvas id="particles-canvas"></canvas>
 <div class="bg-glow"></div>
 
-<!-- Кастомное модальное окно -->
-<div id="custom-alert" class="custom-alert-overlay hidden">
+<!-- Выплывающее уведомление в углу -->
+<div id="custom-alert" class="custom-alert-overlay">
     <div class="custom-alert-card">
         <div class="alert-icon">⚠️</div>
-        <h3>Уведомление</h3>
-        <p id="custom-alert-msg">Сообщение...</p>
-        <button class="btn btn-primary btn-sm" onclick="closeAlert()">Понятно</button>
+        <div class="alert-body">
+            <h3>Внимание</h3>
+            <p id="custom-alert-msg">Вставьте кук!</p>
+        </div>
+        <button class="alert-close-btn" onclick="closeAlert()">✕</button>
     </div>
 </div>
 
@@ -883,14 +930,23 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <script>
-// --- КАСТОМНЫЕ УВЕДОМЛЕНИЯ ВМЕСТО ALERT ---
+// --- КОМПАКТНОЕ УВЕДОМЛЕНИЕ СВЕРХУ-СБОКУ ---
+let alertTimeout;
+
 function showAlert(message) {
-    document.getElementById('custom-alert-msg').innerText = message;
-    document.getElementById('custom-alert').classList.remove('hidden');
+    const alertEl = document.getElementById('custom-alert');
+    document.getElementById('custom-alert-msg').innerText = message || 'Вставьте кук!';
+    
+    alertEl.classList.add('show');
+
+    clearTimeout(alertTimeout);
+    alertTimeout = setTimeout(() => {
+        closeAlert();
+    }, 4000);
 }
 
 function closeAlert() {
-    document.getElementById('custom-alert').classList.add('hidden');
+    document.getElementById('custom-alert').classList.remove('show');
 }
 
 // --- АНИМАЦИЯ ЧАСТИЦ ---
