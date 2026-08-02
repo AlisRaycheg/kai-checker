@@ -351,7 +351,7 @@ def remove_duplicates(content):
     return '\n'.join(cookies)
 
 # ==========================================
-# БЛОК: ИНТЕРФЕЙС (HTML/CSS/JS) — ПОЛНЫЙ, БЕЗ ИЗМЕНЕНИЙ
+# БЛОК: ИНТЕРФЕЙС (HTML/CSS/JS)
 # ==========================================
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -1096,7 +1096,6 @@ async function runMassCheck() {
         document.getElementById('statValid').textContent = data.valid_count;
         document.getElementById('statRobux').textContent = data.total_robux.toLocaleString();
         document.getElementById('statPremium').textContent = data.premium_count;
-        // Используем ОБНОВЛЁННЫЙ format_quick_report (без кука)
         document.getElementById('massResult').textContent = data.results.join('\n\n');
     }
 }
