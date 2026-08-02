@@ -64,7 +64,7 @@ def add_checker_history(entry):
         'total': entry.get('total',1),
         'valid': entry.get('valid',0),
         'usernames': entry.get('usernames', []),
-        'results': entry.get('results', []),
+        'results': entry.get('results', []), # Здесь сохраняем полные отчеты с куками для истории
         'full_reports': entry.get('full_reports', [])
     })
     if len(h) > 50: h = h[-50:]
@@ -249,6 +249,7 @@ def mass_check(cookies_list):
     valid.sort(key=lambda x: x['score'], reverse=True)
     return valid + invalid
 
+# ПОЛНЫЙ ОТЧЕТ (С КУКИ НА КОНЦЕ)
 def format_full_report(info):
     if info['status'] != '✅': return f"❌ НЕВАЛИДНЫЙ КУК\n{info['Cookie']}"
     gp = info.get('PurchasedGamepasses',{})
@@ -261,21 +262,28 @@ def format_full_report(info):
     r += f"📧 Почта: {'✅' if info['EmailSet'] else '❌'} | 🔑 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
     if gp:
         r += "📦 ГЕЙМПАССЫ:\n"
-        for game, passes in list(gp.items())[:3]:
-            for p in passes[:5]: r += f"  {game} - {p['name']} ({p['price']} R$)\n"
+        for game, passes in list(gp.items())[:5]:
+            for p in passes[:5]: r += f"  [{game}] - {p['name']} ({p['price']} R$)\n"
     r += f"\n🍪 {info['Cookie']}"
     return r
 
+# МИНИ-ОТЧЕТ (БЕЗ КУКИ НА КОНЦЕ)
 def format_quick_report(result):
     if result['status'] == '✅':
-        score = result.get('score',0)
-        rank = "👑" if score>=150 else ("💎" if score>=100 else ("⭐" if score>=60 else "🟢"))
-        badges = []
-        if result.get('is_premium'): badges.append("💠")
-        if result.get('has_2fa'): badges.append("🔐")
-        rap_str = f"RAP: {result['rap']:,}" if result['rap'] is not None else "RAP: ❌"
-        play_str = f"{result['playtime']}h" if result['playtime'] is not None else "⏱️ ❌"
-        return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} ({rap_str}) | {play_str} | S:{score} {' '.join(badges)}\n🍪 {result['cookie']}"
+        info = result.get('full_info', {})
+        gp = info.get('PurchasedGamepasses', {})
+        rap_str = f"⏣ {info.get('RAP')}" if info.get('RAP') is not None else "❌"
+        play_str = f"{info.get('PlaytimeHours')} ч." if info.get('PlaytimeHours') is not None else "❌"
+        
+        r = f"👤 {info.get('Username')} | 🆔 {info.get('UserID')} | 📅 {info.get('Created')} | 🌍 {info.get('Country')}\n"
+        r += f"💰 Robux: ⏣ {info.get('Robux', 0):,} | 💎 RAP: {rap_str} | ⏱️ Плейтайм: {play_str}\n"
+        r += f"💸 Донат: ⏣ {info.get('DonationTotal', 0):,} | ⭐ Premium: {'✅' if info.get('IsPremium') else '❌'} | 🔐 {info.get('SecurityStatus')}\n"
+        r += f"📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔑 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}\n"
+        if gp:
+            r += "📦 ГЕЙМПАССЫ:\n"
+            for game, passes in list(gp.items())[:5]:
+                for p in passes[:5]: r += f"  [{game}] - {p['name']} ({p['price']} R$)\n"
+        return r
     return f"❌ НЕВАЛИД | {result['cookie']}"
 
 # ==========================================
@@ -1138,7 +1146,15 @@ async function loadCheckerHistory() {
     const data = await res.json();
     let html = '';
     data.history.slice().reverse().forEach((i, idx) => {
-        const resultsText = i.results ? i.results.join('\n\n') : 'Нет результатов';
+        // Здесь берем отчёты с сохраненным куки (из full_reports или results)
+        let reportsList = [];
+        if (i.full_reports && i.full_reports.length > 0) {
+            reportsList = i.full_reports.map(r => r.report);
+        } else if (i.results) {
+            reportsList = i.results;
+        }
+        
+        const resultsText = reportsList.length ? reportsList.join('\n\n') : 'Нет результатов';
         const usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
         const boxId = `chk_hist_${idx}`;
         const fileName = `checker_history_${i.timestamp.replace(/[:. ]/g, '_')}.txt`;
@@ -1289,31 +1305,35 @@ def api_mass_check():
     
     results = mass_check(cookies)
     valid = [r for r in results if r['status']=='✅']
-    formatted = [format_quick_report(r) for r in results]
+    
+    # Мини-отчеты для быстрого отображения (без куки)
+    quick_formatted = [format_quick_report(r) for r in results]
     
     full_reports = []
     usernames = []
     for r in valid:
         if r.get('full_info'):
+            full_rep = format_full_report(r['full_info'])
             full_reports.append({
                 'username': r['username'],
                 'user_id': r['user_id'],
-                'report': format_full_report(r['full_info'])
+                'report': full_rep
             })
             usernames.append(r['username'])
             
     premium_count = sum(1 for r in valid if r.get('is_premium'))
     total_robux = sum(r.get('robux',0) for r in valid)
     
+    # В историю передаем полные отчеты с куками!
     add_checker_history({
         'type': 'mass', 'total': len(results), 'valid': len(valid),
         'usernames': usernames,
-        'results': formatted,
+        'results': [r['report'] for r in full_reports],
         'full_reports': full_reports
     })
     return jsonify({
         "success": True, "valid_count": len(valid), "premium_count": premium_count,
-        "total_robux": total_robux, "results": formatted, "full_reports": full_reports
+        "total_robux": total_robux, "results": quick_formatted, "full_reports": full_reports
     })
 
 @app.route("/api/download-zip", methods=["POST"])
