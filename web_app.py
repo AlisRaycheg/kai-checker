@@ -368,12 +368,12 @@ HTML = r"""<!DOCTYPE html>
             --input-bg: rgba(12, 5, 20, 0.75);
             --text-main: #f3e8ff;
             --text-muted: #a78bfa;
-            --accent-purple: #a855f7;
-            --accent-pink: #d946ef;
-            --accent-glow: rgba(168, 85, 247, 0.4);
+            --accent-purple: #9333ea;
+            --accent-pink: #c026d3;
+            --accent-glow: rgba(168, 85, 247, 0.2);
             --gradient-primary: linear-gradient(135deg, #a855f7 0%, #d946ef 50%, #6366f1 100%);
-            --gradient-btn: linear-gradient(135deg, #9333ea 0%, #c026d3 100%);
-            --gradient-btn-hover: linear-gradient(135deg, #a855f7 0%, #e879f9 100%);
+            --gradient-btn: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
+            --gradient-btn-hover: linear-gradient(135deg, #9333ea 0%, #c026d3 100%);
         }
         [data-theme="light"] {
             --bg: #f5f0ff;
@@ -385,7 +385,7 @@ HTML = r"""<!DOCTYPE html>
             --text-muted: #7e22ce;
             --accent-purple: #7e22ce;
             --accent-pink: #c026d3;
-            --accent-glow: rgba(126, 34, 206, 0.2);
+            --accent-glow: rgba(126, 34, 206, 0.15);
             --gradient-primary: linear-gradient(135deg, #7e22ce 0%, #c026d3 100%);
             --gradient-btn: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
             --gradient-btn-hover: linear-gradient(135deg, #6b21a8 0%, #9333ea 100%);
@@ -412,7 +412,7 @@ HTML = r"""<!DOCTYPE html>
         .bg-glow {
             position: fixed;
             width: 500px; height: 500px;
-            background: radial-gradient(circle, rgba(168, 85, 247, 0.18) 0%, rgba(0,0,0,0) 70%);
+            background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, rgba(0,0,0,0) 70%);
             top: -100px; left: 50%;
             transform: translateX(-50%);
             z-index: 0;
@@ -420,8 +420,8 @@ HTML = r"""<!DOCTYPE html>
             animation: pulseGlow 8s infinite alternate ease-in-out;
         }
         @keyframes pulseGlow {
-            0% { transform: translateX(-50%) scale(1); opacity: 0.7; }
-            100% { transform: translateX(-50%) scale(1.3); opacity: 1; }
+            0% { transform: translateX(-50%) scale(1); opacity: 0.5; }
+            100% { transform: translateX(-50%) scale(1.2); opacity: 0.8; }
         }
 
         .wrapper {
@@ -435,7 +435,7 @@ HTML = r"""<!DOCTYPE html>
             -webkit-backdrop-filter: blur(20px);
             border-radius: 28px;
             padding: 32px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
         }
 
         .header {
@@ -458,7 +458,7 @@ HTML = r"""<!DOCTYPE html>
             background: linear-gradient(135deg, #f472b6 0%, #d946ef 40%, #a855f7 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            text-shadow: 0 0 25px rgba(217, 70, 239, 0.6);
+            text-shadow: 0 0 15px rgba(217, 70, 239, 0.3);
             transform: skew(-4deg);
             display: inline-block;
         }
@@ -478,7 +478,7 @@ HTML = r"""<!DOCTYPE html>
             padding: 8px 16px; border-radius: 16px;
             display: flex; flex-direction: column; align-items: center; min-width: 90px;
         }
-        .stat-val { font-size: 16px; font-weight: 800; color: var(--accent-pink); text-shadow: 0 0 10px var(--accent-glow); }
+        .stat-val { font-size: 16px; font-weight: 800; color: var(--accent-pink); }
         .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
 
         .tabs {
@@ -506,8 +506,8 @@ HTML = r"""<!DOCTYPE html>
         .tab.active {
             background: var(--gradient-btn);
             color: #fff;
-            border-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 6px 25px var(--accent-glow), 0 0 15px rgba(217, 70, 239, 0.4);
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 6px 18px var(--accent-glow);
             transform: translateY(-1px);
         }
         .tab-content { display: none; }
@@ -524,7 +524,7 @@ HTML = r"""<!DOCTYPE html>
         }
         .card:hover {
             border-color: var(--border-hover);
-            box-shadow: 0 10px 30px var(--accent-glow);
+            box-shadow: 0 10px 25px var(--accent-glow);
         }
         .card h2, .card h3 {
             font-size: 16px; font-weight: 800; margin-bottom: 16px;
@@ -537,10 +537,10 @@ HTML = r"""<!DOCTYPE html>
             font-size: 13px; font-weight: 700; cursor: pointer;
             color: #fff; display: inline-flex; align-items: center;
             justify-content: center; gap: 8px; text-decoration: none;
-            transition: all 0.25s; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.25s; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
         .btn-primary { background: var(--gradient-btn); }
-        .btn-primary:hover { background: var(--gradient-btn-hover); box-shadow: 0 6px 25px var(--accent-glow); transform: translateY(-1px); }
+        .btn-primary:hover { background: var(--gradient-btn-hover); box-shadow: 0 4px 15px var(--accent-glow); transform: translateY(-1px); }
         .btn-secondary { background: var(--input-bg); border: 1px solid var(--border-card); color: var(--text-muted); }
         .btn-secondary:hover { color: var(--text-main); border-color: var(--accent-purple); }
         .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
@@ -551,8 +551,8 @@ HTML = r"""<!DOCTYPE html>
             background: var(--gradient-btn) !important;
             color: #fff !important;
             border-color: var(--accent-pink) !important;
-            box-shadow: 0 0 20px var(--accent-glow), 0 0 10px var(--accent-pink);
-            transform: scale(1.03);
+            box-shadow: 0 0 12px var(--accent-glow);
+            transform: scale(1.02);
         }
 
         textarea, input[type="number"], input[type="text"] {
@@ -563,7 +563,7 @@ HTML = r"""<!DOCTYPE html>
             font-family: monospace; font-size: 12px;
             transition: border-color 0.2s;
         }
-        textarea:focus, input:focus { border-color: var(--accent-pink); box-shadow: 0 0 10px var(--accent-glow); }
+        textarea:focus, input:focus { border-color: var(--accent-pink); box-shadow: 0 0 8px var(--accent-glow); }
 
         .upload-area {
             min-height: 110px; border: 2px dashed var(--border-card);
@@ -573,8 +573,8 @@ HTML = r"""<!DOCTYPE html>
             padding: 16px;
         }
         .upload-area:hover, .upload-area.drag-over {
-            border-color: var(--accent-pink); background: rgba(168, 85, 247, 0.08);
-            box-shadow: 0 0 15px var(--accent-glow);
+            border-color: var(--accent-pink); background: rgba(168, 85, 247, 0.05);
+            box-shadow: 0 0 10px var(--accent-glow);
         }
 
         .result-container {
@@ -628,7 +628,7 @@ HTML = r"""<!DOCTYPE html>
         }
         .btn-download-txt:hover, .btn-download-zip:hover {
             background: rgba(217, 70, 239, 0.3);
-            box-shadow: 0 0 10px var(--accent-glow);
+            box-shadow: 0 0 8px var(--accent-glow);
         }
 
         .result-box {
@@ -675,11 +675,51 @@ HTML = r"""<!DOCTYPE html>
         }
         
         .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+
+        /* --- КАСТОМНОЕ МОДАЛЬНОЕ ОКНО (ВМЕСТО ALERT) --- */
+        .custom-alert-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 99999;
+            opacity: 1; transition: opacity 0.25s ease;
+        }
+        .custom-alert-overlay.hidden {
+            display: none; opacity: 0; pointer-events: none;
+        }
+        .custom-alert-card {
+            background: rgba(18, 10, 28, 0.95);
+            border: 1px solid var(--border-card);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7);
+            border-radius: 20px; padding: 24px 32px;
+            text-align: center; max-width: 380px; width: 90%;
+            animation: alertPop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .alert-icon { font-size: 32px; margin-bottom: 8px; }
+        .custom-alert-card h3 { margin: 0 0 8px 0; color: #fff; font-size: 1.1rem; }
+        .custom-alert-card p { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 20px; word-break: break-word; }
+        @keyframes alertPop {
+            from { transform: scale(0.85); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
     </style>
 </head>
 <body>
 <canvas id="particles-canvas"></canvas>
 <div class="bg-glow"></div>
+
+<!-- Кастомное модальное окно -->
+<div id="custom-alert" class="custom-alert-overlay hidden">
+    <div class="custom-alert-card">
+        <div class="alert-icon">⚠️</div>
+        <h3>Уведомление</h3>
+        <p id="custom-alert-msg">Сообщение...</p>
+        <button class="btn btn-primary btn-sm" onclick="closeAlert()">Понятно</button>
+    </div>
+</div>
 
 <div class="wrapper">
     <!-- Шапка -->
@@ -843,6 +883,16 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <script>
+// --- КАСТОМНЫЕ УВЕДОМЛЕНИЯ ВМЕСТО ALERT ---
+function showAlert(message) {
+    document.getElementById('custom-alert-msg').innerText = message;
+    document.getElementById('custom-alert').classList.remove('hidden');
+}
+
+function closeAlert() {
+    document.getElementById('custom-alert').classList.add('hidden');
+}
+
 // --- АНИМАЦИЯ ЧАСТИЦ ---
 const canvas = document.getElementById('particles-canvas');
 const ctx = canvas.getContext('2d');
@@ -855,7 +905,7 @@ for(let i=0; i<40; i++) {
     particles.push({
         x: Math.random() * canvas.width, y: Math.random() * canvas.height,
         r: Math.random() * 2 + 1, dx: (Math.random() - 0.5) * 0.5, dy: (Math.random() - 0.5) * 0.5,
-        alpha: Math.random() * 0.5 + 0.2
+        alpha: Math.random() * 0.3 + 0.1
     });
 }
 function animateParticles() {
@@ -863,7 +913,7 @@ function animateParticles() {
     particles.forEach(p => {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
         ctx.fillStyle = `rgba(217, 70, 239, ${p.alpha})`;
-        ctx.shadowBlur = 10; ctx.shadowColor = '#a855f7'; ctx.fill();
+        ctx.shadowBlur = 6; ctx.shadowColor = '#a855f7'; ctx.fill();
         p.x += p.dx; p.y += p.dy;
         if(p.x<0 || p.x>canvas.width) p.dx *= -1;
         if(p.y<0 || p.y>canvas.height) p.dy *= -1;
@@ -911,7 +961,7 @@ function toggleBox(boxId) {
 
 function downloadTxtFromBox(boxId, defaultFilename = 'report.txt') {
     const box = document.getElementById(boxId);
-    if (!box || !box.textContent.trim()) return alert('Нет данных для скачивания!');
+    if (!box || !box.textContent.trim()) return showAlert('Нет данных для скачивания!');
     const blob = new Blob([box.textContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -955,7 +1005,7 @@ let lastMassReports = [];
 
 async function runSingleCheck() {
     const cookie = document.getElementById('singleCookie').value.trim();
-    if(!cookie) return alert('Вставьте кук!');
+    if(!cookie) return showAlert('Вставьте кук!');
     document.getElementById('singleContainer').style.display = 'block';
     document.getElementById('singleResult').style.display = 'block';
     document.getElementById('btnToggle_singleResult').textContent = '▼ Свернуть';
@@ -968,7 +1018,7 @@ async function runSingleCheck() {
 
 async function runMassCheck() {
     const file = document.getElementById('massFile').files[0];
-    if(!file) return alert('Выберите TXT файл!');
+    if(!file) return showAlert('Выберите TXT файл!');
     const fd = new FormData(); fd.append('file', file);
     document.getElementById('massContainer').style.display = 'block';
     document.getElementById('massResult').style.display = 'block';
@@ -991,7 +1041,7 @@ async function runMassCheck() {
 }
 
 async function downloadMassZip() {
-    if (!lastMassReports.length) return alert('Нет готовых отчетов!');
+    if (!lastMassReports.length) return showAlert('Нет готовых отчетов!');
     const res = await fetch('/api/download-zip', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
@@ -1015,7 +1065,7 @@ function setFresherMode(m) {
 async function runFresher() {
     const cookies = document.getElementById('fresherCookies').value.trim();
     const mode = document.getElementById('fresherMode').value;
-    if(!cookies) return alert('Вставьте куки!');
+    if(!cookies) return showAlert('Вставьте куки!');
     document.getElementById('fresherContainer').style.display = 'block';
     document.getElementById('fresherResult').style.display = 'block';
     document.getElementById('btnToggle_fresherResult').textContent = '▼ Свернуть';
@@ -1092,7 +1142,7 @@ async function clearFresherHistory() {
 // --- ИНСТРУМЕНТЫ: СЛИЯНИЕ, РАЗДЕЛЕНИЕ И ОЧИСТКА ---
 async function mergeCookies() {
     const files = document.getElementById('mergeFiles').files;
-    if(files.length < 2) return alert('Выберите минимум 2 TXT файла для объединения!');
+    if(files.length < 2) return showAlert('Выберите минимум 2 TXT файла для объединения!');
     const fd = new FormData(); Array.from(files).forEach(f => fd.append('files', f));
     
     const box = document.getElementById('mergeResult');
@@ -1113,7 +1163,7 @@ async function splitCookies() {
     const perFile = parseInt(document.getElementById('splitCount').value) || 1;
     
     if(!files.length && !textInput.trim()) {
-        return alert('Загрузите хотя бы один TXT файл или вставьте куки вручную!');
+        return showAlert('Загрузите хотя бы один TXT файл или вставьте куки вручную!');
     }
 
     const fd = new FormData();
@@ -1135,7 +1185,7 @@ async function splitCookies() {
 
 async function cleanCookies() {
     const content = document.getElementById('cleanInput').value;
-    if(!content.trim()) return alert('Вставьте куки!');
+    if(!content.trim()) return showAlert('Вставьте куки!');
     const box = document.getElementById('cleanResult');
     box.style.display = 'block'; box.textContent = '⏳ Очистка дубликатов...';
     
