@@ -250,10 +250,10 @@ def mass_check(cookies_list):
     return valid + invalid
 
 # ==========================================
-# ФОРМАТТЕРЫ — КУК УБРАН ИЗ ВСЕХ ОТОБРАЖЕНИЙ
+# ФОРМАТТЕРЫ (КУК В ИСТОРИИ ЕСТЬ, В ИНТЕРФЕЙСЕ НЕТ)
 # ==========================================
 def format_full_report(info):
-    if info['status'] != '✅': return f"❌ НЕВАЛИДНЫЙ КУК"
+    if info['status'] != '✅': return f"❌ НЕВАЛИДНЫЙ КУК\n{info['Cookie']}"
     gp = info.get('PurchasedGamepasses',{})
     rap_str = f"⏣ {info['RAP']:,}" if info['RAP'] is not None else "❌"
     play_str = f"{info['PlaytimeHours']} ч." if info['PlaytimeHours'] is not None else "❌"
@@ -266,6 +266,7 @@ def format_full_report(info):
         r += "📦 ГЕЙМПАССЫ:\n"
         for game, passes in list(gp.items())[:3]:
             for p in passes[:5]: r += f"  {game} - {p['name']} ({p['price']} R$)\n"
+    r += f"\n🍪 {info['Cookie']}"
     return r
 
 def format_quick_report(result):
