@@ -621,6 +621,22 @@ HTML = r"""<!DOCTYPE html>
             border-color: var(--accent-pink);
         }
 
+        .btn-copy-text {
+            background: rgba(147, 51, 234, 0.25);
+            border: 1px solid var(--border-hover);
+            color: #f3e8ff;
+            padding: 4px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-copy-text:hover {
+            background: rgba(192, 38, 211, 0.4);
+            box-shadow: 0 0 8px var(--accent-glow);
+        }
+
         .btn-download-txt, .btn-download-zip {
             background: rgba(217, 70, 239, 0.15);
             border: 1px solid rgba(217, 70, 239, 0.3);
@@ -765,9 +781,9 @@ HTML = r"""<!DOCTYPE html>
 <!-- Выплывающее уведомление в углу -->
 <div id="custom-alert" class="custom-alert-overlay">
     <div class="custom-alert-card">
-        <div class="alert-icon">⚠️</div>
+        <div class="alert-icon" id="custom-alert-icon">⚠️</div>
         <div class="alert-body">
-            <h3>Внимание</h3>
+            <h3 id="custom-alert-title">Внимание</h3>
             <p id="custom-alert-msg">Вставьте кук!</p>
         </div>
         <button class="alert-close-btn" onclick="closeAlert()">✕</button>
@@ -864,6 +880,7 @@ HTML = r"""<!DOCTYPE html>
                 <div class="result-header">
                     <span class="result-title">ОБНОВЛЕННЫЕ КУКИ:</span>
                     <div class="action-btn-group">
+                        <button class="btn-copy-text" onclick="copyFresherResult()">📋 Скопировать куки</button>
                         <button class="btn-download-txt" onclick="downloadTxtFromBox('fresherResult', 'refreshed_cookies.txt')">📥 Скачать TXT</button>
                         <button class="btn-toggle-box" id="btnToggle_fresherResult" onclick="toggleBox('fresherResult')">▼ Свернуть</button>
                     </div>
@@ -939,9 +956,11 @@ HTML = r"""<!DOCTYPE html>
 // --- КОМПАКТНОЕ УВЕДОМЛЕНИЕ СВЕРХУ-СБОКУ ---
 let alertTimeout;
 
-function showAlert(message) {
+function showAlert(message, title = 'Внимание', icon = '⚠️') {
     const alertEl = document.getElementById('custom-alert');
     document.getElementById('custom-alert-msg').innerText = message || 'Вставьте кук!';
+    document.getElementById('custom-alert-title').innerText = title;
+    document.getElementById('custom-alert-icon').innerText = icon;
     
     alertEl.classList.add('show');
 
@@ -1030,6 +1049,18 @@ function downloadTxtFromBox(boxId, defaultFilename = 'report.txt') {
     a.href = url; a.download = defaultFilename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+function copyFresherResult() {
+    const box = document.getElementById('fresherResult');
+    if (!box || !box.textContent.trim() || box.textContent.includes('⏳') || box.textContent.includes('Ошибка')) {
+        return showAlert('Нет кук для копирования!');
+    }
+    navigator.clipboard.writeText(box.textContent.trim()).then(() => {
+        showAlert('Обновленные куки скопированы в буфер!', 'Успех', '📋');
+    }).catch(err => {
+        showAlert('Не удалось скопировать данные');
+    });
 }
 
 // --- УНИВЕРСАЛЬНАЯ НАСТРОЙКА DRAG & DROP ---
