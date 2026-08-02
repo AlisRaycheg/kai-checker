@@ -275,8 +275,8 @@ def format_quick_report(result):
         if result.get('has_2fa'): badges.append("🔐")
         rap_str = f"RAP: {result['rap']:,}" if result['rap'] is not None else "RAP: ❌"
         play_str = f"{result['playtime']}h" if result['playtime'] is not None else "⏱️ ❌"
-        return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} ({rap_str}) | {play_str} | S:{score} {' '.join(badges)}\n🍪 {result['cookie']}"
-    return f"❌ НЕВАЛИД | {result['cookie']}"
+        return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} ({rap_str}) | {play_str} | S:{score} {' '.join(badges)}"
+    return "❌ НЕВАЛИД"
 
 # ==========================================
 # БЛОК: ФРЕШЕР
