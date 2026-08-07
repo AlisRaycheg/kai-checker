@@ -250,7 +250,7 @@ def mass_check(cookies_list):
     return valid + invalid
 
 # ==========================================
-# ФОРМАТТЕРЫ
+# ФОРМАТТЕРЫ (КУК В ИСТОРИИ ЕСТЬ, В ИНТЕРФЕЙСЕ НЕТ)
 # ==========================================
 def format_full_report(info):
     if info['status'] != '✅': return f"❌ НЕВАЛИДНЫЙ КУК\n{info['Cookie']}"
@@ -621,7 +621,7 @@ HTML = r"""<!DOCTYPE html>
             border-color: var(--accent-pink);
         }
 
-        .btn-download-txt, .btn-download-zip, .btn-download-csv {
+        .btn-download-txt, .btn-download-zip {
             background: rgba(217, 70, 239, 0.15);
             border: 1px solid rgba(217, 70, 239, 0.3);
             color: var(--accent-pink);
@@ -632,7 +632,7 @@ HTML = r"""<!DOCTYPE html>
             cursor: pointer;
             transition: all 0.2s;
         }
-        .btn-download-txt:hover, .btn-download-zip:hover, .btn-download-csv:hover {
+        .btn-download-txt:hover, .btn-download-zip:hover {
             background: rgba(217, 70, 239, 0.3);
             box-shadow: 0 0 8px var(--accent-glow);
         }
@@ -682,54 +682,7 @@ HTML = r"""<!DOCTYPE html>
         
         .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
 
-        /* === НОВОЕ: Стили для фильтров === */
-        .filters-bar {
-            display: flex;
-            gap: 12px;
-            margin-top: 12px;
-            flex-wrap: wrap;
-            align-items: center;
-            background: var(--input-bg);
-            padding: 12px 16px;
-            border-radius: 14px;
-            border: 1px solid var(--border-card);
-        }
-        .filter-group {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .filter-group label {
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--text-muted);
-            white-space: nowrap;
-        }
-        .filter-group input[type="number"] {
-            width: 70px;
-            padding: 6px 8px;
-            background: var(--bg);
-            border: 1px solid var(--border-card);
-            border-radius: 8px;
-            color: var(--text-main);
-            font-size: 12px;
-        }
-        .filter-group input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            accent-color: #a855f7;
-        }
-        .filter-group select {
-            padding: 6px 10px;
-            background: var(--bg);
-            border: 1px solid var(--border-card);
-            border-radius: 8px;
-            color: var(--text-main);
-            font-size: 12px;
-        }
-        /* ================================ */
-
-        /* --- УВЕДОМЛЕНИЕ --- */
+        /* --- КАСТОМНОЕ УВЕДОМЛЕНИЕ В ПРАВОМ ВЕРХНЕМ УГЛУ (TOAST) --- */
         .custom-alert-overlay {
             position: fixed;
             top: 24px;
@@ -762,19 +715,54 @@ HTML = r"""<!DOCTYPE html>
             opacity: 1;
         }
 
-        .alert-icon { font-size: 22px; line-height: 1; }
-        .alert-body { display: flex; flex-direction: column; gap: 2px; flex-grow: 1; }
-        .alert-body h3 { margin: 0; color: #fff; font-size: 13px; font-weight: 700; }
-        .alert-body p { color: var(--text-muted); font-size: 12px; margin: 0; word-break: break-word; font-weight: 500; }
-        .alert-close-btn { background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; transition: color 0.2s; }
-        .alert-close-btn:hover { color: #fff; }
+        .alert-icon { 
+            font-size: 22px; 
+            line-height: 1;
+        }
+
+        .alert-body {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex-grow: 1;
+        }
+
+        .alert-body h3 { 
+            margin: 0; 
+            color: #fff; 
+            font-size: 13px; 
+            font-weight: 700;
+        }
+
+        .alert-body p { 
+            color: var(--text-muted); 
+            font-size: 12px; 
+            margin: 0; 
+            word-break: break-word; 
+            font-weight: 500;
+        }
+
+        .alert-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .alert-close-btn:hover {
+            color: #fff;
+        }
     </style>
 </head>
 <body>
 <canvas id="particles-canvas"></canvas>
 <div class="bg-glow"></div>
 
-<!-- Уведомление -->
+<!-- Выплывающее уведомление в углу -->
 <div id="custom-alert" class="custom-alert-overlay">
     <div class="custom-alert-card">
         <div class="alert-icon">⚠️</div>
@@ -829,7 +817,6 @@ HTML = r"""<!DOCTYPE html>
                     <div class="result-box" id="singleResult"></div>
                 </div>
             </div>
-            
             <div class="card">
                 <h2>📦 Массовая проверка (30 Потоков)</h2>
                 <div class="upload-area" id="massDropArea" onclick="document.getElementById('massFile').click()">
@@ -838,33 +825,6 @@ HTML = r"""<!DOCTYPE html>
                 </div>
                 <input type="file" id="massFile" accept=".txt" style="display:none;">
                 <div id="massFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px;font-weight:600;"></div>
-                
-                <!-- === НОВОЕ: ФИЛЬТРЫ === -->
-                <div class="filters-bar">
-                    <div class="filter-group">
-                        <label>Robux ≥</label>
-                        <input type="number" id="minRobux" value="0">
-                    </div>
-                    <div class="filter-group">
-                        <label>RAP ≥</label>
-                        <input type="number" id="minRap" value="0">
-                    </div>
-                    <div class="filter-group">
-                        <input type="checkbox" id="onlyPremium">
-                        <label>Только Premium</label>
-                    </div>
-                    <div class="filter-group" style="margin-left:auto;">
-                        <label>Сортировка:</label>
-                        <select id="sortBy">
-                            <option value="robux">По Robux ↓</option>
-                            <option value="rap">По RAP ↓</option>
-                            <option value="score">По скору ↓</option>
-                            <option value="username">По имени ↑</option>
-                        </select>
-                    </div>
-                </div>
-                <!-- =========================== -->
-                
                 <div style="margin-top:12px;">
                     <button class="btn btn-primary" onclick="runMassCheck()" style="width:100%;">🚀 Запустить массовый чек</button>
                 </div>
@@ -874,11 +834,8 @@ HTML = r"""<!DOCTYPE html>
                     <div class="result-header">
                         <span class="result-title">РЕЗУЛЬТАТЫ ЧЕКА:</span>
                         <div class="action-btn-group">
-                            <button class="btn-download-zip" onclick="downloadMassZip()">📦 Скачать ZIP</button>
-                            <!-- === НОВОЕ: КНОПКА CSV === -->
-                            <button class="btn-download-csv" onclick="exportCSV()">📊 CSV</button>
-                            <!-- ========================= -->
-                            <button class="btn-download-txt" onclick="downloadTxtFromBox('massResult', 'mass_report.txt')">📥 TXT</button>
+                            <button class="btn-download-zip" onclick="downloadMassZip()">📦 Скачать ZIP (Все аккаунты)</button>
+                            <button class="btn-download-txt" onclick="downloadTxtFromBox('massResult', 'mass_report.txt')">📥 Скачать TXT</button>
                             <button class="btn-toggle-box" id="btnToggle_massResult" onclick="toggleBox('massResult')">▼ Свернуть</button>
                         </div>
                     </div>
@@ -919,11 +876,11 @@ HTML = r"""<!DOCTYPE html>
     <!-- ИСТОРИЯ -->
     <div class="tab-content" id="tab-history">
         <div class="card">
-            <h2>📋 История Чекера <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
+            <h2>📋 История Чекера (Лут и Отчеты) <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
             <div id="checkerHistoryList">Загрузка истории...</div>
         </div>
         <div class="card">
-            <h2>🔄 История Фрешера <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
+            <h2>🔄 История Фрешера (Новые Куки) <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2>
             <div id="fresherHistoryList">Загрузка истории...</div>
         </div>
     </div>
@@ -931,6 +888,7 @@ HTML = r"""<!DOCTYPE html>
     <!-- ИНСТРУМЕНТЫ -->
     <div class="tab-content" id="tab-tools">
         <div class="tool-grid">
+            <!-- СЛИЯНИЕ -->
             <div class="card">
                 <h3>🔗 Слияние TXT файлов</h3>
                 <div class="upload-area" id="mergeDropArea" onclick="document.getElementById('mergeFiles').click()">
@@ -943,6 +901,7 @@ HTML = r"""<!DOCTYPE html>
                 <div class="result-box" id="mergeResult" style="display:none;margin-top:10px;"></div>
             </div>
 
+            <!-- РАЗДЕЛЕНИЕ -->
             <div class="card">
                 <h3>✂️ Разделение куки по файлам</h3>
                 <div class="upload-area" id="splitDropArea" onclick="document.getElementById('splitFiles').click()">
@@ -951,7 +910,9 @@ HTML = r"""<!DOCTYPE html>
                 </div>
                 <input type="file" id="splitFiles" accept=".txt" multiple style="display:none;">
                 <div id="splitFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px;font-weight:600;"></div>
+                
                 <textarea id="splitInput" placeholder="Или вставьте куки списком..." rows="3" style="margin-top:10px;"></textarea>
+                
                 <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
                     <label style="font-size:12px;font-weight:700;color:var(--text-muted);white-space:nowrap;">Куков на файл:</label>
                     <input type="number" id="splitCount" value="1" min="1" style="padding:8px 12px;width:100px;">
@@ -960,6 +921,7 @@ HTML = r"""<!DOCTYPE html>
                 <div class="result-box" id="splitResult" style="display:none;margin-top:10px;"></div>
             </div>
 
+            <!-- ДУБЛИКАТЫ -->
             <div class="card">
                 <h3>🧹 Очистка от дубликатов</h3>
                 <textarea id="cleanInput" placeholder="Вставьте куки для дедупликации..." rows="5"></textarea>
@@ -969,26 +931,31 @@ HTML = r"""<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- Подвал -->
     <div class="footer">KAI CHECKER © ALL RIGHTS RESERVED</div>
 </div>
 
 <script>
-// --- УВЕДОМЛЕНИЕ ---
+// --- КОМПАКТНОЕ УВЕДОМЛЕНИЕ СВЕРХУ-СБОКУ ---
 let alertTimeout;
 
 function showAlert(message) {
     const alertEl = document.getElementById('custom-alert');
     document.getElementById('custom-alert-msg').innerText = message || 'Вставьте кук!';
+    
     alertEl.classList.add('show');
+
     clearTimeout(alertTimeout);
-    alertTimeout = setTimeout(() => { closeAlert(); }, 4000);
+    alertTimeout = setTimeout(() => {
+        closeAlert();
+    }, 4000);
 }
 
 function closeAlert() {
     document.getElementById('custom-alert').classList.remove('show');
 }
 
-// --- ЧАСТИЦЫ ---
+// --- АНИМАЦИЯ ЧАСТИЦ ---
 const canvas = document.getElementById('particles-canvas');
 const ctx = canvas.getContext('2d');
 let particles = [];
@@ -1017,7 +984,7 @@ function animateParticles() {
 }
 animateParticles();
 
-// --- ВКЛАДКИ ---
+// --- ВЛАДКИ ---
 function activateTab(tabName) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -1065,7 +1032,7 @@ function downloadTxtFromBox(boxId, defaultFilename = 'report.txt') {
     URL.revokeObjectURL(url);
 }
 
-// --- DRAG & DROP ---
+// --- УНИВЕРСАЛЬНАЯ НАСТРОЙКА DRAG & DROP ---
 function setupDragAndDrop(areaId, inputId, infoId) {
     const area = document.getElementById(areaId);
     const input = document.getElementById(inputId);
@@ -1111,25 +1078,15 @@ async function runSingleCheck() {
     document.getElementById('singleResult').textContent = data.report || 'Ошибка';
 }
 
-// === НОВОЕ: МАССОВАЯ ПРОВЕРКА С ФИЛЬТРАМИ ===
 async function runMassCheck() {
     const file = document.getElementById('massFile').files[0];
     if(!file) return showAlert('Выберите TXT файл!');
-    
-    const fd = new FormData();
-    fd.append('file', file);
-    
-    // Передаём фильтры
-    fd.append('min_robux', document.getElementById('minRobux').value || 0);
-    fd.append('min_rap', document.getElementById('minRap').value || 0);
-    fd.append('only_premium', document.getElementById('onlyPremium').checked);
-    fd.append('sort_by', document.getElementById('sortBy').value);
-    
+    const fd = new FormData(); fd.append('file', file);
     document.getElementById('massContainer').style.display = 'block';
     document.getElementById('massResult').style.display = 'block';
     document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
     document.getElementById('massProgress').style.width = '50%';
-    document.getElementById('massResult').textContent = '⏳ Массовая проверка...';
+    document.getElementById('massResult').textContent = '⏳ Массовая проверка... (RAP, Playtime, Full Analysis)';
     
     const res = await fetch('/api/mass-check', { method: 'POST', body: fd });
     const data = await res.json();
@@ -1144,28 +1101,6 @@ async function runMassCheck() {
         document.getElementById('massResult').textContent = data.results.join('\n\n');
     }
 }
-// ==========================================
-
-// === НОВОЕ: ЭКСПОРТ CSV ===
-async function exportCSV() {
-    if (!lastMassReports.length) return showAlert('Нет данных для экспорта!');
-    
-    const res = await fetch('/api/export-csv', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({results: lastMassReports})
-    });
-    
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `accounts_${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-}
-// ===========================
 
 async function downloadMassZip() {
     if (!lastMassReports.length) return showAlert('Нет готовых отчетов!');
@@ -1266,7 +1201,7 @@ async function clearFresherHistory() {
     await fetch('/api/history/fresher/clear', {method:'POST'}); loadFresherHistory();
 }
 
-// --- ИНСТРУМЕНТЫ ---
+// --- ИНСТРУМЕНТЫ: СЛИЯНИЕ, РАЗДЕЛЕНИЕ И ОЧИСТКА ---
 async function mergeCookies() {
     const files = document.getElementById('mergeFiles').files;
     if(files.length < 2) return showAlert('Выберите минимум 2 TXT файла для объединения!');
@@ -1351,42 +1286,16 @@ def api_single_check():
     })
     return jsonify({"success": True, "report": report})
 
-# === НОВОЕ: МАСС-ЧЕК С ФИЛЬТРАМИ ===
 @app.route("/api/mass-check", methods=["POST"])
 def api_mass_check():
     content = ""
-    if 'file' in request.files:
-        content = request.files['file'].read().decode('utf-8', errors='ignore')
-    
-    # Получаем фильтры
-    min_robux = int(request.form.get('min_robux', 0))
-    min_rap = int(request.form.get('min_rap', 0))
-    only_premium = request.form.get('only_premium', 'false') == 'true'
-    sort_by = request.form.get('sort_by', 'robux')
-    
+    if 'file' in request.files: content = request.files['file'].read().decode('utf-8', errors='ignore')
     cookies = extract_cookies_from_text(content)
-    if not cookies:
-        return jsonify({"success": False, "message": "Куки не найдены"})
+    if not cookies: return jsonify({"success": False, "message": "Куки не найдены"})
     
     results = mass_check(cookies)
-    
-    # Фильтрация
-    valid = [r for r in results if r['status'] == '✅']
-    
-    if min_robux > 0:
-        valid = [r for r in valid if r.get('robux', 0) >= min_robux]
-    if min_rap > 0:
-        valid = [r for r in valid if (r.get('rap') or 0) >= min_rap]
-    if only_premium:
-        valid = [r for r in valid if r.get('is_premium', False)]
-    
-    # Сортировка
-    if sort_by == 'username':
-        valid.sort(key=lambda x: x.get('username', ''))
-    else:
-        valid.sort(key=lambda x: x.get(sort_by, 0), reverse=True)
-    
-    formatted = [format_quick_report(r) for r in valid]
+    valid = [r for r in results if r['status']=='✅']
+    formatted = [format_quick_report(r) for r in results]
     
     full_reports = []
     usernames = []
@@ -1398,63 +1307,20 @@ def api_mass_check():
                 'report': format_full_report(r['full_info'])
             })
             usernames.append(r['username'])
-    
+            
     premium_count = sum(1 for r in valid if r.get('is_premium'))
-    total_robux = sum(r.get('robux', 0) for r in valid)
+    total_robux = sum(r.get('robux',0) for r in valid)
     
     add_checker_history({
-        'type': 'mass',
-        'total': len(results),
-        'valid': len(valid),
+        'type': 'mass', 'total': len(results), 'valid': len(valid),
         'usernames': usernames,
         'results': formatted,
         'full_reports': full_reports
     })
-    
     return jsonify({
-        "success": True,
-        "valid_count": len(valid),
-        "premium_count": premium_count,
-        "total_robux": total_robux,
-        "results": formatted,
-        "full_reports": full_reports
+        "success": True, "valid_count": len(valid), "premium_count": premium_count,
+        "total_robux": total_robux, "results": formatted, "full_reports": full_reports
     })
-# ==========================================
-
-# === НОВОЕ: ЭКСПОРТ CSV ===
-@app.route("/api/export-csv", methods=["POST"])
-def api_export_csv():
-    import csv
-    import io
-    
-    data = request.json or {}
-    reports = data.get('results', [])
-    
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['Username', 'UserID', 'Robux', 'RAP', 'Premium', '2FA', 'Email', 'Playtime'])
-    
-    for r in reports:
-        if r.get('status') == '✅':
-            writer.writerow([
-                r.get('username', '?'),
-                r.get('user_id', '?'),
-                r.get('robux', 0),
-                r.get('rap') or 0,
-                'Да' if r.get('is_premium') else 'Нет',
-                'Да' if r.get('has_2fa') else 'Нет',
-                'Да' if r.get('has_email') else 'Нет',
-                r.get('playtime') or 0
-            ])
-    
-    output.seek(0)
-    return send_file(
-        io.BytesIO(output.getvalue().encode('utf-8-sig')),
-        mimetype='text/csv',
-        as_attachment=True,
-        download_name=f'accounts_{int(time.time())}.csv'
-    )
-# ===========================
 
 @app.route("/api/download-zip", methods=["POST"])
 def api_download_zip():
