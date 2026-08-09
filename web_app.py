@@ -872,6 +872,8 @@ socket.on('mass_progress', function(data) {
 });
 
 socket.on('mass_complete', function(data) {
+    console.log('✅ Отчет получен');
+    
     document.getElementById('massProgress').style.width = '100%';
     document.getElementById('massProgressText').textContent = '✅ Проверка завершена';
     document.getElementById('massBtn').disabled = false;
@@ -881,13 +883,15 @@ socket.on('mass_complete', function(data) {
     document.getElementById('statPremium').textContent = data.premium_count || 0;
     
     // =============================================
-    // ВЫВОДИМ СВОДНЫЙ ОТЧЕТ
+    // ПРИНУДИТЕЛЬНО ВЫВОДИМ ОТЧЕТ
     // =============================================
     if (data.message) {
         document.getElementById('massResult').textContent = data.message;
         document.getElementById('massContainer').style.display = 'block';
         document.getElementById('massResult').style.display = 'block';
         document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
+    } else {
+        document.getElementById('massResult').textContent = '❌ Ошибка: отчет не получен';
     }
 });
 
