@@ -16,7 +16,6 @@ app.config['SECRET_KEY'] = 'kai_checker_secret_key_pro'
 CHECKER_HISTORY_FILE = "checker_history.json"
 FRESHER_HISTORY_FILE = "fresher_history.json"
 
-# ========== ОСНОВНЫЕ ИГРЫ ==========
 MAIN_GAMES = [
     'Adopt Me', 'Blox Fruits', 'Murder Mystery 2', 'Rivals',
     'Pet Simulator 99', 'Pet Simulator X', 'Arsenal', 'BedWars',
@@ -25,7 +24,6 @@ MAIN_GAMES = [
     'Dragon Ball Rage', 'Fisch', 'Jujutsu Shenanigans'
 ]
 
-# ==================== HTML ====================
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
@@ -210,14 +208,8 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <script>
-// ==========================================
-// ГЛОБАЛЬНАЯ ПЕРЕМЕННАЯ ДЛЯ ОТЧЕТОВ (ZIP)
-// ==========================================
-var lastMassReports = [];
+let lastMassReports = [];
 
-// ==========================================
-// УВЕДОМЛЕНИЯ
-// ==========================================
 function showAlert(message) {
     document.getElementById('custom-alert-msg').innerText = message || 'Вставьте кук!';
     document.getElementById('custom-alert').classList.add('show');
@@ -226,17 +218,11 @@ function showAlert(message) {
 }
 function closeAlert() { document.getElementById('custom-alert').classList.remove('show'); }
 
-// ==========================================
-// ТЕМА
-// ==========================================
 function toggleTheme() {
     var html = document.documentElement;
     html.setAttribute('data-theme', html.getAttribute('data-theme')==='dark'?'light':'dark');
 }
 
-// ==========================================
-// СВЕРТЫВАНИЕ
-// ==========================================
 function toggleBox(boxId) {
     var box = document.getElementById(boxId);
     var btn = document.getElementById('btnToggle_' + boxId);
@@ -250,9 +236,6 @@ function toggleBox(boxId) {
     }
 }
 
-// ==========================================
-// СКАЧИВАНИЕ TXT ИЗ БОКСА
-// ==========================================
 function downloadTxtFromBox(boxId, defaultFilename) {
     var box = document.getElementById(boxId);
     if (!box || !box.textContent.trim()) return showAlert('Нет данных!');
@@ -264,9 +247,6 @@ function downloadTxtFromBox(boxId, defaultFilename) {
     URL.revokeObjectURL(url);
 }
 
-// ==========================================
-// DRAG & DROP
-// ==========================================
 function setupDragAndDrop(areaId, inputId, infoId) {
     var area = document.getElementById(areaId);
     var input = document.getElementById(inputId);
@@ -290,9 +270,6 @@ setupDragAndDrop('massDropArea', 'massFile', 'massFileInfo');
 setupDragAndDrop('mergeDropArea', 'mergeFiles', 'mergeFileInfo');
 setupDragAndDrop('splitDropArea', 'splitFiles', 'splitFileInfo');
 
-// ==========================================
-// ВКЛАДКИ
-// ==========================================
 function activateTab(tabName) {
     document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
     document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
@@ -312,9 +289,6 @@ window.addEventListener('DOMContentLoaded', function() {
     activateTab(localStorage.getItem('kai_active_tab') || 'checker');
 });
 
-// ==========================================
-// ОДИНОЧНАЯ ПРОВЕРКА
-// ==========================================
 async function runSingleCheck() {
     var cookie = document.getElementById('singleCookie').value.trim();
     if(!cookie) return showAlert('Вставьте кук!');
@@ -327,9 +301,6 @@ async function runSingleCheck() {
     document.getElementById('singleResult').textContent = data.report || 'Ошибка';
 }
 
-// ==========================================
-// МАССОВАЯ ПРОВЕРКА (С СОХРАНЕНИЕМ ОТЧЕТОВ ДЛЯ ZIP)
-// ==========================================
 async function runMassCheck() {
     var file = document.getElementById('massFile').files[0];
     if(!file) return showAlert('Выберите TXT файл!');
@@ -348,8 +319,6 @@ async function runMassCheck() {
     resultBox.style.display = 'block';
     resultBox.textContent = '⏳ Массовая проверка...';
     document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
-    
-    // ОЧИЩАЕМ СТАРЫЕ ОТЧЕТЫ ПЕРЕД НОВОЙ ПРОВЕРКОЙ
     lastMassReports = [];
     
     var fd = new FormData();
@@ -369,15 +338,8 @@ async function runMassCheck() {
             document.getElementById('statValid').textContent = data.valid_count || 0;
             document.getElementById('statRobux').textContent = (data.total_robux || 0).toLocaleString();
             document.getElementById('statPremium').textContent = data.premium_count || 0;
-            
-            // =============================================
-            // СОХРАНЯЕМ ОТЧЕТЫ ДЛЯ ZIP
-            // =============================================
             if (data.reports) {
                 lastMassReports = data.reports;
-                console.log('✅ Сохранено отчетов для ZIP:', lastMassReports.length);
-            } else {
-                console.warn('⚠️ Нет отчетов для ZIP');
             }
         } else {
             showAlert(data.message || 'Ошибка');
@@ -389,49 +351,22 @@ async function runMassCheck() {
     }
 }
 
-// ==========================================
-// СКАЧИВАНИЕ ZIP
-// ==========================================
 async function downloadMassZip() {
-    console.log('📦 Попытка скачать ZIP, отчетов:', lastMassReports ? lastMassReports.length : 0);
-    
-    if (!lastMassReports || lastMassReports.length === 0) {
-        showAlert('Нет отчетов! Сначала запустите массовую проверку.');
-        return;
-    }
-    
+    if (!lastMassReports.length) return showAlert('Нет отчетов! Сначала запустите массовую проверку');
     try {
-        var res = await fetch('/api/download-zip', { 
-            method: 'POST', 
-            headers: {'Content-Type':'application/json'}, 
-            body: JSON.stringify({reports: lastMassReports}) 
-        });
-        
-        if (!res.ok) {
-            showAlert('Ошибка сервера при создании ZIP');
-            return;
-        }
-        
+        var res = await fetch('/api/download-zip', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({reports: lastMassReports}) });
+        if (!res.ok) return showAlert('Ошибка сервера');
         var blob = await res.blob();
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
-        a.href = url;
-        a.download = 'accounts_reports.zip';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        a.href = url; a.download = 'accounts_reports.zip';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        
-        console.log('✅ ZIP скачан успешно');
     } catch(e) {
-        console.error('❌ Ошибка скачивания ZIP:', e);
         showAlert('Ошибка скачивания ZIP');
     }
 }
 
-// ==========================================
-// ФРЕШЕР
-// ==========================================
 function setFresherMode(m) {
     document.getElementById('fresherMode').value = m;
     document.getElementById('btnDup').classList.toggle('active-mode', m === 'duplicate');
@@ -451,9 +386,6 @@ async function runFresher() {
     document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
 }
 
-// ==========================================
-// ИСТОРИЯ
-// ==========================================
 async function loadCheckerHistory() {
     var res = await fetch('/api/history/checker');
     var data = await res.json();
@@ -495,9 +427,6 @@ async function clearFresherHistory() {
     loadFresherHistory();
 }
 
-// ==========================================
-// ИНСТРУМЕНТЫ
-// ==========================================
 async function mergeCookies() {
     var files = document.getElementById('mergeFiles').files;
     if(files.length < 2) return showAlert('Выберите минимум 2 TXT файла!');
@@ -638,35 +567,35 @@ def get_all_purchases(user_id, cookie):
         pass
     return purchases_by_game, total_spent
 
-# ==================== ФОРМАТИРОВАНИЕ ОТЧЕТА ====================
+# ==================== ФОРМАТИРОВАНИЕ ОТЧЕТА (СОРТИРОВКА ПО ЦЕНЕ) ====================
 def format_game_purchases(game_purchases):
-    """Геймпассы сортируются по цене (от дорогих к дешёвым)"""
+    """Геймпассы сортируются по цене (от дорогих к дешёвым) внутри каждой игры"""
     if not game_purchases:
         return "❌ Геймпассов не найдено"
     
-    # Собираем все геймпассы в один список
-    all_passes = []
+    # Фильтруем только основные игры
+    filtered = {}
     for game, passes in game_purchases.items():
-        for p in passes:
-            all_passes.append({
-                'game': game,
-                'name': p['name'],
-                'price': p['price']
-            })
-    
-    # Сортируем по цене (от дорогих к дешёвым)
-    all_passes.sort(key=lambda x: x['price'], reverse=True)
-    
-    if not all_passes:
-        return "❌ Геймпассов не найдено"
+        for target in MAIN_GAMES:
+            if target.lower() in game.lower() or game.lower() in target.lower():
+                filtered[game] = passes
+                break
+    if not filtered:
+        return "❌ Геймпассов в основных играх не найдено"
     
     result = ""
-    current_game = None
-    for p in all_passes[:20]:  # максимум 20 геймпассов
-        if p['game'] != current_game:
-            current_game = p['game']
-            result += f"\n🎮 {current_game}"
-        result += f"\n   └─ {p['name']} — ⏣ {p['price']:,}"
+    # Сортируем игры по общей сумме доната
+    sorted_games = sorted(filtered.items(), key=lambda x: sum(p['price'] for p in x[1]), reverse=True)
+    
+    for game, passes in sorted_games[:10]:
+        total = sum(p['price'] for p in passes)
+        result += f"\n  🎮 {game} — {len(passes)} гп, ⏣ {total:,}"
+        # СОРТИРУЕМ ГЕЙМПАССЫ ПО ЦЕНЕ (ОТ ДОРОГИХ К ДЕШЁВЫМ)
+        passes_sorted = sorted(passes, key=lambda x: x['price'], reverse=True)
+        for p in passes_sorted[:5]:
+            result += f"\n     └─ {p['name']} — ⏣ {p['price']:,}"
+        if len(passes) > 5:
+            result += f"\n     └─ ... и ещё {len(passes) - 5}"
     
     return result
 
@@ -831,19 +760,16 @@ def mass_check():
     file = request.files.get('file')
     if not file:
         return jsonify({"success": False, "message": "Файл не предоставлен"})
-        
     content = file.read().decode('utf-8', errors='ignore')
     cookies = [line.strip() for line in content.splitlines() if line.strip()]
     if not cookies:
         return jsonify({"success": False, "message": "Файл пуст"})
-        
     total = len(cookies)
     valid_count = 0
     total_robux = 0
     premium_count = 0
     usernames = []
     full_reports = []
-    
     with ThreadPoolExecutor(max_workers=30) as executor:
         future_to_cookie = {executor.submit(get_account_data, c): c for c in cookies}
         for future in as_completed(future_to_cookie):
@@ -856,7 +782,6 @@ def mass_check():
                 usernames.append(info["username"])
                 rep = format_single_report(info)
                 full_reports.append(rep)
-    
     summary = f"""📊 ОТЧЁТ О ПРОВЕРКЕ
 ══════════════════════════════════════════════════════
 
@@ -868,9 +793,7 @@ def mass_check():
 
 ========================================
 """ + "\n\n".join(full_reports)
-    
     save_checker_history_entry("mass", valid_count, total, usernames, full_reports)
-    
     return jsonify({
         "success": True,
         "message": summary,
@@ -886,7 +809,6 @@ def download_zip():
     reports = data.get('reports', [])
     if not reports:
         return jsonify({"success": False, "message": "Нет отчетов"})
-    
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         for idx, rep in enumerate(reports, 1):
