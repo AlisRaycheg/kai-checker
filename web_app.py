@@ -442,59 +442,14 @@ def format_full_report(info):
 
 def format_quick_report(result):
     """ПОЛНЫЙ ОТЧЕТ ДЛЯ МАСС-ЧЕКЕРА"""
-    if result['status'] != '✅':
-        return f"❌ НЕВАЛИД"
+    if result.get('status') != '✅':
+        return "❌ НЕВАЛИД"
     
-    info = result.get('full_info', {})
-    if not info:
-        return f"❌ НЕТ ДАННЫХ ДЛЯ ОТЧЕТА"
+    info = result.get('full_info')
+    if info:
+        return format_full_report(info)
     
-    rap_str = f"⏣ {info.get('RAP', 0):,}" if info.get('RAP') else "RAP: ❌"
-    play_str = f"{info.get('PlaytimeHours', 0)} ч." if info.get('PlaytimeHours') else "⏱️ ❌"
-    
-    # Геймпассы
-    gp = info.get('PurchasedGamepasses', {})
-    TARGET_GAMES = ['Adopt Me', 'Blox Fruits', 'Murder Mystery 2', 'Rivals', 'Pet Simulator 99', 'Pet Simulator X', 'Arsenal', 'BedWars', 'Tower Defense Simulator', 'Anime Adventures']
-    
-    gamepasses_text = ""
-    total_spent = 0
-    games_list = []
-    
-    for game_name, passes in gp.items():
-        for target in TARGET_GAMES:
-            if target.lower() in game_name.lower() or game_name.lower() in target.lower():
-                game_total = sum(p['price'] for p in passes)
-                total_spent += game_total
-                games_list.append({
-                    'name': game_name,
-                    'total': game_total,
-                    'count': len(passes),
-                    'passes': sorted(passes, key=lambda x: x['price'], reverse=True)[:3],
-                    'has_more': len(passes) > 3
-                })
-                break
-    
-    games_list.sort(key=lambda x: x['total'], reverse=True)
-    
-    if games_list:
-        gamepasses_text = f"\n💰 Потрачено на геймпассы: ⏣ {total_spent:,}"
-        for g in games_list[:5]:
-            gamepasses_text += f"\n  🎮 {g['name']}: {g['count']} гп, ⏣ {g['total']:,}"
-            for p in g['passes']:
-                gamepasses_text += f"\n     └─ {p['name']} — ⏣ {p['price']:,}"
-            if g.get('has_more'):
-                gamepasses_text += f"\n     └─ ... и ещё"
-    else:
-        gamepasses_text = "\n  ❌ Геймпассов в популярных играх не найдено"
-    
-    r = f"👤 {info.get('Username', '?')} | 🆔 {info.get('UserID', '?')}\n"
-    r += f"💰 Robux: ⏣ {info.get('Robux', 0):,} | 💎 {rap_str} | ⏱️ {play_str}\n"
-    r += f"⭐ Premium: {'✅' if info.get('IsPremium') else '❌'} | 🔐 {info.get('SecurityStatus', '⚠️ НИЗКИЙ')}\n"
-    r += f"📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔑 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}"
-    r += gamepasses_text
-    r += f"\n🍪 {info.get('Cookie', '')[:50]}..."
-    
-    return r
+    return "❌ НЕВАЛИД (НЕТ ДАННЫХ)"
 
 # ==========================================
 # ФРЕШЕР
@@ -1148,17 +1103,14 @@ def api_mass_check_ws():
                 total_robux += result.get('robux', 0)
                 usernames.append(result.get('username', '?'))
                 
-                # === ГЛАВНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ ===
-                if result.get('full_info'):
-                    full_report = format_full_report(result['full_info'])
-                    full_reports.append({
-                        'username': result.get('username', '?'),
-                        'user_id': result.get('user_id', '?'),
-                        'report': full_report
-                    })
-                    formatted_results.append(full_report)
-                else:
-                    formatted_results.append("❌ НЕВАЛИД (нет данных)")
+                report_text = format_quick_report(result)
+                formatted_results.append(report_text)
+                
+                full_reports.append({
+                    'username': result.get('username', '?'),
+                    'user_id': result.get('user_id', '?'),
+                    'report': report_text
+                })
             else:
                 formatted_results.append("❌ НЕВАЛИД")
             
