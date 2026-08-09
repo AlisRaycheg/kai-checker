@@ -441,6 +441,7 @@ def format_full_report(info):
     return r
 
 def format_quick_report(result):
+    """ПОЛНЫЙ ОТЧЕТ ДЛЯ МАСС-ЧЕКЕРА"""
     if result['status'] != '✅':
         return f"❌ НЕВАЛИД"
     
@@ -494,6 +495,7 @@ def format_quick_report(result):
     r += f"\n🍪 {info.get('Cookie', '')[:50]}..."
     
     return r
+
 # ==========================================
 # ФРЕШЕР
 # ==========================================
@@ -1117,9 +1119,6 @@ def api_single_check():
     })
     return jsonify({"success": True, "report": report})
 
-# ==========================================
-# МАСС-ЧЕКЕР С ПОЛНЫМ ОТЧЕТОМ
-# ==========================================
 @app.route("/api/mass-check-ws", methods=["POST"])
 def api_mass_check_ws():
     content = ""
@@ -1149,9 +1148,9 @@ def api_mass_check_ws():
                 total_robux += result.get('robux', 0)
                 usernames.append(result.get('username', '?'))
                 
-                # =====================================================
-                # ЗДЕСЬ ИСПОЛЬЗУЕТСЯ ПОЛНЫЙ ОТЧЕТ (format_full_report)
-                # =====================================================
+                # =============================================
+                # ПОЛНЫЙ ОТЧЕТ ДЛЯ КАЖДОГО ВАЛИДНОГО АККАУНТА
+                # =============================================
                 if result.get('full_info'):
                     full_report = format_full_report(result['full_info'])
                     full_reports.append({
