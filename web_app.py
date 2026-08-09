@@ -1,6 +1,3 @@
-import eventlet
-eventlet.monkey_patch()
-
 import os
 import io
 import re
@@ -12,89 +9,109 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
 from flask import Flask, render_template_string, request, jsonify, send_file
-from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'kai_checker_secret_key_pro'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 CHECKER_HISTORY_FILE = "checker_history.json"
 FRESHER_HISTORY_FILE = "fresher_history.json"
 
-# [HTML-код фронтенда остается без изменений...]
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Kai Checker PRO</title><script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Rubik+Puddles&family=Paytone+One&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-:root{--bg:#07030d;--bg-card:rgba(23,10,38,0.55);--border-card:rgba(168,85,247,0.25);--border-hover:rgba(217,70,239,0.6);--input-bg:rgba(12,5,20,0.75);--text-main:#f3e8ff;--text-muted:#a78bfa;--accent-purple:#9333ea;--accent-pink:#c026d3;--accent-glow:rgba(168,85,247,0.2);--gradient-btn:linear-gradient(135deg,#7e22ce,#a855f7)}
-[data-theme="light"]{--bg:#f5f0ff;--bg-card:rgba(255,255,255,0.75);--border-card:rgba(168,85,247,0.2);--border-hover:rgba(168,85,247,0.5);--input-bg:rgba(243,232,255,0.6);--text-main:#2e1065;--text-muted:#7e22ce;--accent-purple:#7e22ce;--accent-pink:#c026d3}
-*{margin:0;padding:0;box-sizing:border-box;outline:none}
-body{font-family:'Plus Jakarta Sans',sans-serif;min-height:100vh;background:var(--bg);color:var(--text-main);position:relative;overflow-x:hidden;padding:24px 16px}
-#particles-canvas{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;pointer-events:none}
-.bg-glow{position:fixed;width:500px;height:500px;background:radial-gradient(circle,rgba(168,85,247,0.12) 0%,rgba(0,0,0,0) 70%);top:-100px;left:50%;transform:translateX(-50%);z-index:0;pointer-events:none;animation:pulseGlow 8s infinite alternate ease-in-out}
-@keyframes pulseGlow{0%{transform:translateX(-50%) scale(1);opacity:0.5}100%{transform:translateX(-50%) scale(1.2);opacity:0.8}}
-.wrapper{max-width:1350px;margin:0 auto;position:relative;z-index:1;background:var(--bg-card);border:1px solid var(--border-card);backdrop-filter:blur(20px);border-radius:28px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.05)}
-.header{display:flex;justify-content:space-between;align-items:center;padding-bottom:24px;border-bottom:1px solid var(--border-card);margin-bottom:28px;flex-wrap:wrap;gap:16px}
-.logo-text{font-family:'Paytone One',cursive;font-size:38px;font-weight:900;background:linear-gradient(135deg,#f472b6 0%,#d946ef 40%,#a855f7 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;transform:skew(-4deg)}
-.badge-pro{font-size:11px;font-weight:800;background:rgba(168,85,247,0.15);color:var(--accent-pink);padding:4px 12px;border-radius:20px;border:1px solid var(--border-card);letter-spacing:1.5px}
-.stats-bar{display:flex;gap:12px;flex-wrap:wrap}
-.stat-card{background:var(--input-bg);border:1px solid var(--border-card);padding:8px 16px;border-radius:16px;display:flex;flex-direction:column;align-items:center;min-width:90px}
-.stat-val{font-size:16px;font-weight:800;color:var(--accent-pink)}
-.stat-lbl{font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase}
-.tabs{display:flex;gap:12px;margin-bottom:32px;background:var(--input-bg);padding:8px;border-radius:22px;border:1px solid var(--border-card);width:fit-content;flex-wrap:wrap}
-.tab{padding:14px 32px;border-radius:16px;color:var(--text-muted);cursor:pointer;font-size:15px;font-weight:700;transition:all 0.3s;border:1px solid transparent;background:transparent}
-.tab:hover{color:var(--text-main);background:rgba(168,85,247,0.1);border-color:rgba(168,85,247,0.2)}
-.tab.active{background:var(--gradient-btn);color:#fff;border-color:rgba(255,255,255,0.15);box-shadow:0 6px 18px var(--accent-glow)}
-.tab-content{display:none}
-.tab-content.active{display:block}
-.card{background:var(--bg-card);border:1px solid var(--border-card);border-radius:20px;padding:24px;margin-bottom:20px;transition:all 0.3s}
-.card:hover{border-color:var(--border-hover);box-shadow:0 10px 25px var(--accent-glow)}
-.card h2{font-size:16px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.btn{padding:12px 24px;border:none;border-radius:14px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:all 0.25s;box-shadow:0 4px 12px rgba(0,0,0,0.2)}
-.btn-primary{background:var(--gradient-btn)}
-.btn-primary:hover{background:linear-gradient(135deg,#9333ea,#c026d3);box-shadow:0 4px 15px var(--accent-glow);transform:translateY(-1px)}
-.btn-secondary{background:var(--input-bg);border:1px solid var(--border-card);color:var(--text-muted)}
-.btn-secondary:hover{color:var(--text-main);border-color:var(--accent-purple)}
-.btn-danger{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5}
-.btn-danger:hover{background:rgba(239,68,68,0.3)}
-.btn-sm{padding:8px 16px;font-size:12px;border-radius:10px}
-textarea,input[type="number"],input[type="text"]{width:100%;padding:14px;background:var(--input-bg);border:1px solid var(--border-card);border-radius:14px;color:var(--text-main);font-family:monospace;font-size:12px;transition:border-color 0.2s}
-textarea:focus,input:focus{border-color:var(--accent-pink);box-shadow:0 0 8px var(--accent-glow)}
-.upload-area{min-height:110px;border:2px dashed var(--border-card);border-radius:16px;background:var(--input-bg);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all 0.25s;text-align:center;padding:16px}
-.upload-area:hover,.upload-area.drag-over{border-color:var(--accent-pink);background:rgba(168,85,247,0.05);box-shadow:0 0 10px var(--accent-glow)}
-.result-container{margin-top:16px}
-.result-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px}
-.result-title{font-size:12px;font-weight:700;color:var(--text-muted)}
-.action-btn-group{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.btn-toggle-box,.btn-download-txt,.btn-download-zip{background:rgba(217,70,239,0.15);border:1px solid rgba(217,70,239,0.3);color:var(--accent-pink);padding:4px 12px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s}
-.btn-toggle-box:hover,.btn-download-txt:hover,.btn-download-zip:hover{background:rgba(217,70,239,0.3);box-shadow:0 0 8px var(--accent-glow)}
-.result-box{background:var(--input-bg);border:1px solid var(--border-card);border-radius:14px;padding:14px;max-height:400px;overflow-y:auto;font-family:monospace;font-size:12px;color:var(--text-main);white-space:pre-wrap;word-break:break-all;margin-top:6px}
-.progress-bar{margin-top:12px;background:var(--input-bg);border-radius:20px;height:8px;overflow:hidden;border:1px solid var(--border-card)}
-.progress-fill{height:100%;width:0%;background:var(--gradient-btn);transition:width 0.3s ease}
-.progress-text{font-size:12px;color:var(--text-muted);margin-top:4px;text-align:center}
-.checker-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-@media(max-width:900px){.checker-grid{grid-template-columns:1fr}}
-.theme-btn{background:var(--input-bg);border:1px solid var(--border-card);border-radius:30px;padding:8px 16px;cursor:pointer;font-size:12px;color:var(--text-main);font-weight:700;transition:all 0.2s}
-.theme-btn:hover{border-color:var(--accent-purple)}
-.footer{text-align:center;padding-top:20px;color:var(--text-muted);font-size:12px;font-weight:600;border-top:1px solid var(--border-card);margin-top:24px}
-.history-card{background:var(--input-bg);border:1px solid var(--border-card);border-radius:16px;padding:16px;margin-bottom:14px}
-.history-header{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;color:var(--accent-pink);flex-wrap:wrap;gap:8px}
-.history-users{font-size:11px;color:var(--text-main);margin-top:6px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.tool-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
-.fresher-mode-btn.active-mode{background:var(--gradient-btn)!important;color:#fff!important;border-color:var(--accent-pink)!important;box-shadow:0 0 12px var(--accent-glow);transform:scale(1.02)}
-.custom-alert-overlay{position:fixed;top:24px;right:24px;z-index:99999;pointer-events:none}
-.custom-alert-card{pointer-events:auto;background:rgba(23,10,38,0.95);border:1px solid var(--border-hover);box-shadow:0 10px 30px rgba(0,0,0,0.5),0 0 15px var(--accent-glow);backdrop-filter:blur(12px);border-radius:16px;padding:14px 20px;display:flex;align-items:center;gap:12px;min-width:280px;max-width:360px;transform:translateY(-20px) scale(0.95);opacity:0;transition:all 0.3s}
-.custom-alert-overlay.show .custom-alert-card{transform:translateY(0) scale(1);opacity:1}
-.alert-icon{font-size:22px;line-height:1}
-.alert-body h3{margin:0;color:#fff;font-size:13px;font-weight:700}
-.alert-body p{color:var(--text-muted);font-size:12px;margin:0;word-break:break-word;font-weight:500}
-.alert-close-btn{background:transparent;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;padding:4px;line-height:1}
-.alert-close-btn:hover{color:#fff}
-</style>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kai Checker PRO</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik+Puddles&family=Paytone+One&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #07030d;
+            --bg-card: rgba(23, 10, 38, 0.55);
+            --border-card: rgba(168, 85, 247, 0.25);
+            --border-hover: rgba(217, 70, 239, 0.6);
+            --input-bg: rgba(12, 5, 20, 0.75);
+            --text-main: #f3e8ff;
+            --text-muted: #a78bfa;
+            --accent-purple: #9333ea;
+            --accent-pink: #c026d3;
+            --accent-glow: rgba(168, 85, 247, 0.2);
+            --gradient-btn: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
+        }
+        [data-theme="light"] {
+            --bg: #f5f0ff;
+            --bg-card: rgba(255, 255, 255, 0.75);
+            --border-card: rgba(168, 85, 247, 0.2);
+            --border-hover: rgba(168, 85, 247, 0.5);
+            --input-bg: rgba(243, 232, 255, 0.6);
+            --text-main: #2e1065;
+            --text-muted: #7e22ce;
+            --accent-purple: #7e22ce;
+            --accent-pink: #c026d3;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100vh; background: var(--bg); color: var(--text-main); position: relative; overflow-x: hidden; padding: 24px 16px; }
+        .bg-glow { position: fixed; width: 500px; height: 500px; background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, rgba(0,0,0,0) 70%); top: -100px; left: 50%; transform: translateX(-50%); z-index: 0; pointer-events: none; animation: pulseGlow 8s infinite alternate ease-in-out; }
+        @keyframes pulseGlow { 0% { transform: translateX(-50%) scale(1); opacity: 0.5; } 100% { transform: translateX(-50%) scale(1.2); opacity: 0.8; } }
+        .wrapper { max-width: 1350px; margin: 0 auto; position: relative; z-index: 1; background: var(--bg-card); border: 1px solid var(--border-card); backdrop-filter: blur(20px); border-radius: 28px; padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05); }
+        .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 24px; border-bottom: 1px solid var(--border-card); margin-bottom: 28px; flex-wrap: wrap; gap: 16px; }
+        .logo-text { font-family: 'Paytone One', cursive; font-size: 38px; font-weight: 900; background: linear-gradient(135deg, #f472b6 0%, #d946ef 40%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; transform: skew(-4deg); }
+        .badge-pro { font-size: 11px; font-weight: 800; background: rgba(168, 85, 247, 0.15); color: var(--accent-pink); padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border-card); letter-spacing: 1.5px; }
+        .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; }
+        .stat-card { background: var(--input-bg); border: 1px solid var(--border-card); padding: 8px 16px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; min-width: 90px; }
+        .stat-val { font-size: 16px; font-weight: 800; color: var(--accent-pink); }
+        .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+        .tabs { display: flex; gap: 12px; margin-bottom: 32px; background: var(--input-bg); padding: 8px; border-radius: 22px; border: 1px solid var(--border-card); width: fit-content; flex-wrap: wrap; }
+        .tab { padding: 14px 32px; border-radius: 16px; color: var(--text-muted); cursor: pointer; font-size: 15px; font-weight: 700; transition: all 0.3s; border: 1px solid transparent; background: transparent; }
+        .tab:hover { color: var(--text-main); background: rgba(168, 85, 247, 0.1); border-color: rgba(168, 85, 247, 0.2); }
+        .tab.active { background: var(--gradient-btn); color: #fff; border-color: rgba(255, 255, 255, 0.15); box-shadow: 0 6px 18px var(--accent-glow); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .card { background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 20px; padding: 24px; margin-bottom: 20px; transition: all 0.3s; }
+        .card:hover { border-color: var(--border-hover); box-shadow: 0 10px 25px var(--accent-glow); }
+        .card h2 { font-size: 16px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .btn { padding: 12px 24px; border: none; border-radius: 14px; font-size: 13px; font-weight: 700; cursor: pointer; color: #fff; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.25s; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .btn-primary { background: var(--gradient-btn); }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-secondary { background: var(--input-bg); border: 1px solid var(--border-card); color: var(--text-muted); }
+        .btn-secondary:hover { color: var(--text-main); border-color: var(--accent-purple); }
+        .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
+        .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 10px; }
+        textarea, input[type="number"], input[type="text"] { width: 100%; padding: 14px; background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 14px; color: var(--text-main); font-family: monospace; font-size: 12px; transition: border-color 0.2s; }
+        textarea:focus, input:focus { border-color: var(--accent-pink); box-shadow: 0 0 8px var(--accent-glow); }
+        .upload-area { min-height: 110px; border: 2px dashed var(--border-card); border-radius: 16px; background: var(--input-bg); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.25s; text-align: center; padding: 16px; }
+        .upload-area:hover, .upload-area.drag-over { border-color: var(--accent-pink); background: rgba(168, 85, 247, 0.05); box-shadow: 0 0 10px var(--accent-glow); }
+        .result-container { margin-top: 16px; }
+        .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px; }
+        .result-title { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+        .action-btn-group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+        .btn-toggle-box, .btn-download-txt, .btn-download-zip { background: rgba(217, 70, 239, 0.15); border: 1px solid rgba(217, 70, 239, 0.3); color: var(--accent-pink); padding: 4px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn-toggle-box:hover, .btn-download-txt:hover, .btn-download-zip:hover { background: rgba(217, 70, 239, 0.3); box-shadow: 0 0 8px var(--accent-glow); }
+        .result-box { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 14px; padding: 14px; max-height: 500px; overflow-y: auto; font-family: monospace; font-size: 12px; color: var(--text-main); white-space: pre-wrap; word-break: break-all; margin-top: 6px; }
+        .progress-bar { margin-top: 12px; background: var(--input-bg); border-radius: 20px; height: 8px; overflow: hidden; border: 1px solid var(--border-card); }
+        .progress-fill { height: 100%; width: 0%; background: var(--gradient-btn); transition: width 0.3s ease; }
+        .progress-text { font-size: 12px; color: var(--text-muted); margin-top: 4px; text-align: center; }
+        .checker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media(max-width:900px){ .checker-grid { grid-template-columns: 1fr; } }
+        .theme-btn { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 30px; padding: 8px 16px; cursor: pointer; font-size: 12px; color: var(--text-main); font-weight: 700; transition: all 0.2s; }
+        .theme-btn:hover { border-color: var(--accent-purple); }
+        .footer { text-align: center; padding-top: 20px; color: var(--text-muted); font-size: 12px; font-weight: 600; border-top: 1px solid var(--border-card); margin-top: 24px; }
+        .history-card { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 16px; padding: 16px; margin-bottom: 14px; }
+        .history-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; color: var(--accent-pink); flex-wrap: wrap; gap: 8px; }
+        .history-users { font-size: 11px; color: var(--text-main); margin-top: 6px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+        .fresher-mode-btn.active-mode { background: var(--gradient-btn) !important; color: #fff !important; border-color: var(--accent-pink) !important; box-shadow: 0 0 12px var(--accent-glow); transform: scale(1.02); }
+        .custom-alert-overlay { position: fixed; top: 24px; right: 24px; z-index: 99999; pointer-events: none; }
+        .custom-alert-card { pointer-events: auto; background: rgba(23, 10, 38, 0.95); border: 1px solid var(--border-hover); box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 15px var(--accent-glow); backdrop-filter: blur(12px); border-radius: 16px; padding: 14px 20px; display: flex; align-items: center; gap: 12px; min-width: 280px; max-width: 360px; transform: translateY(-20px) scale(0.95); opacity: 0; transition: all 0.3s; }
+        .custom-alert-overlay.show .custom-alert-card { transform: translateY(0) scale(1); opacity: 1; }
+        .alert-icon { font-size: 22px; line-height: 1; }
+        .alert-body h3 { margin: 0; color: #fff; font-size: 13px; font-weight: 700; }
+        .alert-body p { color: var(--text-muted); font-size: 12px; margin: 0; word-break: break-word; font-weight: 500; }
+        .alert-close-btn { background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; }
+        .alert-close-btn:hover { color: #fff; }
+    </style>
 </head>
 <body>
-<canvas id="particles-canvas"></canvas>
 <div class="bg-glow"></div>
 <div id="custom-alert" class="custom-alert-overlay">
     <div class="custom-alert-card">
@@ -140,7 +157,7 @@ textarea:focus,input:focus{border-color:var(--accent-pink);box-shadow:0 0 8px va
                 <div id="massFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px;font-weight:600;"></div>
                 <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
                 <div class="progress-text" id="massProgressText">Готов к запуску</div>
-                <div style="margin-top:12px;"><button class="btn btn-primary" onclick="runMassCheckWS()" style="width:100%;" id="massBtn">🚀 Запустить массовый чек</button></div>
+                <div style="margin-top:12px;"><button class="btn btn-primary" onclick="runMassCheck()" style="width:100%;" id="massBtn">🚀 Запустить массовый чек</button></div>
                 <div class="result-container" id="massContainer" style="display:none;">
                     <div class="result-header"><span class="result-title">РЕЗУЛЬТАТЫ:</span><div class="action-btn-group"><button class="btn-download-zip" onclick="downloadMassZip()">📦 ZIP</button><button class="btn-download-txt" onclick="downloadTxtFromBox('massResult','mass_report.txt')">📥 TXT</button><button class="btn-toggle-box" id="btnToggle_massResult" onclick="toggleBox('massResult')">▼ Свернуть</button></div></div>
                     <div class="result-box" id="massResult"></div>
@@ -180,85 +197,13 @@ textarea:focus,input:focus{border-color:var(--accent-pink);box-shadow:0 0 8px va
 </div>
 
 <script>
-const socket = io();
 let lastMassReports = [];
 
-socket.on('connect', function() { console.log('✅ WebSocket подключен'); });
-
-socket.on('mass_progress', function(data) {
-    document.getElementById('massProgress').style.width = Math.round((data.current / data.total) * 100) + '%';
-    document.getElementById('massProgressText').textContent = '⏳ ' + data.current + '/' + data.total;
-    if (data.result) {
-        document.getElementById('massContainer').style.display = 'block';
-        document.getElementById('massResult').style.display = 'block';
-        document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
-        let currentText = document.getElementById('massResult').textContent;
-        if (currentText === '⏳ Массовая проверка...' || currentText === '') {
-            document.getElementById('massResult').textContent = data.result;
-        } else {
-            document.getElementById('massResult').textContent = currentText + '\n\n' + data.result;
-        }
-        document.getElementById('massResult').scrollTop = document.getElementById('massResult').scrollHeight;
-        if (data.full_report) { lastMassReports.push(data.full_report); }
-    }
-});
-
-socket.on('mass_complete', function(data) {
-    document.getElementById('massProgress').style.width = '100%';
-    document.getElementById('massProgressText').textContent = '✅ Проверка завершена!';
-    document.getElementById('massBtn').disabled = false;
-    document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
-    
-    document.getElementById('massContainer').style.display = 'block';
-    document.getElementById('massResult').style.display = 'block';
-    document.getElementById('massResult').textContent = data.message;
-    document.getElementById('massResult').scrollTop = 0;
-
-    document.getElementById('statValid').textContent = data.valid_count || 0;
-    document.getElementById('statRobux').textContent = (data.total_robux || 0).toLocaleString();
-    document.getElementById('statPremium').textContent = data.premium_count || 0;
-});
-
-socket.on('mass_error', function(data) {
-    document.getElementById('massProgressText').textContent = '❌ ' + data.message;
-    document.getElementById('massBtn').disabled = false;
-    document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
-    showAlert(data.message);
-});
-
-const canvas = document.getElementById('particles-canvas');
-const ctx = canvas.getContext('2d');
-let particles = [];
-function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
-for(let i=0; i<40; i++) {
-    particles.push({
-        x: Math.random() * canvas.width, y: Math.random() * canvas.height,
-        r: Math.random() * 2 + 1, dx: (Math.random() - 0.5) * 0.5, dy: (Math.random() - 0.5) * 0.5,
-        alpha: Math.random() * 0.3 + 0.1
-    });
-}
-function animateParticles() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    particles.forEach(p => {
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-        ctx.fillStyle = 'rgba(217, 70, 239, ' + p.alpha + ')';
-        ctx.shadowBlur = 6; ctx.shadowColor = '#a855f7'; ctx.fill();
-        p.x += p.dx; p.y += p.dy;
-        if(p.x<0 || p.x>canvas.width) p.dx *= -1;
-        if(p.y<0 || p.y>canvas.height) p.dy *= -1;
-    });
-    requestAnimationFrame(animateParticles);
-}
-animateParticles();
-
-let alertTimeout;
 function showAlert(message) {
     document.getElementById('custom-alert-msg').innerText = message || 'Вставьте кук!';
     document.getElementById('custom-alert').classList.add('show');
-    clearTimeout(alertTimeout);
-    alertTimeout = setTimeout(function() { document.getElementById('custom-alert').classList.remove('show'); }, 4000);
+    clearTimeout(window.alertTimeout);
+    window.alertTimeout = setTimeout(function() { document.getElementById('custom-alert').classList.remove('show'); }, 4000);
 }
 function closeAlert() { document.getElementById('custom-alert').classList.remove('show'); }
 
@@ -345,32 +290,50 @@ async function runSingleCheck() {
     document.getElementById('singleResult').textContent = data.report || 'Ошибка';
 }
 
-async function runMassCheckWS() {
+async function runMassCheck() {
     var file = document.getElementById('massFile').files[0];
     if(!file) return showAlert('Выберите TXT файл!');
-    document.getElementById('massBtn').disabled = true;
-    document.getElementById('massBtn').textContent = '⏳ Проверка...';
-    document.getElementById('massProgress').style.width = '0%';
-    document.getElementById('massProgressText').textContent = '⏳ Подготовка...';
-    document.getElementById('massContainer').style.display = 'block';
-    document.getElementById('massResult').style.display = 'block';
-    document.getElementById('massResult').textContent = '⏳ Массовая проверка...';
+    
+    var btn = document.getElementById('massBtn');
+    var progress = document.getElementById('massProgress');
+    var progressText = document.getElementById('massProgressText');
+    var resultBox = document.getElementById('massResult');
+    var container = document.getElementById('massContainer');
+    
+    btn.disabled = true;
+    btn.textContent = '⏳ Проверка...';
+    progress.style.width = '50%';
+    progressText.textContent = '⏳ Обработка...';
+    container.style.display = 'block';
+    resultBox.style.display = 'block';
+    resultBox.textContent = '⏳ Массовая проверка...';
     document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
     lastMassReports = [];
+    
     var fd = new FormData();
     fd.append('file', file);
+    
     try {
-        var res = await fetch('/api/mass-check-ws', { method: 'POST', body: fd });
+        var res = await fetch('/api/mass-check', { method: 'POST', body: fd });
         var data = await res.json();
-        if(!data.success) {
+        
+        progress.style.width = '100%';
+        progressText.textContent = '✅ Готово!';
+        btn.disabled = false;
+        btn.textContent = '🚀 Запустить массовый чек';
+        
+        if(data.success) {
+            resultBox.textContent = data.message;
+            document.getElementById('statValid').textContent = data.valid_count || 0;
+            document.getElementById('statRobux').textContent = (data.total_robux || 0).toLocaleString();
+            document.getElementById('statPremium').textContent = data.premium_count || 0;
+        } else {
             showAlert(data.message || 'Ошибка');
-            document.getElementById('massBtn').disabled = false;
-            document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
         }
     } catch(e) {
         showAlert('Ошибка соединения');
-        document.getElementById('massBtn').disabled = false;
-        document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
+        btn.disabled = false;
+        btn.textContent = '🚀 Запустить массовый чек';
     }
 }
 
@@ -675,7 +638,7 @@ def format_single_report(info):
 ========================================"""
     return report
 
-# ==================== ФРЕШЕР ====================
+# ==================== ФРЕШЕР ИЗ MEOW TOOL ====================
 def refresh_cookie_action(cookie, mode="duplicate"):
     cookie = clean_cookie(cookie)
     result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
@@ -760,77 +723,74 @@ def single_check():
         return jsonify({"report": rep, "valid": True})
     return jsonify({"report": "❌ Невалидный кук", "valid": False})
 
-@app.route('/api/mass-check-ws', methods=['POST'])
-def mass_check_ws():
+@app.route('/api/mass-check', methods=['POST'])
+def mass_check():
     file = request.files.get('file')
     if not file:
         return jsonify({"success": False, "message": "Файл не предоставлен"})
+        
     content = file.read().decode('utf-8', errors='ignore')
     cookies = [line.strip() for line in content.splitlines() if line.strip()]
     if not cookies:
         return jsonify({"success": False, "message": "Файл пуст"})
+        
+    total = len(cookies)
+    valid_count = 0
+    total_robux = 0
+    premium_count = 0
+    usernames = []
+    full_reports = []
+    lastMassReports = []
     
-    def run_process():
-        total = len(cookies)
-        valid_count = 0
-        invalid_count = 0
-        total_robux = 0
-        premium_count = 0
-        usernames = []
-        full_reports = []
-        
-        with ThreadPoolExecutor(max_workers=30) as executor:
-            future_to_cookie = {executor.submit(get_account_data, c): c for c in cookies}
-            completed = 0
-            for future in as_completed(future_to_cookie):
-                completed += 1
-                info = future.result()
-                rep = None
-                if info:
-                    valid_count += 1
-                    total_robux += info["robux"]
-                    if info["is_premium"]:
-                        premium_count += 1
-                    usernames.append(info["username"])
-                    rep = format_single_report(info)
-                    full_reports.append(rep)
-                else:
-                    invalid_count += 1
-                    rep = "❌ Невалидный кук"
-                
-                socketio.emit('mass_progress', {
-                    "current": completed,
-                    "total": total,
-                    "result": rep,
-                    "full_report": rep if info else None
-                })
-        
-        summary_header = f"""📊 ОТЧЁТ О ПРОВЕРКЕ
+    with ThreadPoolExecutor(max_workers=30) as executor:
+        future_to_cookie = {executor.submit(get_account_data, c): c for c in cookies}
+        for future in as_completed(future_to_cookie):
+            info = future.result()
+            if info:
+                valid_count += 1
+                total_robux += info["robux"]
+                if info["is_premium"]:
+                    premium_count += 1
+                usernames.append(info["username"])
+                rep = format_single_report(info)
+                full_reports.append(rep)
+                lastMassReports.append(rep)
+    
+    # Сохраняем в глобальную переменную для ZIP
+    global mass_reports_cache
+    mass_reports_cache = [{"report": r, "username": re.search(r'👤 АККАУНТ:\s*([^\n\r]+)', r).group(1).split('(')[0].strip() if re.search(r'👤 АККАУНТ:\s*([^\n\r]+)', r) else f"acc_{i}"} for i, r in enumerate(full_reports)]
+    
+    summary = f"""📊 ОТЧЁТ О ПРОВЕРКЕ
 ══════════════════════════════════════════════════════
+
 📦 Всего куки: {total}
-✅ Валидных: {valid_count} | ❌ Невалидных: {invalid_count}
-💰 Всего Robux: {total_robux:,}
+✅ Валидных: {valid_count} | ❌ Невалидных: {total - valid_count}
+
+💰 Robux: {total_robux:,}
 ⭐ Premium: {premium_count}
-══════════════════════════════════════════════════════
 
-"""
-        full_output = summary_header + "\n\n".join(full_reports)
-        save_checker_history_entry("mass", valid_count, total, usernames, full_reports)
-        
-        socketio.emit('mass_complete', {
-            "message": full_output,
-            "valid_count": valid_count,
-            "total_robux": total_robux,
-            "premium_count": premium_count
-        })
+========================================
+""" + "\n\n".join(full_reports)
+    
+    save_checker_history_entry("mass", valid_count, total, usernames, full_reports)
+    
+    return jsonify({
+        "success": True,
+        "message": summary,
+        "valid_count": valid_count,
+        "total_robux": total_robux,
+        "premium_count": premium_count
+    })
 
-    eventlet.spawn(run_process)
-    return jsonify({"success": True})
+mass_reports_cache = []
 
 @app.route('/api/download-zip', methods=['POST'])
 def download_zip():
     data = request.json or {}
     reports = data.get('reports', [])
+    if not reports:
+        reports = [r["report"] for r in mass_reports_cache]
+    
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         for idx, rep in enumerate(reports, 1):
@@ -947,4 +907,4 @@ def download_file(filename):
 
 if __name__ == '__main__':
     print("🚀 Kai Checker PRO запущен на http://localhost:5000")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
