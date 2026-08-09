@@ -284,70 +284,175 @@ def format_quick_report(result):
 # ==========================================
 # БЛОК: ФРЕШЕР
 # ==========================================
+# ==========================================
+# БЛОК: ФРЕШЕР (MEOW TOOL VERSION - РАБОЧИЙ)
+# ==========================================
 def refresh_roblox_cookie(cookie, kill_old=False):
+    """
+    Обновление куки Roblox - стабильная версия из Meow Tool
+    """
     result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
+    
     try:
+        # Очистка куки
         c = cookie.strip()
-        if ".ROBLOSECURITY=" in c: c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
+        if ".ROBLOSECURITY=" in c:
+            c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
+        
         cookies_dict = {'.ROBLOSECURITY': c}
-        check_s = requests.Session()
-        check_s.headers.update({'User-Agent': 'Mozilla/5.0'})
-        check_r = check_s.get('https://users.roblox.com/v1/users/authenticated', cookies=cookies_dict, timeout=10, verify=False)
+        
+        # === ШАГ 1: Проверка валидности ===
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*'
+        }
+        
+        check_r = requests.get(
+            'https://users.roblox.com/v1/users/authenticated',
+            cookies=cookies_dict,
+            headers=headers,
+            timeout=10,
+            verify=False
+        )
+        
         if check_r.status_code != 200:
-            result['error'] = "Кука невалидна"; return result
+            result['error'] = f"Кука невалидна (HTTP {check_r.status_code})"
+            return result
+        
         user_data = check_r.json()
-        result['username'] = user_data.get('name', '?'); result['user_id'] = user_data.get('id', '?')
-        csrf_r = requests.post('https://auth.roblox.com/v2/logout', cookies=cookies_dict, headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}, verify=False, timeout=10)
+        result['username'] = user_data.get('name', '?')
+        result['user_id'] = user_data.get('id', '?')
+        
+        # === ШАГ 2: Получение CSRF токена ===
+        csrf_r = requests.post(
+            'https://auth.roblox.com/v2/logout',
+            cookies=cookies_dict,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Content-Type': 'application/json'
+            },
+            verify=False,
+            timeout=10
+        )
+        
         csrf_token = csrf_r.headers.get('x-csrf-token')
         if not csrf_token:
-            result['error'] = "CSRF token not found"; return result
-        ticket_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'referer': 'https://www.roblox.com/hewhewhew', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
-        ticket_r = requests.post('https://auth.roblox.com/v1/authentication-ticket', headers=ticket_headers, cookies=cookies_dict, json={}, verify=False, timeout=15)
+            result['error'] = "CSRF token not found"
+            return result
+        
+        # === ШАГ 3: Получение authentication ticket ===
+        ticket_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'RBXauthenticationNegotiation': '1',
+            'Referer': 'https://www.roblox.com/',
+            'X-CSRF-Token': csrf_token,
+            'Content-Type': 'application/json'
+        }
+        
+        ticket_r = requests.post(
+            'https://auth.roblox.com/v1/authentication-ticket',
+            headers=ticket_headers,
+            cookies=cookies_dict,
+            json={},
+            verify=False,
+            timeout=15
+        )
+        
         auth_ticket = ticket_r.headers.get('rbx-authentication-ticket')
         if not auth_ticket:
-            result['error'] = "Auth ticket not found"; return result
-        redeem_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'Content-Type': 'application/json'}
-        redeem_r = requests.post('https://auth.roblox.com/v1/authentication-ticket/redeem', headers=redeem_headers, json={"authenticationTicket": auth_ticket}, verify=False, timeout=15)
-        new_cookie_value = None
+            result['error'] = "Auth ticket not found"
+            return result
+        
+        # === ШАГ 4: Redeem ticket ===
+        redeem_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'RBXauthenticationNegotiation': '1',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/plain, */*'
+        }
+        
+        redeem_r = requests.post(
+            'https://auth.roblox.com/v1/authentication-ticket/redeem',
+            headers=redeem_headers,
+            json={"authenticationTicket": auth_ticket},
+            verify=False,
+            timeout=15
+        )
+        
+        # === ШАГ 5: Извлечение новой куки ===
+        new_cookie = None
+        
+        # Пробуем из Set-Cookie
         set_cookie = redeem_r.headers.get('Set-Cookie', '')
         if '.ROBLOSECURITY=' in set_cookie:
             match = re.search(r'\.ROBLOSECURITY=([^;]+)', set_cookie)
-            if match: new_cookie_value = match.group(1)
-        if not new_cookie_value:
+            if match:
+                new_cookie = match.group(1)
+        
+        # Пробуем из cookies
+        if not new_cookie:
             for co in redeem_r.cookies:
-                if co.name == '.ROBLOSECURITY' and co.value: new_cookie_value = co.value; break
-        if not new_cookie_value:
-            result['error'] = "New cookie not found"; return result
+                if co.name == '.ROBLOSECURITY' and co.value:
+                    new_cookie = co.value
+                    break
+        
+        if not new_cookie:
+            result['error'] = "New cookie not found"
+            return result
+        
+        # === ШАГ 6: Убить старую куку (опционально) ===
         if kill_old:
             try:
-                break_headers = {'User-Agent': 'Mozilla/5.0', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
-                requests.post('https://auth.roblox.com/v2/logout', headers=break_headers, cookies=cookies_dict, verify=False, timeout=10)
-            except: pass
+                kill_headers = {
+                    'User-Agent': 'Mozilla/5.0',
+                    'X-CSRF-Token': csrf_token,
+                    'Content-Type': 'application/json'
+                }
+                requests.post(
+                    'https://auth.roblox.com/v2/logout',
+                    headers=kill_headers,
+                    cookies=cookies_dict,
+                    verify=False,
+                    timeout=10
+                )
+            except:
+                pass
+        
+        # === ШАГ 7: Проверка новой куки ===
         test_s = requests.Session()
-        test_s.headers.update({'User-Agent': 'Mozilla/5.0'})
-        test_r = test_s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY': new_cookie_value}, verify=False, timeout=10)
-        if test_r.status_code == 200 and 'id' in test_r.json():
-            result['new_cookie'] = new_cookie_value; result['success'] = True
+        test_s.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json'
+        })
+        
+        test_r = test_s.get(
+            'https://users.roblox.com/v1/users/authenticated',
+            cookies={'.ROBLOSECURITY': new_cookie},
+            verify=False,
+            timeout=10
+        )
+        
+        if test_r.status_code == 200:
+            test_data = test_r.json()
+            if 'id' in test_data:
+                result['new_cookie'] = new_cookie
+                result['success'] = True
+                result['username'] = test_data.get('name', result['username'])
+                logger.info(f"✅ Кука успешно обновлена для {result['username']}")
+            else:
+                result['error'] = "New cookie validation failed - no id"
         else:
-            result['error'] = "New cookie validation failed"
+            result['error'] = f"New cookie validation failed (HTTP {test_r.status_code})"
+            
+    except requests.exceptions.Timeout:
+        result['error'] = "Request timeout"
+    except requests.exceptions.ConnectionError:
+        result['error'] = "Connection error"
     except Exception as e:
         result['error'] = str(e)
+        logger.error(f"Ошибка фрешера: {e}")
+    
     return result
-
-# ==========================================
-# БЛОК: ИНСТРУМЕНТЫ
-# ==========================================
-def merge_cookie_files(contents):
-    all_cookies = []
-    for c in contents:
-        extracted = extract_cookies_from_text(c)
-        all_cookies.extend(extracted)
-    unique = list(dict.fromkeys(all_cookies))
-    return '\n'.join(unique)
-
-def remove_duplicates(content):
-    cookies = extract_cookies_from_text(content)
-    return '\n'.join(cookies)
 
 # ==========================================
 # БЛОК: FLASK APP
