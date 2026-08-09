@@ -640,25 +640,34 @@ def get_all_purchases(user_id, cookie):
 
 # ==================== ФОРМАТИРОВАНИЕ ОТЧЕТА ====================
 def format_game_purchases(game_purchases):
+    """Геймпассы сортируются по цене (от дорогих к дешёвым)"""
     if not game_purchases:
         return "❌ Геймпассов не найдено"
-    filtered = {}
+    
+    # Собираем все геймпассы в один список
+    all_passes = []
     for game, passes in game_purchases.items():
-        for target in MAIN_GAMES:
-            if target.lower() in game.lower() or game.lower() in target.lower():
-                filtered[game] = passes
-                break
-    if not filtered:
-        return "❌ Геймпассов в основных играх не найдено"
-    sorted_games = sorted(filtered.items(), key=lambda x: sum(p['price'] for p in x[1]), reverse=True)
+        for p in passes:
+            all_passes.append({
+                'game': game,
+                'name': p['name'],
+                'price': p['price']
+            })
+    
+    # Сортируем по цене (от дорогих к дешёвым)
+    all_passes.sort(key=lambda x: x['price'], reverse=True)
+    
+    if not all_passes:
+        return "❌ Геймпассов не найдено"
+    
     result = ""
-    for game, passes in sorted_games[:10]:
-        total = sum(p['price'] for p in passes)
-        result += f"\n  🎮 {game} — {len(passes)} гп, ⏣ {total:,}"
-        for p in passes[:3]:
-            result += f"\n     └─ {p['name']} — ⏣ {p['price']:,}"
-        if len(passes) > 3:
-            result += f"\n     └─ ... и ещё {len(passes) - 3}"
+    current_game = None
+    for p in all_passes[:20]:  # максимум 20 геймпассов
+        if p['game'] != current_game:
+            current_game = p['game']
+            result += f"\n🎮 {current_game}"
+        result += f"\n   └─ {p['name']} — ⏣ {p['price']:,}"
+    
     return result
 
 def format_single_report(info):
