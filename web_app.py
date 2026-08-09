@@ -880,8 +880,14 @@ socket.on('mass_complete', function(data) {
     document.getElementById('statRobux').textContent = (data.total_robux || 0).toLocaleString();
     document.getElementById('statPremium').textContent = data.premium_count || 0;
     
+    // =============================================
+    // ВЫВОДИМ СВОДНЫЙ ОТЧЕТ
+    // =============================================
     if (data.message) {
         document.getElementById('massResult').textContent = data.message;
+        document.getElementById('massContainer').style.display = 'block';
+        document.getElementById('massResult').style.display = 'block';
+        document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
     }
 });
 
