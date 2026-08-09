@@ -61,7 +61,7 @@ def init_db():
 init_db()
 
 # ==========================================
-# SQLite ФУНКЦИИ
+# SQLite ФУНКЦИИ И ХЕЛПЕРЫ
 # ==========================================
 def get_user_session_id():
     if 'user_id' not in session:
@@ -74,6 +74,12 @@ def get_user_session_id():
         conn.commit()
         conn.close()
     return session['user_id']
+
+def get_user_download_dir():
+    sid = get_user_session_id()
+    user_dir = os.path.join("downloads", sid)
+    os.makedirs(user_dir, exist_ok=True)
+    return user_dir, sid
 
 def add_checker_history(entry):
     sid = get_user_session_id()
@@ -168,7 +174,7 @@ def clear_fresher_history():
     conn.close()
 
 # ==========================================
-# ЧЕКЕР
+# ЧЕКЕР И ИЗВЛЕЧЕНИЕ ДАННЫХ
 # ==========================================
 def extract_cookies_from_text(text):
     cookies = []
@@ -359,22 +365,8 @@ def quick_validate(cookie):
         result['score'] = score
     return result
 
-def mass_check(cookies_list):
-    results = []
-    with ThreadPoolExecutor(max_workers=30) as ex:
-        futures = {ex.submit(quick_validate, c): c for c in cookies_list}
-        for f in as_completed(futures):
-            try:
-                results.append(f.result())
-            except:
-                results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','robux':0,'rap':None,'playtime':None,'created':'?','is_premium':False,'has_email':False,'has_2fa':False})
-    valid = [r for r in results if r['status']=='✅']
-    invalid = [r for r in results if r['status']=='❌']
-    valid.sort(key=lambda x: x['score'], reverse=True)
-    return valid + invalid
-
 # ==========================================
-# ФОРМАТТЕРЫ (ПОЛНЫЙ ОТЧЕТ С ГЕЙМПАССАМИ)
+# ФОРМАТТЕРЫ ОТЧЕТОВ
 # ==========================================
 def format_full_report(info):
     if info['status'] != '✅':
@@ -420,7 +412,7 @@ def format_full_report(info):
     
     r = f"👤 {info['Username']} | 🆔 {info['UserID']} | 📅 {info['Created']} | 🌍 {info['Country']}\n"
     r += f"💰 Robux: ⏣ {info['Robux']:,} | 💎 RAP: {rap_str} | ⏱️ Плейтайм: {play_str}\n"
-    r += f"⭐ Premium: {'✅' if info['IsPremium'] else '❌'} | 🔐 {info['SecurityStatus']}\n"
+    r += f"⭐ Premium: {'✅' if info['IsPremium'] else '❌'} | 🔒 {info['SecurityStatus']}\n"
     r += f"📧 Почта: {'✅' if info['EmailSet'] else '❌'} | 🔑 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
     
     if sorted_games:
@@ -441,7 +433,7 @@ def format_full_report(info):
     return r
 
 def format_quick_report(result):
-    """ПОЛНЫЙ ОТЧЕТ ДЛЯ МАСС-ЧЕКЕРА"""
+    """ПОЛНЫЙ ДЕТАЛИЗИРОВАННЫЙ ОТЧЕТ ДЛЯ МАСС-ЧЕКЕРА"""
     if result.get('status') != '✅':
         return "❌ НЕВАЛИД"
     
@@ -452,7 +444,7 @@ def format_quick_report(result):
     return "❌ НЕВАЛИД (НЕТ ДАННЫХ)"
 
 # ==========================================
-# ФРЕШЕР
+# ФРЕШЕР СЕССИЙ
 # ==========================================
 def refresh_roblox_cookie(cookie, kill_old=False):
     result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
@@ -526,7 +518,7 @@ def refresh_roblox_cookie(cookie, kill_old=False):
     return result
 
 # ==========================================
-# ИНСТРУМЕНТЫ
+# ИНСТРУМЕНТЫ ДЛЯ РАБОТЫ С КУКАМИ
 # ==========================================
 def merge_cookie_files(contents):
     all_cookies = []
@@ -541,14 +533,14 @@ def remove_duplicates(content):
     return '\n'.join(cookies)
 
 # ==========================================
-# FLASK APP + SOCKETIO
+# FLASK APP & SOCKETIO
 # ==========================================
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # ==========================================
-# HTML
+# HTML И ВЕБ-ИНТЕРФЕЙС
 # ==========================================
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
@@ -1051,7 +1043,7 @@ async function cleanCookies() {
 </html>"""
 
 # ==========================================
-# API МАРШРУТЫ
+# API МАРШРУТЫ (FLASK ROUTES)
 # ==========================================
 @app.route("/")
 def index():
@@ -1265,7 +1257,7 @@ def download_file(sid, filename):
     return send_from_directory(os.path.join("downloads", sid), filename, as_attachment=True)
 
 # ==========================================
-# ТОЧКА ВХОДА
+# ТОЧКА ВХОДА И ЗАПУСК СЕРВЕРА
 # ==========================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
