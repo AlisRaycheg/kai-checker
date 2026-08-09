@@ -441,7 +441,7 @@ def format_full_report(info):
     return r
 
 def format_quick_report(result):
-    """Полный отчет для масс-чекера с геймпассами"""
+    """БЫСТРЫЙ ОТЧЕТ (НЕ ИСПОЛЬЗУЕТСЯ В МАСС-ЧЕКЕРЕ)"""
     if result['status'] != '✅':
         return f"❌ НЕВАЛИД"
     
@@ -453,61 +453,14 @@ def format_quick_report(result):
         play_str = f"{result['playtime']}h" if result['playtime'] is not None else "⏱️ ❌"
         return f"{rank} {result['username']} [{result['user_id']}] | ⏣{result['robux']:,} ({rap_str}) | {play_str} | S:{score}"
     
-    # ПОПУЛЯРНЫЕ ИГРЫ
-    TARGET_GAMES = [
-        'Adopt Me', 'Blox Fruits', 'Murder Mystery 2', 'Rivals',
-        'Pet Simulator 99', 'Pet Simulator X', 'Arsenal', 'BedWars',
-        'Tower Defense Simulator', 'Anime Adventures'
-    ]
-    
-    gp = info.get('PurchasedGamepasses', {})
-    gamepasses_text = ""
-    total_spent = 0
-    game_found = False
-    games_list = []
-    
-    for game_name, passes in gp.items():
-        matched = False
-        for target in TARGET_GAMES:
-            if target.lower() in game_name.lower() or game_name.lower() in target.lower():
-                matched = True
-                break
-        if matched:
-            game_found = True
-            game_total = sum(p['price'] for p in passes)
-            total_spent += game_total
-            games_list.append({
-                'name': game_name,
-                'total': game_total,
-                'count': len(passes),
-                'passes': sorted(passes, key=lambda x: x['price'], reverse=True)[:3],
-                'has_more': len(passes) > 3
-            })
-    
-    # Сортируем игры по тратам
-    games_list.sort(key=lambda x: x['total'], reverse=True)
-    
-    if not game_found:
-        gamepasses_text = "\n  ❌ Геймпассов в популярных играх не найдено"
-    else:
-        gamepasses_text = f"\n💰 Потрачено на геймпассы: ⏣ {total_spent:,}"
-        for g in games_list[:5]:  # Максимум 5 игр
-            gamepasses_text += f"\n  🎮 {g['name']}: {g['count']} гп, ⏣ {g['total']:,}"
-            for p in g['passes']:
-                gamepasses_text += f"\n     └─ {p['name']} — ⏣ {p['price']:,}"
-            if g.get('has_more'):
-                gamepasses_text += f"\n     └─ ... и ещё"
-    
     rap_str = f"⏣ {info.get('RAP', 0):,}" if info.get('RAP') else "RAP: ❌"
     play_str = f"{info.get('PlaytimeHours', 0)} ч." if info.get('PlaytimeHours') else "⏱️ ❌"
     
     r = f"👤 {info.get('Username', '?')} | 🆔 {info.get('UserID', '?')}\n"
     r += f"💰 Robux: ⏣ {info.get('Robux', 0):,} | 💎 {rap_str} | ⏱️ {play_str}\n"
     r += f"⭐ Premium: {'✅' if info.get('IsPremium') else '❌'} | 🔐 {info.get('SecurityStatus', '⚠️ НИЗКИЙ')}\n"
-    r += f"📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔑 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}"
-    r += gamepasses_text
+    r += f"📧 Почта: {'✅' if info.get('EmailSet') else '❌'} | 🔑 2FA: {'✅' if info.get('TwoFactorEnabled') else '❌'}\n"
     r += f"\n🍪 {info.get('Cookie', '')[:50]}..."
-    
     return r
 
 # ==========================================
@@ -607,10 +560,8 @@ app.secret_key = os.urandom(24)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # ==========================================
-# HTML
+# HTML (УПРОЩЕННЫЙ ДЛЯ КОРОТКОГО ОТВЕТА)
 # ==========================================
-# HTML код такой же, как был раньше
-# ВСТАВЬ СЮДА СВОЙ HTML (из предыдущего кода)
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
@@ -631,7 +582,6 @@ HTML = r"""<!DOCTYPE html>
             --accent-purple: #9333ea;
             --accent-pink: #c026d3;
             --accent-glow: rgba(168, 85, 247, 0.2);
-            --gradient-primary: linear-gradient(135deg, #a855f7 0%, #d946ef 50%, #6366f1 100%);
             --gradient-btn: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
             --gradient-btn-hover: linear-gradient(135deg, #9333ea 0%, #c026d3 100%);
         }
@@ -654,14 +604,13 @@ HTML = r"""<!DOCTYPE html>
         @keyframes pulseGlow { 0% { transform: translateX(-50%) scale(1); opacity: 0.5; } 100% { transform: translateX(-50%) scale(1.2); opacity: 0.8; } }
         .wrapper { max-width: 1350px; margin: 0 auto; position: relative; z-index: 1; background: var(--bg-card); border: 1px solid var(--border-card); backdrop-filter: blur(20px); border-radius: 28px; padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05); }
         .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 24px; border-bottom: 1px solid var(--border-card); margin-bottom: 28px; flex-wrap: wrap; gap: 16px; }
-        .logo-wrap { display: flex; align-items: center; gap: 14px; }
-        .logo-text { font-family: 'Paytone One', cursive; font-size: 38px; font-weight: 900; letter-spacing: 1px; background: linear-gradient(135deg, #f472b6 0%, #d946ef 40%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; transform: skew(-4deg); }
+        .logo-text { font-family: 'Paytone One', cursive; font-size: 38px; font-weight: 900; background: linear-gradient(135deg, #f472b6 0%, #d946ef 40%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; transform: skew(-4deg); }
         .badge-pro { font-size: 11px; font-weight: 800; background: rgba(168, 85, 247, 0.15); color: var(--accent-pink); padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border-card); letter-spacing: 1.5px; }
         .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; }
         .stat-card { background: var(--input-bg); border: 1px solid var(--border-card); padding: 8px 16px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; min-width: 90px; }
         .stat-val { font-size: 16px; font-weight: 800; color: var(--accent-pink); }
         .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
-        .tabs { display: flex; gap: 12px; margin-bottom: 32px; background: var(--input-bg); padding: 8px; border-radius: 22px; border: 1px solid var(--border-card); width: fit-content; flex-wrap: wrap; box-shadow: 0 8px 30px rgba(0,0,0,0.25); }
+        .tabs { display: flex; gap: 12px; margin-bottom: 32px; background: var(--input-bg); padding: 8px; border-radius: 22px; border: 1px solid var(--border-card); width: fit-content; flex-wrap: wrap; }
         .tab { padding: 14px 32px; border-radius: 16px; color: var(--text-muted); cursor: pointer; font-size: 15px; font-weight: 700; transition: all 0.3s; border: 1px solid transparent; background: transparent; }
         .tab:hover { color: var(--text-main); background: rgba(168, 85, 247, 0.1); border-color: rgba(168, 85, 247, 0.2); }
         .tab.active { background: var(--gradient-btn); color: #fff; border-color: rgba(255, 255, 255, 0.15); box-shadow: 0 6px 18px var(--accent-glow); }
@@ -701,16 +650,15 @@ HTML = r"""<!DOCTYPE html>
         .history-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; color: var(--accent-pink); flex-wrap: wrap; gap: 8px; }
         .history-users { font-size: 11px; color: var(--text-main); margin-top: 6px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+        .fresher-mode-btn.active-mode { background: var(--gradient-btn) !important; color: #fff !important; border-color: var(--accent-pink) !important; box-shadow: 0 0 12px var(--accent-glow); transform: scale(1.02); }
         .custom-alert-overlay { position: fixed; top: 24px; right: 24px; z-index: 99999; pointer-events: none; }
         .custom-alert-card { pointer-events: auto; background: rgba(23, 10, 38, 0.95); border: 1px solid var(--border-hover); box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 15px var(--accent-glow); backdrop-filter: blur(12px); border-radius: 16px; padding: 14px 20px; display: flex; align-items: center; gap: 12px; min-width: 280px; max-width: 360px; transform: translateY(-20px) scale(0.95); opacity: 0; transition: all 0.3s; }
         .custom-alert-overlay.show .custom-alert-card { transform: translateY(0) scale(1); opacity: 1; }
         .alert-icon { font-size: 22px; line-height: 1; }
-        .alert-body { display: flex; flex-direction: column; gap: 2px; flex-grow: 1; }
         .alert-body h3 { margin: 0; color: #fff; font-size: 13px; font-weight: 700; }
         .alert-body p { color: var(--text-muted); font-size: 12px; margin: 0; word-break: break-word; font-weight: 500; }
         .alert-close-btn { background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; }
         .alert-close-btn:hover { color: #fff; }
-        .fresher-mode-btn.active-mode { background: var(--gradient-btn) !important; color: #fff !important; border-color: var(--accent-pink) !important; box-shadow: 0 0 12px var(--accent-glow); transform: scale(1.02); }
     </style>
 </head>
 <body>
@@ -725,8 +673,12 @@ HTML = r"""<!DOCTYPE html>
 </div>
 <div class="wrapper">
     <div class="header">
-        <div class="logo-wrap"><div class="logo-text">KAI CHECKER</div><span class="badge-pro">PRO EDITION</span></div>
-        <div class="stats-bar"><div class="stat-card"><span class="stat-val" id="statValid">0</span><span class="stat-lbl">Валид</span></div><div class="stat-card"><span class="stat-val" id="statRobux">0</span><span class="stat-lbl">Robux</span></div><div class="stat-card"><span class="stat-val" id="statPremium">0</span><span class="stat-lbl">Premium</span></div></div>
+        <div class="logo-wrap"><span class="logo-text">KAI CHECKER</span><span class="badge-pro">PRO EDITION</span></div>
+        <div class="stats-bar">
+            <div class="stat-card"><span class="stat-val" id="statValid">0</span><span class="stat-lbl">Валид</span></div>
+            <div class="stat-card"><span class="stat-val" id="statRobux">0</span><span class="stat-lbl">Robux</span></div>
+            <div class="stat-card"><span class="stat-val" id="statPremium">0</span><span class="stat-lbl">Premium</span></div>
+        </div>
         <button class="theme-btn" onclick="toggleTheme()">🌓 Тема</button>
     </div>
     <div class="tabs">
@@ -796,40 +748,26 @@ HTML = r"""<!DOCTYPE html>
 </div>
 
 <script>
-// ==========================================
-// WEBSOCKET
-// ==========================================
 const socket = io();
 let lastMassReports = [];
 
 socket.on('connect', function() { console.log('✅ WebSocket подключен'); });
 
 socket.on('mass_progress', function(data) {
-    const progress = document.getElementById('massProgress');
-    const text = document.getElementById('massProgressText');
-    const resultBox = document.getElementById('massResult');
-    const container = document.getElementById('massContainer');
-    
-    const percent = Math.round((data.current / data.total) * 100);
-    progress.style.width = percent + '%';
-    text.textContent = '⏳ ' + data.current + '/' + data.total + ' (' + percent + '%)';
-    
+    document.getElementById('massProgress').style.width = Math.round((data.current / data.total) * 100) + '%';
+    document.getElementById('massProgressText').textContent = '⏳ ' + data.current + '/' + data.total;
     if (data.result) {
-        container.style.display = 'block';
-        resultBox.style.display = 'block';
+        document.getElementById('massContainer').style.display = 'block';
+        document.getElementById('massResult').style.display = 'block';
         document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
-        
-        let currentText = resultBox.textContent;
+        let currentText = document.getElementById('massResult').textContent;
         if (currentText === '⏳ Массовая проверка...' || currentText === '') {
-            resultBox.textContent = data.result;
+            document.getElementById('massResult').textContent = data.result;
         } else {
-            resultBox.textContent = currentText + '\n\n' + data.result;
+            document.getElementById('massResult').textContent = currentText + '\n\n' + data.result;
         }
-        resultBox.scrollTop = resultBox.scrollHeight;
-        
-        if (data.full_report) {
-            lastMassReports.push(data.full_report);
-        }
+        document.getElementById('massResult').scrollTop = document.getElementById('massResult').scrollHeight;
+        if (data.full_report) { lastMassReports.push(data.full_report); }
     }
 });
 
@@ -850,16 +788,12 @@ socket.on('mass_error', function(data) {
     showAlert(data.message);
 });
 
-// ==========================================
-// ЧАСТИЦЫ
-// ==========================================
 const canvas = document.getElementById('particles-canvas');
 const ctx = canvas.getContext('2d');
 let particles = [];
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
-
 for(let i=0; i<40; i++) {
     particles.push({
         x: Math.random() * canvas.width, y: Math.random() * canvas.height,
@@ -881,9 +815,6 @@ function animateParticles() {
 }
 animateParticles();
 
-// ==========================================
-// ОБЩИЕ ФУНКЦИИ
-// ==========================================
 let alertTimeout;
 function showAlert(message) {
     document.getElementById('custom-alert-msg').innerText = message || 'Вставьте кук!';
@@ -945,9 +876,6 @@ setupDragAndDrop('massDropArea', 'massFile', 'massFileInfo');
 setupDragAndDrop('mergeDropArea', 'mergeFiles', 'mergeFileInfo');
 setupDragAndDrop('splitDropArea', 'splitFiles', 'splitFileInfo');
 
-// ==========================================
-// TAB
-// ==========================================
 function activateTab(tabName) {
     document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
     document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
@@ -967,9 +895,6 @@ window.addEventListener('DOMContentLoaded', function() {
     activateTab(localStorage.getItem('kai_active_tab') || 'checker');
 });
 
-// ==========================================
-// API ЛОГИКА
-// ==========================================
 async function runSingleCheck() {
     var cookie = document.getElementById('singleCookie').value.trim();
     if(!cookie) return showAlert('Вставьте кук!');
@@ -1040,9 +965,6 @@ async function runFresher() {
     document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
 }
 
-// ==========================================
-// ИСТОРИЯ
-// ==========================================
 async function loadCheckerHistory() {
     var res = await fetch('/api/history/checker');
     var data = await res.json();
@@ -1084,9 +1006,6 @@ async function clearFresherHistory() {
     loadFresherHistory();
 }
 
-// ==========================================
-// ИНСТРУМЕНТЫ
-// ==========================================
 async function mergeCookies() {
     var files = document.getElementById('mergeFiles').files;
     if(files.length < 2) return showAlert('Выберите минимум 2 TXT файла!');
@@ -1167,6 +1086,9 @@ def api_single_check():
     })
     return jsonify({"success": True, "report": report})
 
+# ==========================================
+# ГЛАВНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ - МАСС-ЧЕКЕР ВЫДАЕТ ПОЛНЫЙ ОТЧЕТ
+# ==========================================
 @app.route("/api/mass-check-ws", methods=["POST"])
 def api_mass_check_ws():
     content = ""
@@ -1196,7 +1118,8 @@ def api_mass_check_ws():
                 total_robux += result.get('robux', 0)
                 usernames.append(result.get('username', '?'))
                 
-                # === ИСПОЛЬЗУЕМ format_full_report ДЛЯ ПОЛНОГО ОТЧЕТА ===
+                # === ВОТ ЗДЕСЬ ГЛАВНОЕ ИСПРАВЛЕНИЕ ===
+                # Используем format_full_report вместо format_quick_report
                 if result.get('full_info'):
                     full_report = format_full_report(result['full_info'])
                     full_reports.append({
