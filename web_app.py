@@ -61,7 +61,7 @@ def init_db():
 init_db()
 
 # ==========================================
-# SQLite ФУНКЦИИ
+# SQLite ФУНКЦИИ / СЕССИИ
 # ==========================================
 def get_user_session_id():
     if 'user_id' not in session:
@@ -74,6 +74,12 @@ def get_user_session_id():
         conn.commit()
         conn.close()
     return session['user_id']
+
+def get_user_download_dir():
+    sid = get_user_session_id()
+    user_dir = os.path.join("downloads", sid)
+    os.makedirs(user_dir, exist_ok=True)
+    return user_dir, sid
 
 def add_checker_history(entry):
     sid = get_user_session_id()
