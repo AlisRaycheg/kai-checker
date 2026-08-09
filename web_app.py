@@ -567,9 +567,9 @@ def get_all_purchases(user_id, cookie):
         pass
     return purchases_by_game, total_spent
 
-# ==================== ФОРМАТИРОВАНИЕ ОТЧЕТА (СОРТИРОВКА ПО ЦЕНЕ) ====================
+# ==================== ФОРМАТИРОВАНИЕ ОТЧЕТА (ГРУППИРОВКА + СОРТИРОВКА ПО ЦЕНЕ) ====================
 def format_game_purchases(game_purchases):
-    """Геймпассы сортируются по цене (от дорогих к дешёвым) внутри каждой игры"""
+    """Геймпассы группируются по названию, сортируются по цене"""
     if not game_purchases:
         return "❌ Геймпассов не найдено"
     
@@ -590,12 +590,26 @@ def format_game_purchases(game_purchases):
     for game, passes in sorted_games[:10]:
         total = sum(p['price'] for p in passes)
         result += f"\n  🎮 {game} — {len(passes)} гп, ⏣ {total:,}"
-        # СОРТИРУЕМ ГЕЙМПАССЫ ПО ЦЕНЕ (ОТ ДОРОГИХ К ДЕШЁВЫМ)
-        passes_sorted = sorted(passes, key=lambda x: x['price'], reverse=True)
-        for p in passes_sorted[:5]:
-            result += f"\n     └─ {p['name']} — ⏣ {p['price']:,}"
-        if len(passes) > 5:
-            result += f"\n     └─ ... и ещё {len(passes) - 5}"
+        
+        # ГРУППИРУЕМ ОДИНАКОВЫЕ ГЕЙМПАССЫ
+        grouped = {}
+        for p in passes:
+            key = p['name']
+            if key not in grouped:
+                grouped[key] = {'count': 0, 'price': p['price']}
+            grouped[key]['count'] += 1
+        
+        # Сортируем по цене (от дорогих к дешёвым)
+        sorted_passes = sorted(grouped.items(), key=lambda x: x[1]['price'], reverse=True)
+        
+        for name, data in sorted_passes[:5]:
+            if data['count'] > 1:
+                result += f"\n     └─ {name} x{data['count']} — ⏣ {data['price'] * data['count']:,}"
+            else:
+                result += f"\n     └─ {name} — ⏣ {data['price']:,}"
+        
+        if len(sorted_passes) > 5:
+            result += f"\n     └─ ... и ещё {len(sorted_passes) - 5} геймпассов"
     
     return result
 
