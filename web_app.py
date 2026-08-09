@@ -560,7 +560,7 @@ app.secret_key = os.urandom(24)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # ==========================================
-# HTML (УПРОЩЕННЫЙ ДЛЯ КОРОТКОГО ОТВЕТА)
+# HTML
 # ==========================================
 HTML = r"""<!DOCTYPE html>
 <html lang="ru" data-theme="dark">
@@ -1087,7 +1087,7 @@ def api_single_check():
     return jsonify({"success": True, "report": report})
 
 # ==========================================
-# ГЛАВНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ - МАСС-ЧЕКЕР ВЫДАЕТ ПОЛНЫЙ ОТЧЕТ
+# МАСС-ЧЕКЕР С ПОЛНЫМ ОТЧЕТОМ
 # ==========================================
 @app.route("/api/mass-check-ws", methods=["POST"])
 def api_mass_check_ws():
@@ -1118,8 +1118,9 @@ def api_mass_check_ws():
                 total_robux += result.get('robux', 0)
                 usernames.append(result.get('username', '?'))
                 
-                # === ВОТ ЗДЕСЬ ГЛАВНОЕ ИСПРАВЛЕНИЕ ===
-                # Используем format_full_report вместо format_quick_report
+                # =====================================================
+                # ЗДЕСЬ ИСПОЛЬЗУЕТСЯ ПОЛНЫЙ ОТЧЕТ (format_full_report)
+                # =====================================================
                 if result.get('full_info'):
                     full_report = format_full_report(result['full_info'])
                     full_reports.append({
